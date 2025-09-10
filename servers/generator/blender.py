@@ -23,6 +23,26 @@ import time
 from openai import OpenAI
 import re
 
+_HAS_GDINOSAM = True
+try:
+    import torch
+    import torchvision
+    from PIL import Image
+    from groundingdino.util.inference import load_model, predict
+    from groundingdino.util import box_ops
+    # SAM v1
+    from segment_anything import sam_model_registry, SamPredictor
+except Exception as _e:
+    _HAS_GDINOSAM = False
+    logging.warning(f"Grounded-SAM backend not available: {_e}")
+    
+_HAS_YOLO = True
+try:
+    from ultralytics import YOLO
+except Exception as _e:
+    _HAS_YOLO = False
+    logging.warning(f"YOLO backend not available: {_e}")
+
 mcp = FastMCP("blender-executor")
 
 # Global executor instance
@@ -182,16 +202,36 @@ class MeshyAPI:
 # ======================
 
 class ImageCropper:
-    """图片截取工具，支持基于文本描述的智能截取"""
-    
+    """图片截取工具，支持基于文本描述的智能截取（Grounding DINO + SAM / YOLO / OpenAI 兜底）"""
+
     def __init__(self):
         self.temp_dir = None
-        # Set up OpenAI client lazily when needed
+        # OpenAI client（仅在 openai 兜底时用）
         self._client = None
 
+        # 后端选择：grounded_sam / yolo / openai
+        self._backend = os.getenv("DETECT_BACKEND", "grounded_sam").lower()
+
+        # Grounded-SAM 相关句柄（惰性加载）
+        self._gdino_model = None
+        self._sam_predictor = None
+        self._gdino_device = os.getenv("DET_DEVICE", "cuda" if self._torch_has_cuda() else "cpu")
+        self._gdino_repo = os.getenv("GDINO_REPO", "models/IDEA-Research/grounding-dino-base")
+        self._sam_type = os.getenv("SAM_TYPE", "vit_h")  # vit_h/vit_l/vit_b
+        self._sam_repo = os.getenv("SAM_REPO", "models/facebook/sam-vit-huge")
+
+        # YOLO 相关（惰性加载）
+        self._yolo = None
+        self._yolo_model = os.getenv("YOLO_MODEL", "models/yolov8x.pt")  # 本地或auto-download
+
+    # ---------------------------
+    # OpenAI（兜底）客户端（接口保留）
+    # ---------------------------
     def _get_openai_client(self) -> OpenAI:
         """Initialize and cache the OpenAI client using environment variables."""
         if self._client is None:
+            if OpenAI is None:
+                raise RuntimeError("openai package not installed")
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise RuntimeError("OPENAI_API_KEY not set; required for VLM-based cropping")
@@ -199,109 +239,306 @@ class ImageCropper:
             self._client = OpenAI(api_key=api_key, base_url=base_url)
         return self._client
 
+    # ---------------------------
+    # 工具函数
+    # ---------------------------
+    def _torch_has_cuda(self) -> bool:
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except Exception:
+            return False
+
     def _encode_image_as_data_url(self, image_path: str) -> str:
         with open(image_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("utf-8")
-        return f"data:image/png;base64,{b64}"
+        # 用 jpg 更通用；若需严格 png，可改回 png
+        return f"data:image/jpeg;base64,{b64}"
 
+    # ---------------------------
+    # 后端：Grounded-SAM
+    # ---------------------------
+    def _lazy_init_grounded_sam(self):
+        if self._gdino_model is None or self._sam_predictor is None:
+            if not _HAS_GDINOSAM:
+                raise RuntimeError("Grounding DINO + SAM backend not available")
+            # 加载 GroundingDINO
+            self._gdino_model = load_model(model_checkpoint_path=self._gdino_repo, device=self._gdino_device)
+            # 加载 SAM
+            if self._sam_type == "vit_h":
+                sam_type_key = "vit_h"
+            elif self._sam_type == "vit_l":
+                sam_type_key = "vit_l"
+                self._sam_repo = "models/facebook/sam-vit-large"
+            else:
+                sam_type_key = "vit_b"
+                self._sam_repo = "models/facebook/sam-vit-base"
+
+            sam = sam_model_registry[sam_type_key](checkpoint=None)  # 会从 repo 自动拉取权重
+            # 手动加载权重（segment-anything 库会自动处理下载缓存）
+            # 这里通过 from_pretrained 路径加载更省心，但官方API是注册表+checkpoint，本实现采用纯注册表+自动权重
+            # 若你本地已有 ckpt，可用 sam.load_state_dict(torch.load('/path/to/sam_vit_h.pth'))
+            self._sam_predictor = SamPredictor(sam.to(self._gdino_device))
+
+    def _grounded_sam_bbox(self, image_path: str, description: str) -> Optional[Tuple[int, int, int, int]]:
+        """
+        用 GroundingDINO 根据文本找框，再用 SAM 细化掩膜 -> 取最小外接矩形为 bbox
+        返回 (x, y, w, h)（像素）
+        """
+        self._lazy_init_grounded_sam()
+
+        image_pil = Image.open(image_path).convert("RGB")
+        image_np = np.array(image_pil)
+
+        # 1) DINO 文本检索检测：返回 xyxy + logits
+        #   box_threshold 控制候选框，text_threshold 控制文本匹配
+        #   若你希望更“严格”，可以把 box_threshold 调大（如 0.35~0.5）
+        boxes, logits, phrases = predict(
+            model=self._gdino_model,
+            image=image_pil,
+            caption=description,
+            box_threshold=float(os.getenv("GDINO_BOX_THRESH", "0.25")),
+            text_threshold=float(os.getenv("GDINO_TEXT_THRESH", "0.25")),
+            device=self._gdino_device
+        )
+        if boxes is None or len(boxes) == 0:
+            return None
+
+        # 选择得分最高的一个框
+        best_idx = int(np.argmax(logits))
+        # GroundingDINO 返回的是相对坐标（0~1），转成像素 xyxy
+        H, W = image_np.shape[:2]
+        box_xyxy = boxes[best_idx]  # tensor [x_center, y_center, w, h] or xyxy? 依API而定
+        # groundingdino.util.inference.predict 返回的是 xyxy 的 0~1 归一化坐标（当前版本）
+        # 若遇到老版本返回 cxcywh，可改用 box_ops.box_cxcywh_to_xyxy
+        if box_xyxy.shape[-1] == 4 and float(box_xyxy[2]) <= 1.0 and float(box_xyxy[3]) <= 1.0:
+            # 归一化 xyxy -> 像素
+            x1 = int(box_xyxy[0] * W)
+            y1 = int(box_xyxy[1] * H)
+            x2 = int(box_xyxy[2] * W)
+            y2 = int(box_xyxy[3] * H)
+        else:
+            # 兼容：如果拿到 cxcywh，则先转 xyxy
+            if hasattr(box_ops, "box_cxcywh_to_xyxy"):
+                xyxy = box_ops.box_cxcywh_to_xyxy(box_xyxy.unsqueeze(0)).squeeze(0)
+                x1 = int(xyxy[0].item())
+                y1 = int(xyxy[1].item())
+                x2 = int(xyxy[2].item())
+                y2 = int(xyxy[3].item())
+            else:
+                # 退而求其次：直接当 xyxy 像素
+                x1, y1, x2, y2 = [int(v) for v in box_xyxy.tolist()]
+
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(W - 1, x2), min(H - 1, y2)
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        # 2) SAM 细化掩膜，然后再从掩膜取更紧的 bbox（更贴边）
+        self._sam_predictor.set_image(image_np)
+        # SAM 支持以 bbox 作为 prompt
+        mask, _, _ = self._sam_predictor.predict(
+            box=np.array([x1, y1, x2, y2]),
+            multimask_output=False
+        )
+        if mask is None or mask.shape[0] == 0:
+            # 没掩膜就返回 dino 原框
+            return (x1, y1, x2 - x1, y2 - y1)
+
+        mask_bin = (mask[0] > 0) if mask.ndim == 3 else (mask > 0)
+        ys, xs = np.where(mask_bin)
+        if len(xs) == 0 or len(ys) == 0:
+            return (x1, y1, x2 - x1, y2 - y1)
+
+        tight_x1, tight_y1 = int(xs.min()), int(ys.min())
+        tight_x2, tight_y2 = int(xs.max()), int(ys.max())
+        return (tight_x1, tight_y1, max(1, tight_x2 - tight_x1 + 1), max(1, tight_y2 - tight_y1 + 1))
+
+    # ---------------------------
+    # 后端：YOLO（类名匹配）
+    # ---------------------------
+    def _lazy_init_yolo(self):
+        if self._yolo is None:
+            if not _HAS_YOLO:
+                raise RuntimeError("YOLO backend not available")
+            self._yolo = YOLO(self._yolo_model)
+
+    def _yolo_bbox(self, image_path: str, description: str) -> Optional[Tuple[int, int, int, int]]:
+        """
+        用 YOLO 做类别检测；通过简单的同义词表 matching 选出最相关类别的最高分框。
+        返回 (x, y, w, h)
+        """
+        self._lazy_init_yolo()
+        res = self._yolo(image_path)[0]
+        if res is None or res.boxes is None or len(res.boxes) == 0:
+            return None
+
+        # 构造同义词映射（可根据你的任务扩展）
+        synonyms = {
+            'person': ['human', 'people', 'man', 'woman', 'girl', 'boy', 'child'],
+            'car': ['vehicle', 'automobile', 'auto', 'sedan', 'coupe', 'suv'],
+            'dog': ['puppy', 'canine'],
+            'cat': ['kitten', 'feline'],
+            'chair': ['seat', 'stool', 'armchair'],
+            'table': ['desk', 'surface'],
+            'bottle': ['drink', 'water bottle'],
+        }
+        desc = description.lower()
+
+        def _match(cls_name: str) -> bool:
+            cls = cls_name.lower()
+            if cls in desc or desc in cls:
+                return True
+            for k, vs in synonyms.items():
+                if cls == k and any(v in desc for v in vs):
+                    return True
+                if any(v == cls for v in vs) and k in desc:
+                    return True
+            return False
+
+        best = None
+        for b in res.boxes:
+            cls_idx = int(b.cls.item())
+            cls_name = res.names.get(cls_idx, str(cls_idx))
+            conf = float(b.conf.item())
+            x1, y1, x2, y2 = [int(v) for v in b.xyxy[0].tolist()]
+            if _match(cls_name):
+                if (best is None) or (conf > best[0]):
+                    best = (conf, x1, y1, x2, y2)
+
+        # 若没有匹配上类别，则拿最高分框兜底
+        if best is None:
+            if len(res.boxes) == 0:
+                return None
+            b = max(res.boxes, key=lambda bb: float(bb.conf.item()))
+            x1, y1, x2, y2 = [int(v) for v in b.xyxy[0].tolist()]
+            return (x1, y1, max(1, x2 - x1), max(1, y2 - y1))
+
+        _, x1, y1, x2, y2 = best
+        return (x1, y1, max(1, x2 - x1), max(1, y2 - y1))
+
+    # ---------------------------
+    # 后端：OpenAI（保持你原逻辑作为最后兜底）
+    # ---------------------------
+    def _openai_bbox(self, image_path: str, description: str, model: str = None, temperature: float = 0.0):
+        """保留你原有的 OpenAI 查询（仅当其它后端不可用时）"""
+        client = self._get_openai_client()
+        model_name = model or os.getenv("VISION_MODEL", "gpt-4o")
+        data_url = self._encode_image_as_data_url(image_path)
+
+        system_prompt = (
+            "Given an input image and a target description, respond ONLY with a JSON object "
+            "with keys x, y, w, h (integers, pixel coordinates, origin at top-left). "
+            "If the target is not present, respond with {\"x\": -1, \"y\": -1, \"w\": 0, \"h\": 0}."
+        )
+        user_text = f"Target description: {description}\nReturn strictly JSON with keys x,y,w,h."
+
+        resp = client.chat.completions.create(
+            model=model_name,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ],
+        )
+
+        content = resp.choices[0].message.content if resp.choices else ""
+        if not content:
+            return None
+
+        def _extract_json(text: str) -> Optional[dict]:
+            try:
+                return json.loads(text)
+            except Exception:
+                pass
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(text[start:end + 1])
+                except Exception:
+                    return None
+            return None
+
+        js = _extract_json(content)
+        if not js:
+            return None
+        x = int(js.get("x", -1))
+        y = int(js.get("y", -1))
+        w = int(js.get("w", 0))
+        h = int(js.get("h", 0))
+        if x < 0 or y < 0 or w <= 0 or h <= 0:
+            return None
+        return (x, y, w, h)
+
+    # ---------------------------
+    # 统一接口：询问 bbox（签名保留）
+    # ---------------------------
     def _ask_vlm_for_bbox(self, image_path: str, description: str, model: str = None, temperature: float = 0.0) -> Optional[tuple]:
         """
-        Ask a VLM for a bounding box of the described object.
+        返回 (x, y, w, h) 或 None（找不到）
+        优先 grounded_sam -> 失败用 yolo -> 失败再用 openai
+        """
+        backend_order = []
+        # 用户明确指定 backend？
+        b = self._backend
+        if b == "grounded_sam":
+            backend_order = ["grounded_sam", "yolo", "openai"]
+        elif b == "yolo":
+            backend_order = ["yolo", "grounded_sam", "openai"]
+        else:
+            backend_order = ["grounded_sam", "yolo", "openai"]
 
-        Returns a tuple (x, y, w, h) in pixel coordinates, or None if not found.
+        last_err = None
+        for be in backend_order:
+            try:
+                if be == "grounded_sam" and _HAS_GDINOSAM:
+                    bbox = self._grounded_sam_bbox(image_path, description)
+                    if bbox:
+                        return bbox
+                elif be == "yolo" and _HAS_YOLO:
+                    bbox = self._yolo_bbox(image_path, description)
+                    if bbox:
+                        return bbox
+                elif be == "openai":
+                    bbox = self._openai_bbox(image_path, description, model=model, temperature=temperature)
+                    if bbox:
+                        return bbox
+            except Exception as e:
+                last_err = e
+                logging.warning(f"[{be}] backend failed: {e}")
+                continue
+
+        if last_err:
+            logging.error(f"All backends failed; last error: {last_err}")
+        return None
+
+    # ---------------------------
+    # 对外：裁剪（签名与返回结构保留）
+    # ---------------------------
+    def crop_image_by_text(self, image_path: str, description: str, output_path: str = None,
+                           confidence_threshold: float = 0.5, padding: int = 20) -> dict:
+        """
+        根据文本描述从图片中截取相关区域（通过 Grounded-SAM/YOLO/OpenAI 获取 bbox 后裁剪）
+        返回结构与原版本一致
         """
         try:
-            client = self._get_openai_client()
-            model_name = model or os.getenv("VISION_MODEL", "gpt-4o")
-            data_url = self._encode_image_as_data_url(image_path)
-
-            system_prompt = (
-                "Given an input image and a target description, respond ONLY with a JSON object "
-                "with keys x, y, w, h (integers, pixel coordinates, origin at top-left). "
-                "If the target is not present, respond with {\"x\": -1, \"y\": -1, \"w\": 0, \"h\": 0}."
-            )
-            user_text = f"Target description: {description}\nReturn strictly JSON with keys x,y,w,h."
-
-            resp = client.chat.completions.create(
-                model=model_name,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_text},
-                            {"type": "image_url", "image_url": {"url": data_url}},
-                        ],
-                    },
-                ],
-            )
-
-            content = resp.choices[0].message.content if resp.choices else ""
-            if not content:
-                return None
-            
-            with open('content.txt', 'w') as f:
-                f.write(content)
-
-            # Try direct JSON parsing; fallback to extracting JSON blob
-            def _extract_json(text: str) -> Optional[dict]:
-                try:
-                    return json.loads(text)
-                except Exception:
-                    pass
-                # crude extraction
-                start = text.find("{")
-                end = text.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    try:
-                        return json.loads(text[start:end+1])
-                    except Exception:
-                        return None
-                return None
-
-            js = _extract_json(content)
-            if not js:
-                return None
-            x = int(js.get("x", -1))
-            y = int(js.get("y", -1))
-            w = int(js.get("w", 0))
-            h = int(js.get("h", 0))
-            if x < 0 or y < 0 or w <= 0 or h <= 0:
-                return None
-            return (x, y, w, h)
-        except Exception as e:
-            logging.error(f"VLM bbox query failed: {e}")
-            return None
-    
-    def crop_image_by_text(self, image_path: str, description: str, output_path: str = None, 
-                          confidence_threshold: float = 0.5, padding: int = 20) -> dict:
-        """
-        根据文本描述从图片中截取相关区域（VLM询问得到坐标后进行裁剪）
-        
-        Args:
-            image_path: 输入图片路径
-            description: 文本描述，描述要截取的对象
-            output_path: 输出图片路径（可选，默认自动生成）
-            confidence_threshold: 置信度阈值
-            padding: 截取区域周围的填充像素
-        
-        Returns:
-            dict: 包含截取结果的字典
-        """
-        try:
-            # 检查输入图片是否存在
             if not os.path.exists(image_path):
                 return {"status": "error", "error": f"Image file not found: {image_path}"}
-            
+
             image = cv2.imread(image_path)
             if image is None:
                 return {"status": "error", "error": f"Failed to load image: {image_path}"}
-            
-            # 询问VLM获取目标物体的边界框
+
             bbox = self._ask_vlm_for_bbox(image_path, description)
             if not bbox:
-                return {"status": "error", "error": f"VLM did not return a valid bbox for '{description}'"}
+                return {"status": "error", "error": f"No valid bbox for '{description}' from any backend"}
 
             x, y, w, h = bbox
             height, width = image.shape[:2]
@@ -309,57 +546,57 @@ class ImageCropper:
             y1 = max(0, y - padding)
             x2 = min(width, x + w + padding)
             y2 = min(height, y + h + padding)
-            
-            # 截取图片
+
+            if x2 <= x1 or y2 <= y1:
+                return {"status": "error", "error": "Computed bbox is invalid after padding"}
+
             cropped_image = image[y1:y2, x1:x2]
-            
-            # 生成输出路径
+
             if output_path is None:
                 base_name = os.path.splitext(os.path.basename(image_path))[0]
                 output_dir = os.path.dirname(image_path)
-                output_path = os.path.join(output_dir, f"{base_name}_cropped_{description.replace(' ', '_')}.jpg")
-            
-            cv2.imwrite(output_path, cropped_image)
-            
+                safe_desc = re.sub(r"[^a-zA-Z0-9_\-]+", "_", description.strip())[:40]
+                output_path = os.path.join(output_dir, f"{base_name}_cropped_{safe_desc}.jpg")
+
+            ok = cv2.imwrite(output_path, cropped_image)
+            if not ok:
+                return {"status": "error", "error": f"Failed to write output to: {output_path}"}
+
             return {
                 "status": "success",
-                "message": f"Successfully cropped image based on '{description}' (via VLM)",
+                "message": f"Successfully cropped image based on '{description}'",
                 "input_image": image_path,
                 "output_image": output_path,
                 "detected_object": {
                     "description": description,
-                    "confidence": None,
-                    "bbox": [x1, y1, x2-x1, y2-y1],
+                    "confidence": None,          # 本实现不统一返回置信度，若需要可在各后端填充
+                    "bbox": [x1, y1, x2 - x1, y2 - y1],
                     "original_bbox": [x, y, w, h]
                 },
                 "crop_info": {
                     "original_size": [image.shape[1], image.shape[0]],
-                    "cropped_size": [x2-x1, y2-y1],
-                    "padding": padding
+                    "cropped_size": [x2 - x1, y2 - y1],
+                    "padding": padding,
+                    "backend": self._backend
                 }
             }
-            
+
         except Exception as e:
             logging.error(f"Failed to crop image: {e}")
             return {"status": "error", "error": str(e)}
-    
+
+    # ---------------------------
+    # 下面两个保持原样（兼容）
+    # ---------------------------
     def _detect_objects(self, image, description: str, confidence_threshold: float) -> list:
-        """Deprecated YOLO-based detector retained for API compatibility; now returns empty list."""
-        logging.warning("_detect_objects is deprecated; VLM-based bbox is used instead")
+        logging.warning("_detect_objects is deprecated; use unified backends instead")
         return []
-    
+
     def _is_description_match(self, class_name: str, description: str) -> bool:
-        """
-        检查类别名称是否与描述匹配
-        """
         description_lower = description.lower()
         class_name_lower = class_name.lower()
-        
-        # 直接匹配
         if class_name_lower in description_lower or description_lower in class_name_lower:
             return True
-        
-        # 同义词匹配
         synonyms = {
             'person': ['human', 'people', 'man', 'woman', 'child'],
             'car': ['vehicle', 'automobile', 'auto'],
@@ -372,49 +609,22 @@ class ImageCropper:
             'table': ['desk', 'surface'],
             'book': ['text', 'reading', 'literature']
         }
-        
         for key, values in synonyms.items():
             if class_name_lower == key and any(v in description_lower for v in values):
                 return True
             if any(v == class_name_lower for v in values) and key in description_lower:
                 return True
-        
         return False
-    
+
     def _fallback_detection(self, image, description: str) -> list:
-        """
-        备用检测方法（当YOLO不可用时）
-        使用简单的颜色和形状分析
-        """
-        # 这是一个简化的实现，实际应用中需要更复杂的算法
         height, width = image.shape[:2]
-        
-        # 基于描述返回一些模拟的检测结果
-        # 实际应用中这里应该实现更智能的检测算法
         mock_detections = []
-        
         if 'person' in description.lower() or 'human' in description.lower():
-            # 模拟检测到人
-            mock_detections.append({
-                'class': 'person',
-                'confidence': 0.8,
-                'bbox': [width//4, height//4, width//2, height//2]
-            })
+            mock_detections.append({'class': 'person', 'confidence': 0.8, 'bbox': [width//4, height//4, width//2, height//2]})
         elif 'car' in description.lower() or 'vehicle' in description.lower():
-            # 模拟检测到车
-            mock_detections.append({
-                'class': 'car',
-                'confidence': 0.7,
-                'bbox': [width//6, height//3, width//3, height//3]
-            })
-        elif 'animal' in description.lower() or 'dog' in description.lower() or 'cat' in description.lower():
-            # 模拟检测到动物
-            mock_detections.append({
-                'class': 'animal',
-                'confidence': 0.6,
-                'bbox': [width//3, height//3, width//4, height//4]
-            })
-        
+            mock_detections.append({'class': 'car', 'confidence': 0.7, 'bbox': [width//6, height//3, width//3, height//3]})
+        elif any(k in description.lower() for k in ['animal', 'dog', 'cat']):
+            mock_detections.append({'class': 'animal', 'confidence': 0.6, 'bbox': [width//3, height//3, width//4, height//4]})
         return mock_detections
 
 

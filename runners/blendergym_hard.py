@@ -17,7 +17,11 @@ from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-def get_scene_info(blender_file_path: str) -> str:
+notice_assets = {
+    'level4-1': ['clock', 'fireplace', 'lounge area', 'snowman', 'christmas_tree', 'box_inside', 'box_outside', 'tree_decoration_inside', 'tree_decoration_outside', 'bell'],
+}
+
+def get_scene_info(task_name: str, blender_file_path: str) -> str:
     """
     Get scene information from Blender file by executing a script to list all objects.
     
@@ -45,6 +49,8 @@ def get_scene_info(blender_file_path: str) -> str:
         for obj in bpy.context.scene.objects:
             obj_name = obj.name
             if 'Camera' in obj_name:
+                continue
+            if task_name in notice_assets and obj_name not in notice_assets[task_name]:
                 continue
             scene_info.append(f"- Name: {obj_name}; Location: {obj.location}")
         
@@ -198,7 +204,7 @@ def load_blendergym_dataset(base_path: str, task_name: str, task_id: Optional[st
             "init_image_path": str(start_renders_dir),
             "target_image_path": str(goal_renders_dir),
             "blender_file": str(blender_file),
-            "target_description": get_scene_info(str(blender_file)),
+            "target_description": get_scene_info(task_name, str(blender_file)),
         }
         tasks.append(task_config)
         print(f"Found task: {task_name}")
@@ -347,7 +353,7 @@ def main():
     parser.add_argument("--test-id", default=None, help="Test ID to check for failed cases and retest them")
     
     # Main.py parameters
-    parser.add_argument("--max-rounds", type=int, default=10, help="Maximum number of interaction rounds")
+    parser.add_argument("--max-rounds", type=int, default=20, help="Maximum number of interaction rounds")
     parser.add_argument("--vision-model", default="gpt-4o", help="OpenAI vision model to use")
     parser.add_argument("--openai-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key")

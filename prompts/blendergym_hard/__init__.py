@@ -9,7 +9,7 @@ blendergym_hard_hints = {
         ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
         ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror. You need to adjust the camera angle so that you can see the object you want to modify."] * 3,
    "level4":
-        ["Place the objects in the correct position by referring to the reference image"] * 3
+        ["Place the objects in the correct position by referring to the reference image. First plan out the objects you want to modify, and then move them one by one."] * 3
 }
 
 # System prompts for different levels

@@ -72,6 +72,42 @@ def vlm_list_objects(client: OpenAI, model: str, image_path: str) -> List[Dict[s
         return []
 
 
+def vlm_describe_object(client: OpenAI, model: str, image_path: str, object_name: str) -> str:
+    """Use VLM to describe a specific object in the image (shape, colors, materials)."""
+    try:
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        data_url = f"data:image/png;base64,{b64}"
+
+        system_prompt = (
+            "You are a precise visual describer. Describe the specified object in the image succinctly. "
+            "Focus on shape/form, dominant colors, materials/textures, and distinctive features."
+        )
+        user_text = (
+            f"Describe the object referred to as '{object_name}'. "
+            "Return a single concise paragraph (1-2 sentences, under 40 words)."
+        )
+
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ],
+        )
+        content = resp.choices[0].message.content.strip() if resp.choices else ""
+        return content
+    except Exception as e:
+        return f"(description unavailable: {e})"
+
+
 def generate_assets_from_image(
     input_image: str,
     output_dir: str,
@@ -106,6 +142,11 @@ def generate_assets_from_image(
     # Stage 1: Detect objects using VLM
     print("🔍 Detecting objects in image...")
     objects = vlm_list_objects(client, model, input_image)
+    # Enrich with VLM descriptions
+    for idx, obj in enumerate(objects):
+        obj_name = (obj.get("name") or f"obj{idx}").strip()
+        desc = vlm_describe_object(client, model, input_image, obj_name)
+        obj["description"] = desc
     results["objects"] = objects
     print(f"Found {len(objects)} objects: {[obj.get('name', 'unknown') for obj in objects]}")
 
