@@ -22,6 +22,9 @@ sys.path.append(os.getcwd())
 # Local imports
 from evaluators.design2code.evaluate import clip_similarity
 
+notice_assets = {
+    'level4-1': ['clock', 'fireplace', 'lounge area', 'snowman', 'christmas_tree', 'box_inside', 'box_outside', 'tree_decoration_inside', 'tree_decoration_outside', 'bell'],
+}
 
 def get_openai_client() -> OpenAI:
     """Get OpenAI client with API key from environment."""
@@ -38,14 +41,25 @@ def generate_coarse_layout_code(client: OpenAI, model: str, image_path: str) -> 
         b64 = base64.b64encode(f.read()).decode("utf-8")
     data_url = f"data:image/png;base64,{b64}"
 
+    # Get the available assets for positioning
+    available_assets = notice_assets.get('level4-1', [])
+    assets_list = ", ".join(available_assets)
+
     system_prompt = (
-        "You are a Blender Python expert. Generate a minimal, runnable Blender Python script that constructs "
-        "a coarse scene layout that visually approximates the screenshot: add basic primitives, set transforms, "
-        "materials (simple colors), and camera/light. Keep it robust and idempotent (delete existing default objects). "
-        "Focus on the overall composition, object placement, and basic lighting setup. "
-        "Return ONLY one Python code block."
+        "You are a Blender Python expert. Analyze the reference image and generate positioning code for existing assets. "
+        "Follow this two-step process:\n\n"
+        "STEP 1: First, provide a detailed natural language description of the spatial relationships between objects in the scene. "
+        "Describe their relative positions, distances, orientations, and how they relate to each other spatially.\n\n"
+        "STEP 2: Then, generate a minimal, runnable Blender Python script that positions existing assets to match the layout. "
+        "DO NOT create new objects - only position existing ones that match these asset names: "
+        f"[{assets_list}]. "
+        "For each asset that appears in the image, set its location, rotation, and scale using bpy.data.objects['asset_name']. "
+        "Keep the code robust and idempotent.\n\n"
+        "Format your response as:\n"
+        "SPATIAL ANALYSIS:\n[Your detailed description of object relationships]\n\n"
+        "POSITIONING CODE:\n```python\n[Your Blender Python code]\n```"
     )
-    user_text = "Generate a coarse Blender Python script for this screenshot that creates a basic scene layout."
+    user_text = f"Analyze the spatial relationships of these assets in the screenshot: {assets_list}. First describe the layout, then generate positioning code."
 
     resp = client.chat.completions.create(
         model=model,
@@ -63,6 +77,19 @@ def generate_coarse_layout_code(client: OpenAI, model: str, image_path: str) -> 
     )
     content = resp.choices[0].message.content if resp.choices else ""
     
+    # Extract spatial analysis and python code from the two-part response
+    spatial_analysis = ""
+    python_code = ""
+    
+    # Try to extract spatial analysis
+    if "SPATIAL ANALYSIS:" in content:
+        spatial_start = content.find("SPATIAL ANALYSIS:") + len("SPATIAL ANALYSIS:")
+        spatial_end = content.find("POSITIONING CODE:", spatial_start)
+        if spatial_end == -1:
+            spatial_end = content.find("```", spatial_start)
+        if spatial_end != -1:
+            spatial_analysis = content[spatial_start:spatial_end].strip()
+    
     # Extract python code block
     fences = ["```python", "```Python", "```"]
     start = -1
@@ -72,11 +99,21 @@ def generate_coarse_layout_code(client: OpenAI, model: str, image_path: str) -> 
             start = s + len(f)
             break
     if start == -1:
-        return content.strip()
-    end = content.find("```", start)
-    if end == -1:
-        return content[start:].strip()
-    return content[start:end].strip()
+        python_code = content.strip()
+    else:
+        end = content.find("```", start)
+        if end == -1:
+            python_code = content[start:].strip()
+        else:
+            python_code = content[start:end].strip()
+    
+    # Save spatial analysis for debugging/analysis
+    if spatial_analysis:
+        print("🧠 Spatial Analysis:")
+        print(spatial_analysis)
+        print()
+    
+    return python_code
 
 
 def run_blender_code(

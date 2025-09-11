@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 from typing import List, Dict, Any, Optional, Tuple
+import bpy
 
 
 def _find_obj_file(asset_dir: str) -> Optional[str]:
@@ -24,11 +25,6 @@ def import_obj_asset_to_blend(
 
     Note: This function must be run inside Blender's Python (bpy available).
     """
-    try:
-        import bpy  # type: ignore
-    except Exception:
-        raise RuntimeError("This function must be executed inside Blender (bpy not available)")
-
     if not os.path.isdir(asset_dir):
         raise FileNotFoundError(f"Asset directory not found: {asset_dir}")
 
