@@ -9,7 +9,8 @@ blendergym_hard_hints = {
         ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
         ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror. You need to adjust the camera angle so that you can see the object you want to modify."] * 3,
    "level4":
-        ["Place the objects in the correct position by referring to the reference image. First plan out the objects you want to modify, and then move them one by one."] * 3
+        ["Place the objects in the correct position by referring to the reference image. First plan out the objects you want to modify, and then move them one by one."] * 2 +
+        ["1. The road now has three sections, and you need to align their z-axis.\n2. Place the car on the road.\n3. Place the houses neatly along the road.\n4. Place the trees neatly between the houses and the road.\n5. You can only modify the objects listed above; do not attempt to modify the background, lighting, or other information."]
 }
 
 # System prompts for different levels
