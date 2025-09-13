@@ -1,63 +1,24 @@
 blendergym_hard_generator_hints = {
-    "level1": ["Adjust the camera position and angle to make the view look like the target image. You can refer to the position of objects in the given scene to determine the correct direction of the camera movement."] * 9,
-    "level2": 
-        ["First adjust the room brightness, then adjust the size of the character's belly so that it looks like the target image."] * 3 + 
-        ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image."] * 3 + 
-        ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror."] * 3,
-    "level3":
-        ["First adjust the room brightness, then adjust the size of the character's belly so that it looks like the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
-        ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
-        ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror. You need to adjust the camera angle so that you can see the object you want to modify."] * 3,
-   "level4":
-        ["Place the objects in the correct position by referring to the reference image. First plan out the objects you want to modify, and then move them one by one."] * 2 +
-        ["1. The road now has three sections, and you need to align their z-axis.\n2. Place the car on the road.\n3. Place the houses neatly along the road.\n4. Place the trees neatly between the houses and the road.\n5. You can only modify the objects listed above; do not attempt to modify the background, lighting, or other information."]
+    "level1": "Adjust the camera position and angle to make the view look like the target image. You will get the initial scene information. Please infer the appropriate camera position in 'Thought' based on the current view, the target view and the positional relationship of other objects.",
+    "level2": "This type of task involves editing multiple elements, such as lighting, object position, and object shape. The order in which you modify these elements requires common sense reasoning, such as adjusting the brightness to see objects clearly, removing objects that are obstructing each other, etc.",
+    "level3": "This type of task involves editing multiple elements, such as lighting, object position, and object shape. The order in which you modify these elements requires common sense reasoning, such as adjusting the brightness to see objects clearly, removing objects that are obstructing each other, etc. You will get the initial scene information. Please infer the appropriate camera position and objects position in 'Thought' based on the current view, the target view and the positional relationship of other objects.",
+   "level4": "TODO"
 }
 
 blendergym_hard_generator_hints = {
-    "level1": ["Adjust the camera position and angle to make the view look like the target image. You can refer to the position of objects in the given scene to determine the correct direction of the camera movement."] * 9,
-    "level2": 
-        ["First adjust the room brightness, then adjust the size of the character's belly so that it looks like the target image."] * 3 + 
-        ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image."] * 3 + 
-        ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror."] * 3,
-    "level3":
-        ["First adjust the room brightness, then adjust the size of the character's belly so that it looks like the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
-        ["First adjust the brightness of the room, then adjust the position of the basketball so that it looks the same as the target image. You need to adjust the camera angle so that you can see the object you want to modify."] * 3 + 
-        ["First move the cabinet to the correct position, then move the plant to the correct position. You need to move the cabinet to observe the plant in the mirror. You need to adjust the camera angle so that you can see the object you want to modify."] * 3,
-   "level4":
-        ["Place the objects in the correct position by referring to the reference image. First plan out the objects you want to modify, and then move them one by one."] * 2 +
-        ["1. The road now has three sections, and you need to align their z-axis.\n2. Place the car on the road.\n3. Place the houses neatly along the road.\n4. Place the trees neatly between the houses and the road.\n5. You can only modify the objects listed above; do not attempt to modify the background, lighting, or other information."]
+    "level1": "The generator's task is to adjust the camera position and angle to make the view look like the target image. Your task is to help him get the correct camera perspective. To do this, you need to use the 'investigator_3d' tool to move the camera and find the state that is closest to the correct camera perspective. You will get the initial scene information. Please infer the appropriate camera position in 'Thought' based on the current view, the target view and the positional relationship of other objects.",
+    "level2": "The generator's task is to edit multiple elements, such as lighting, object position, and object shape. The order in which you modify these elements requires common sense reasoning, such as adjusting the brightness to see objects clearly, removing objects that are obstructing each other, etc. Your task is to move the camera in the scene to observe the overall picture of the scene and find out the specific parts that need to be modified.",
+    "level3": "The generator's task is to edit multiple elements, such as lighting, object position, and object shape. The order in which you modify these elements requires common sense reasoning, such as adjusting the brightness to see objects clearly, removing objects that are obstructing each other, etc. You will get the initial scene information. Please infer the appropriate camera position and objects position in 'Thought' based on the current view, the target view and the positional relationship of other objects.",
+   "level4": "TODO"
 }
 
 # System prompts for different levels
 blendergym_hard_generator_system = """You are a Blender coding agent. Your task is to generate code to transform an initial 3D scene into a target scene following the target image provided.
 
-You will work with the provided initial and target images to understand what changes need to be made. Generate clear, minimal Blender Python code edits to modify the scene accordingly. After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits across multiple rounds.
+You will work with the provided initial and target images to understand what changes need to be made. Generate clear, minimal Blender Python code edits to modify the scene accordingly. After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits across multiple rounds. You will get the initial scene information. Please infer the appropriate camera position and objects position in 'Thought' based on the current view, the target view and the positional relationship of other objects.
 
-Always follow the required output format for each round. Keep edits focused and incremental to reduce risk and improve success."""
+Always follow the required output format for each round. Keep edits focused and incremental to reduce risk and improve success. """
 
-# blendergym_hard_generator_system_level2 = """You are a Blender coding agent. Your task is to generate code to transform an initial 3D scene into a target scene following the target image provided. 
-
-# You will work with the provided initial and target images to understand what changes need to be made. Generate Blender Python code to modify the scene accordingly. After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must adhere to a fixed output format."""
-
-# blendergym_hard_generator_system_level3 = """You are a Blender coding agent. Your task is to generate code to transform an initial 3D scene into a target scene following the target image provided.
-
-# You will work with the provided initial and target images to understand what changes need to be made. Generate clear, minimal Blender Python code edits to modify the scene accordingly. After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits across multiple rounds.
-
-# Always follow the required output format for each round. Keep edits focused and incremental to reduce risk and improve success."""
-
-# blendergym_hard_generator_system_level4 = """You are a Blender coding agent with comprehensive 3D scene manipulation capabilities. Your task is to generate code to transform an initial 3D scene into a target scene following the target image provided. 
-
-# You have access to multiple tools:
-# 1. **3D Asset Generation**: Generate and import 3D objects into the scene using text descriptions
-# 2. **3D Scene Investigation**: Focus, zoom, and move the camera to explore the scene
-# 3. **Blender Code Execution**: Write and execute Blender Python code to modify the scene
-
-# Use these tools strategically:
-# - Use the investigation tools to understand the current scene state
-# - Use the asset generation tool to create new objects if needed
-# - Use Blender Python code to modify existing objects, lighting, materials, and scene properties
-
-# After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must adhere to a fixed output format."""
 
 # Organize system prompts in dictionary format
 blendergym_hard_generator_system_dict = {
@@ -68,33 +29,12 @@ blendergym_hard_generator_system_dict = {
 }
 
 # Verifier system prompts for different levels
-blendergym_hard_verifier_system = """You're a 3D visual feedback assistant tasked with providing revision suggestions to a 3D scene designer. At the beginning, you will be given several images that describe the target 3D scene. In each subsequent interaction, you will receive a few images of the current 3D scene along with the code that generated it.
+blendergym_hard_verifier_system = """You're a 3D visual feedback assistant tasked with providing revision suggestions to a 3D scene designer. At the beginning, you will be given several images that describe the target 3D scene. 
 
-Your responsibilities include:
-1. **Visual Difference Identification**: Identify differences between the target scene and the current scene. You should pay close attention to detail and focus on the most critical discrepancies. Only answer the most obvious 1-2 differences at a time, don't answer too many.
-2. **Code Localization**: Pinpoint locations in the code that could be modified to reduce or eliminate these differences. This may require counterfactual reasoning and inference from the visual discrepancies."""
+In each subsequent interaction, you will receive a few images of the current 3D scene along with the code that generated it by the generator. Please first use the 'investigator_3d' tool to focus on key objects or observe the overall picture of the scene. Then combine the code provided by the generator to infer what the generator should do next. You will get the initial scene information. Please infer the appropriate camera position and objects position in 'Thought' based on the current view, the target view and the positional relationship of other objects.
 
-# blendergym_hard_verifier_system_level2 = """You're a 3D visual feedback assistant tasked with providing revision suggestions to a 3D scene designer. At the beginning, you will be given several images that describe the target 3D scene. In each subsequent interaction, you will receive a few images of the current 3D scene along with the code that generated it.
+Always follow the required output format for each round. In each turns of feedback, you'd better only provide 1-2 suggested changes and be as precise as possible (e.g. include specific numbers in the code) to reduce risk and improve success. """
 
-# Your responsibilities include:
-# 1. **Visual Difference Identification**: Identify differences between the target scene and the current scene. You should pay close attention to detail and focus on the most critical discrepancies. Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 2. **Code Localization**: Pinpoint locations in the code that could be modified to reduce or eliminate these differences. This may require counterfactual reasoning and inference from the visual discrepancies."""
-
-# blendergym_hard_verifier_system_level3 = """You're a 3D visual feedback assistant tasked with providing revision suggestions to a 3D scene designer. At the beginning, you will be given several images that describe the target 3D scene. In each subsequent interaction, you will receive a few images of the current 3D scene along with the code that generated it.
-
-# Your responsibilities include:
-# 1. **Visual Difference Identification**: Identify differences between the target scene and the current scene. You should pay close attention to detail and focus on the most critical discrepancies. Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 2. **Code Localization**: Pinpoint locations in the code that could be modified to reduce or eliminate these differences. This may require counterfactual reasoning and inference from the visual discrepancies."""
-
-# blendergym_hard_verifier_system_level4 = """You're a 3D visual feedback assistant tasked with providing revision suggestions to a 3D scene designer who has access to comprehensive 3D scene manipulation tools. At the beginning, you will be given several images that describe the target 3D scene. In each subsequent interaction, you will receive a few images of the current 3D scene along with the code that generated it.
-
-# Your responsibilities include:
-# 1. **Visual Difference Identification**: Identify differences between the target scene and the current scene. Consider both existing object modifications and potential new objects that need to be generated. Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 2. **Tool Recommendation**: Suggest which tools the generator should use:
-#    - **3D Asset Generation**: For creating new objects that don't exist in the current scene
-#    - **3D Scene Investigation**: For exploring the scene from different angles and focusing on specific objects
-#    - **Blender Code Execution**: For modifying existing objects, lighting, materials, and scene properties
-# 3. **Code Localization**: Pinpoint locations in the code that could be modified to reduce or eliminate these differences. This may require counterfactual reasoning and inference from the visual discrepancies."""
 
 # Organize verifier system prompts in dictionary format
 blendergym_hard_verifier_system_dict = {
@@ -106,7 +46,7 @@ blendergym_hard_verifier_system_dict = {
 
 # Generator formats for different levels
 blendergym_hard_generator_format = """After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must follow a fixed output format. Output Format (keep this format for each round):
-1. Thought: Analyze the current state and provide a clear plan for the required changes.
+1. Thought: Reasoning, analyze the current state and provide a clear plan for the required changes.
 2. Code Edition: Provide your code modifications in the following format:
    -: [lines to remove]
    +: [lines to add]
@@ -114,39 +54,6 @@ blendergym_hard_generator_format = """After each code edit, your code will be pa
 ```python
 [full code]
 ```"""
-
-# blendergym_hard_generator_format_level2 = """After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must follow a fixed output format. Output Format (keep this format for each round):
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Code Edition: Provide your code modifications in the following format:
-#    -: [lines to remove]
-#    +: [lines to add]
-# 3. Full Code: Merge your code changes into the full code:
-# ```python
-# [full code]
-# ```"""
-
-# blendergym_hard_generator_format_level3 = """After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must follow a fixed output format. Output Format (keep this format for each round):
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Code Edition: Provide your code modifications in the following format:
-#    -: [lines to remove]
-#    +: [lines to add]
-# 3. Full Code: Merge your code changes into the full code:
-# ```python
-# [full code]
-# ```"""
-
-# blendergym_hard_generator_format_level4 = """After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits. This process will continue across multiple rounds of dialogue. In each round, you must follow a fixed output format. Output Format (keep this format for each round):
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Tool Usage (if needed): Use the available tools strategically:
-#    - **3D Asset Generation**: Generate new objects using text descriptions
-#    - **3D Scene Investigation**: Focus, zoom, and move camera to explore the scene
-# 3. Code Edition: Provide your code modifications in the following format:
-#    -: [lines to remove]
-#    +: [lines to add]
-# 4. Full Code: Merge your code changes into the full code:
-# ```python
-# [full code]
-# ```"""
 
 # Organize generator formats in dictionary format
 blendergym_hard_generator_format_dict = {
@@ -158,32 +65,12 @@ blendergym_hard_generator_format_dict = {
 
 # Verifier formats for different levels
 blendergym_hard_verifier_format = """Output Structure:
-1. Thought: Analyze the current state and provide a clear plan for the required changes.
-2. Visual Difference: Describe the main differences found (between the current and target scene). Only answer the most obvious 1-2 differences at a time, don't answer too many.
-3. Code Localization: Pinpoint locations in the code that could be modified to reduce or eliminate these most obvious differences.
-4. If the current scene is already very close to the target scene, just output 'OK!'."""
-
-# blendergym_hard_verifier_format_level2 = """Output Structure:
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Visual Difference: Describe the main differences found (between the current and target scene). Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 3. Code Localization: Pinpoint locations in the code that could be modified to reduce or eliminate these most obvious differences.
-# 4. If the current scene is already very close to the target scene, just output 'OK!'."""
-
-# blendergym_hard_verifier_format_level3 = """Output Structure:
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Visual Difference: Describe the main differences found (between the current and target scene). Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 3. Code Localization: Pinpoint locations in the code that could be modified to reduce or eliminate these most obvious differences.
-# 4. If the current scene is already very close to the target scene, just output 'OK!'."""
-
-# blendergym_hard_verifier_format_level4 = """Output Structure:
-# 1. Thought: Analyze the current state and provide a clear plan for the required changes.
-# 2. Visual Difference: Describe the main differences found (between the current and target scene). Only answer the most obvious 1-2 differences at a time, don't answer too many.
-# 3. Tool Recommendation: Suggest which tools the generator should use:
-#    - **3D Asset Generation**: For creating new objects that don't exist in the current scene
-#    - **3D Scene Investigation**: For exploring the scene from different angles and focusing on specific objects
-#    - **Blender Code Execution**: For modifying existing objects, lighting, materials, and scene properties
-# 4. Code Localization: Pinpoint locations in the code that could be modified to reduce or eliminate these most obvious differences.
-# 5. If the current scene is already very close to the target scene, just output 'OK!'."""
+(1) You should always use the tool 'investigator_3d' first, see the tool arguments to get usage.
+(2) After you think you have fully observed the scene, you need to infer the next action of the generator from the information you have obtained (including multiple pictures and the position of the camera that took these pictures). Specifically, your output should contain the following format (keep this format for each round):
+1. Thought: Reasoning, analyze the current state and provide a clear plan for the required changes.
+2. Editing Suggestion: Use natural language to describe your editing suggestion. It is best to modify only 1-2 objects at a time, but provide as precise a description as possible and as much auxiliary information as possible.
+3. Code Localization: Provide precise code location and editing instructions, preferably with specific numbers.
+(3) If the current scene is already very close to the target scene, just output 'OK!' without any other characters."""
 
 # Organize verifier formats in dictionary format
 blendergym_hard_verifier_format_dict = {

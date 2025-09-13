@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import copy
 from typing import Dict, List, Optional, Any
 import logging
 from openai import OpenAI
@@ -62,13 +63,13 @@ class VerifierAgent:
         self.tool_handler = ToolHandler(self.tool_client, self.server_type)
         
         if mode == "blendergym":
-            self.memory = self.prompt_builder.build_blendergym_verifier_prompt(mode, task_name, target_image_path)
+            self.system_prompt = self.prompt_builder.build_blendergym_verifier_prompt(mode, task_name, target_image_path)
         elif mode == "autopresent":
-            self.memory = self.prompt_builder.build_autopresent_verifier_prompt(mode, target_description)
+            self.system_prompt = self.prompt_builder.build_autopresent_verifier_prompt(mode, target_description)
         elif mode == "blendergym-hard":
-            self.memory = self.prompt_builder.build_blendergym_hard_verifier_prompt(mode, task_name, target_image_path, blender_file_path, target_description)
+            self.system_prompt = self.prompt_builder.build_blendergym_hard_verifier_prompt(mode, task_name, target_image_path, blender_file_path, target_description)
         elif mode == "design2code":
-            self.memory = self.prompt_builder.build_design2code_verifier_prompt(mode, target_image_path)
+            self.system_prompt = self.prompt_builder.build_design2code_verifier_prompt(mode, target_image_path)
         else:
             raise NotImplementedError("Mode not implemented")
         
@@ -107,6 +108,8 @@ class VerifierAgent:
         # define current round
         current_round = 0
         self.current_round = round_num
+        # clear the memory at each time to enable long conversation
+        self.memory = copy.deepcopy(self.system_prompt)
         
         # build memory
         if self.mode == "blendergym":
@@ -207,7 +210,9 @@ class VerifierAgent:
                                 "role": "user",
                                 "content": [
                                     {"type": "text", "text": "Generated image:"},
-                                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(tool_response['image'])}}
+                                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(tool_response['image'])}},
+                                    {"type": "text", "text": "Camera position:"},
+                                    {"type": "text", "text": tool_response['camera_position']}
                                 ]
                             })
                         result = {"status": "continue", "output": message.content if message.content else "Nothing to say"}
