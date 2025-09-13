@@ -119,7 +119,7 @@ class ToolHandler:
         except Exception as e:
             return {'text': f"Error executing script: {str(e)}", 'success': False}
     
-    async def handle_verifier_tool_call(self, tool_call, current_image_path: str = None, target_image_path: str = None) -> Dict[str, Any]:
+    async def handle_verifier_tool_call(self, tool_call, current_image_path: str = None, target_image_path: str = None, round_num: int = None) -> Dict[str, Any]:
         """Handle tool calls from the verifier agent."""
         function_name = tool_call.function.name
         function_args = json.loads(tool_call.function.arguments)
@@ -129,17 +129,20 @@ class ToolHandler:
                 op = function_args['operation']
                 if op == 'focus':
                     output = await self.tool_client.call_tool("scene", "focus", {
-                        "object_name": function_args.get("object_name", "")
+                        "object_name": function_args.get("object_name", ""),
+                        "round_num": round_num
                     })
                     return {'text': f"Focused camera on object: {function_args.get('object_name', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 elif op == 'zoom':
                     output = await self.tool_client.call_tool("scene", "zoom", {
-                        "direction": function_args.get("direction", "")
+                        "direction": function_args.get("direction", ""),
+                        "round_num": round_num
                     })
                     return {'text': f"Zoomed {function_args.get('direction', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 elif op == 'move':
                     output = await self.tool_client.call_tool("scene", "move", {
-                        "direction": function_args.get("direction", "")
+                        "direction": function_args.get("direction", ""),
+                        "round_num": round_num
                     })
                     return {'text': f"Moved camera {function_args.get('direction', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 else:

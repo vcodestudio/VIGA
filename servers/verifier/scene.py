@@ -124,10 +124,10 @@ class Investigator3D:
             print("Copy from Camera1!")
         return cam
 
-    def _render(self):
+    def _render(self, round_num: int):
         bpy.context.scene.camera = self.cam
         bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.render.filepath = str(self.base / f"{self.count+1}.png")
+        bpy.context.scene.render.filepath = str(self.base / f"{round_num+1}" / f"{self.count+1}.png")
         bpy.ops.render.render(write_still=True)
         out = bpy.context.scene.render.filepath
         self.count += 1
@@ -154,7 +154,7 @@ class Investigator3D:
             "camera_position": camera_position
         }
 
-    def focus_on_object(self, object_name: str) -> dict:
+    def focus_on_object(self, object_name: str, round_num: int) -> dict:
         obj = bpy.data.objects.get(object_name)
         if not obj:
             raise ValueError(f"{object_name} not found")
@@ -173,16 +173,16 @@ class Investigator3D:
         self.radius = (self.cam.matrix_world.translation - obj.matrix_world.translation).length
         self.theta = math.atan2(*(self.cam.matrix_world.translation[i] - obj.matrix_world.translation[i] for i in (1,0)))
         self.phi = math.asin((self.cam.matrix_world.translation.z - obj.matrix_world.translation.z)/self.radius)
-        return self._render()
+        return self._render(round_num)
 
-    def zoom(self, direction: str) -> dict:
+    def zoom(self, direction: str, round_num: int) -> dict:
         if direction == 'in':
             self.radius = max(1, self.radius-3)
         elif direction == 'out':
             self.radius += 3
-        return self._update_and_render()
+        return self._update_and_render(round_num)
 
-    def move_camera(self, direction: str) -> dict:
+    def move_camera(self, direction: str, round_num: int) -> dict:
         step = self.radius
         theta_step = step/(self.radius*math.cos(self.phi))
         phi_step = step/self.radius
@@ -190,15 +190,15 @@ class Investigator3D:
         elif direction=='down': self.phi = max(-math.pi/2+0.1, self.phi-phi_step)
         elif direction=='left': self.theta -= theta_step
         elif direction=='right': self.theta += theta_step
-        return self._update_and_render()
+        return self._update_and_render(round_num)
 
-    def _update_and_render(self) -> dict:
+    def _update_and_render(self, round_num: int) -> dict:
         t = self.target.matrix_world.translation
         x = self.radius*math.cos(self.phi)*math.cos(self.theta)
         y = self.radius*math.cos(self.phi)*math.sin(self.theta)
         z = self.radius*math.sin(self.phi)
         self.cam.matrix_world.translation = (t.x+x, t.y+y, t.z+z)
-        return self._render()
+        return self._render(round_num)
 
 
 # ======================
@@ -230,7 +230,7 @@ def initialize_investigator(thoughtprocess_save: str, blender_path: str) -> dict
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def focus(object_name: str) -> dict:
+def focus(object_name: str, round_num: int) -> dict:
     """
     将相机聚焦到指定对象上。
     """
@@ -244,7 +244,7 @@ def focus(object_name: str) -> dict:
         if not obj:
             return {"status": "error", "error": f"Object '{object_name}' not found in scene"}
 
-        result = _investigator.focus_on_object(object_name)
+        result = _investigator.focus_on_object(object_name, round_num)
         return {
             "status": "success", 
             "image": result["image_path"],
@@ -255,7 +255,7 @@ def focus(object_name: str) -> dict:
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def zoom(direction: str) -> dict:
+def zoom(direction: str, round_num: int) -> dict:
     """
     缩放相机视图。
     """
@@ -268,7 +268,7 @@ def zoom(direction: str) -> dict:
         if _investigator.target is None:
             return {"status": "error", "error": "No target object set. Call focus first."}
 
-        result = _investigator.zoom(direction)
+        result = _investigator.zoom(direction, round_num)
         return {
             "status": "success", 
             "image": result["image_path"],
@@ -279,7 +279,7 @@ def zoom(direction: str) -> dict:
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def move(direction: str) -> dict:
+def move(direction: str, round_num: int) -> dict:
     """
     移动相机位置。
     """
@@ -292,7 +292,7 @@ def move(direction: str) -> dict:
         if _investigator.target is None:
             return {"status": "error", "error": "No target object set. Call focus first."}
 
-        result = _investigator.move_camera(direction)
+        result = _investigator.move_camera(direction, round_num)
         return {
             "status": "success", 
             "image": result["image_path"],
@@ -381,7 +381,7 @@ def test_tools():
     if first_object:
         print("\n3. Testing focus...")
         try:
-            result = focus(first_object)
+            result = focus(first_object, 1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ focus passed")
@@ -397,7 +397,7 @@ def test_tools():
         # 测试 4: 缩放功能
         print("\n4. Testing zoom...")
         try:
-            result = zoom("in")
+            result = zoom("in", 1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ zoom passed")
@@ -412,7 +412,7 @@ def test_tools():
         # 测试 5: 移动功能
         print("\n5. Testing move...")
         try:
-            result = move("up")
+            result = move("up", 1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ move passed")

@@ -204,7 +204,7 @@ class VerifierAgent:
                 # Handle tool calls
                 if message.tool_calls:
                     for tool_call in message.tool_calls:
-                        tool_response = await self._handle_tool_call(tool_call)
+                        tool_response = await self._handle_tool_call(tool_call, round_num)
                         self.memory.append({
                             "role": "tool",
                             "tool_call_id": tool_call.id,
@@ -240,12 +240,13 @@ class VerifierAgent:
         """Get available tools for the verifier agent."""
         return ToolManager.get_verifier_tools(self.mode, self.task_name)
         
-    async def _handle_tool_call(self, tool_call) -> Dict[str, Any]:
+    async def _handle_tool_call(self, tool_call, round_num) -> Dict[str, Any]:
         """Handle tool calls from the verifier agent."""
         return await self.tool_handler.handle_verifier_tool_call(
             tool_call, 
             self.current_image_path, 
-            self.target_image_path
+            self.target_image_path,
+            round_num
         )
         
     def save_thought_process(self):
