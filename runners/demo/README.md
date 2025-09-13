@@ -1,229 +1,212 @@
-# Demo Pipeline Modules
+# 场景重建演示 (Scene Reconstruction Demo)
 
-This directory contains three modular components for the demo pipeline, each handling a specific stage of the 3D scene generation process.
+这个演示展示了如何使用AI从一张图片重建3D场景的完整流程。
 
-## Overview
+## 功能概述
 
-The demo pipeline consists of three main stages:
+1. **初始化3D场景** (`init.py`): 从输入图片创建一个基础的3D场景
+2. **资产生成器** (`asset.py`): 使用Meshy API生成3D资产
+3. **主演示逻辑** (`demo.py`): 协调整个重建流程
+4. **Meshy API集成** (`meshy.py`): 提供3D资产生成功能
 
-1. **Asset Generation** (`asset.py`) - Generate 3D assets from objects detected in images
-2. **Layout Generation** (`layout.py`) - Create coarse Blender scene layout using VLM
-3. **Refinement** (`refine.py`) - Iteratively optimize layout using agentic verifier framework
+## 工作流程
 
-## Modules
+```
+输入图片 → 初始化3D场景 → 循环分析 → 生成资产 → 场景编辑
+    ↓           ↓              ↓          ↓          ↓
+  init.py   创建基础场景    VLM分析     asset.py   main.py
+                              ↓
+                         识别缺少物体
+```
 
-### 1. Asset Generation (`asset.py`)
+## 文件结构
 
-Generates 3D assets from objects detected in reference images using Meshy API.
+```
+runners/demo/
+├── init.py              # 场景初始化
+├── asset.py             # 资产生成器
+├── demo.py              # 主演示逻辑
+├── meshy.py             # Meshy API集成
+├── example_usage.py     # 使用示例
+└── README.md           # 说明文档
+```
 
-**Features:**
-- Object detection using VLM
-- Image cropping for object extraction
-- Text-to-3D asset generation
-- Image-to-3D asset generation
-- Automatic asset import into Blender scene
+## 安装依赖
 
-**Usage:**
 ```bash
-python runners/demo/asset.py \
-    --image data/blendergym_hard/level4/outdoor4/ref2.png \
-    --output-dir output/test/demo/assets \
-    --blender-file output/test/demo/old_blender_file.blend \
-    --model gpt-4o \
-    --refine
+# 基础依赖
+pip install requests pillow opencv-python numpy
+
+# Meshy API (需要API密钥)
+export MESHY_API_KEY="your_meshy_api_key_here"
+
+# 可选：AI检测后端
+pip install torch torchvision ultralytics
+pip install groundingdino segment-anything
 ```
 
-**Required Environment Variables:**
-- `OPENAI_API_KEY` - OpenAI API key for VLM
-- `MESHY_API_KEY` - Meshy API key for 3D asset generation
+## 使用方法
 
-### 2. Layout Generation (`layout.py`)
+### 1. 基本使用
 
-Uses VLM to generate coarse Blender scene layout from reference images.
+```python
+from demo import run_demo
 
-**Features:**
-- VLM-based scene analysis
-- Blender Python code generation
-- Automatic code execution in Blender
-- CLIP similarity evaluation
-- Render output generation
+# 运行场景重建演示
+result = run_demo(
+    target_image_path="path/to/your/image.jpg",
+    api_key="your_meshy_api_key",  # 可选，默认从环境变量读取
+    output_dir="output/demo/reconstruction"
+)
+```
 
-**Usage:**
+### 2. 使用示例脚本
+
 ```bash
-python runners/demo/layout.py \
-    --image data/blendergym_hard/level4/outdoor4/ref2.png \
-    --output-dir output/test/demo/layout \
-    --blender-cmd utils/blender/infinigen/blender/blender \
-    --blender-file data/blendergym_hard/level4/christmas1/blender_file.blend \
-    --pipeline-script data/blendergym_hard/level4/christmas1/pipeline_render_script.py \
-    --model gpt-4o
+# 设置API密钥
+export MESHY_API_KEY="your_api_key_here"
+
+# 运行示例
+python example_usage.py
 ```
 
-**Required Environment Variables:**
-- `OPENAI_API_KEY` - OpenAI API key for VLM
+### 3. 单独使用组件
 
-### 3. Refinement (`refine.py`)
+```python
+# 初始化场景
+from init import initialize_3d_scene_from_image
+scene_info = initialize_3d_scene_from_image("input.jpg")
 
-Implements agentic verifier framework for iterative layout optimization.
-
-**Features:**
-- VLM-based scene analysis and comparison
-- Iterative code refinement
-- CLIP similarity tracking
-- Convergence detection
-- Multi-iteration optimization
-
-**Usage:**
-```bash
-python runners/demo/refine.py \
-    --code output/test/demo/layout/coarse_layout.py \
-    --reference data/blendergym_hard/level4/outdoor4/ref2.png \
-    --output-dir output/test/demo/refinement \
-    --blender-cmd utils/blender/infinigen/blender/blender \
-    --blender-file data/blendergym_hard/level4/christmas1/blender_file.blend \
-    --pipeline-script data/blendergym_hard/level4/christmas1/pipeline_render_script.py \
-    --model gpt-4o \
-    --max-iterations 3 \
-    --threshold 0.8
+# 生成资产
+from asset import AssetGenerator
+generator = AssetGenerator(scene_info["blender_file_path"])
+result = generator.generate_both_assets("chair", "input.jpg")
 ```
 
-**Required Environment Variables:**
-- `OPENAI_API_KEY` - OpenAI API key for VLM
+## 配置选项
 
-## Complete Pipeline Workflow
+### 环境变量
 
-### Step 1: Generate Assets
-```bash
-python runners/demo/asset.py \
-    --image your_reference_image.png \
-    --output-dir output/demo/assets
+- `MESHY_API_KEY`: Meshy API密钥（必需）
+- `DETECT_BACKEND`: 检测后端选择 (`grounded_sam`, `yolo`, `openai`)
+- `OPENAI_API_KEY`: OpenAI API密钥（用于VLM分析）
+- `OPENAI_BASE_URL`: OpenAI API基础URL
+
+### 参数配置
+
+```python
+# 场景重建参数
+demo = SceneReconstructionDemo(api_key="your_key")
+demo.max_iterations = 10  # 最大循环次数
+
+# 资产生成参数
+generator = AssetGenerator(blender_path, api_key)
+result = generator.generate_both_assets(
+    object_name="chair",
+    image_path="input.jpg",
+    location="0,0,0",
+    scale=1.0
+)
 ```
 
-### Step 2: Generate Coarse Layout
-```bash
-python runners/demo/layout.py \
-    --image your_reference_image.png \
-    --output-dir output/demo/layout
-```
-
-### Step 3: Refine Layout
-```bash
-python runners/demo/refine.py \
-    --code output/demo/layout/coarse_layout.py \
-    --reference your_reference_image.png \
-    --output-dir output/demo/refinement
-```
-
-## Output Structure
-
-Each module generates structured output:
+## 输出结构
 
 ```
-output/demo/
-├── assets/
-│   ├── crops/                    # Cropped object images
-│   │   ├── crop_object1.jpg
-│   │   └── crop_object2.jpg
-│   └── asset_results.json       # Asset generation results
-├── layout/
-│   ├── renders/                 # Rendered images
-│   │   └── render1.png
-│   ├── coarse_layout.py         # Generated Blender code
-│   └── layout_results.json      # Layout generation results
-└── refinement/
-    ├── iteration_1/             # Iteration 1 renders
-    ├── iteration_2/             # Iteration 2 renders
-    ├── iteration_3/             # Iteration 3 renders
-    ├── final_refined_code.py    # Final optimized code
-    └── refinement_results.json  # Refinement results
+output/demo/reconstruction/
+├── scene_image_1234567890.blend          # Blender场景文件
+├── scene_image_1234567890_info.json      # 场景信息
+└── assets/
+    ├── text/                             # 文本生成的资产
+    └── image/                            # 图片生成的资产
 ```
 
-## Key Features
+## API参考
 
-### Agentic Verifier Framework
-The refinement module implements a sophisticated agentic verifier that:
-- Analyzes rendered scenes using VLM
-- Compares with reference images
-- Identifies specific issues and improvements
-- Generates refined Blender code
-- Tracks similarity metrics across iterations
-- Supports convergence detection
+### init.py
 
-### Multi-Modal Analysis
-- **Visual Analysis**: CLIP similarity for visual comparison
-- **VLM Analysis**: Natural language feedback on scene composition
-- **Code Generation**: Automated Blender Python script refinement
+- `initialize_3d_scene_from_image(image_path, output_dir)`: 初始化3D场景
+- `load_scene_info(scene_info_path)`: 加载场景信息
+- `update_scene_info(scene_info_path, updates)`: 更新场景信息
 
-### Robust Error Handling
-- Graceful fallbacks for missing dependencies
-- Comprehensive error reporting
-- Timeout protection for long-running operations
-- Validation of input files and environment variables
+### asset.py
 
-## Dependencies
+- `AssetGenerator(blender_path, api_key)`: 资产生成器
+- `generate_asset_from_text(object_name, location, scale)`: 从文本生成资产
+- `generate_asset_from_image(object_name, image_path, location, scale)`: 从图片生成资产
+- `generate_both_assets(object_name, image_path, location, scale)`: 生成两种资产
 
-### Core Dependencies
-- `openai` - OpenAI API client
-- `PIL` - Image processing
-- `pathlib` - File path handling
-- `subprocess` - Blender execution
+### demo.py
 
-### Optional Dependencies
-- `beautifulsoup4` - HTML parsing (for Design2Code metrics)
-- `playwright` - Browser automation (for HTML rendering)
-- `transformers` - CLIP model (for visual similarity)
+- `SceneReconstructionDemo(api_key)`: 场景重建演示类
+- `run_reconstruction_loop(target_image_path, output_dir)`: 运行重建循环
+- `ask_vlm_for_missing_objects(scene_info, target_image_path)`: 分析缺少的物体
+- `run_demo(target_image_path, api_key, output_dir)`: 运行完整演示
 
-## Configuration
+### meshy.py
 
-### Environment Variables
-```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export MESHY_API_KEY="your-meshy-api-key"
-export OPENAI_BASE_URL="https://api.openai.com/v1"  # Optional
+- `add_meshy_asset(description, blender_path, location, scale, ...)`: 添加文本生成的资产
+- `add_meshy_asset_from_image(image_path, blender_path, location, scale, ...)`: 添加图片生成的资产
+- `crop_image_by_text(image_path, description, ...)`: 根据文本截取图片
+- `crop_and_generate_3d_asset(...)`: 截取并生成3D资产
+
+## 扩展开发
+
+### 添加新的VLM分析
+
+在 `demo.py` 的 `ask_vlm_for_missing_objects` 方法中集成你的VLM服务：
+
+```python
+def ask_vlm_for_missing_objects(self, current_scene_info, target_image_path):
+    # 调用你的VLM API
+    # 分析目标图片和当前场景
+    # 返回缺少的物体列表
+    pass
 ```
 
-### Blender Setup
-Ensure Blender is properly configured:
-- Blender executable path
-- Template .blend files
-- Pipeline render scripts
-- Python environment with required packages
+### 添加新的资产生成方法
 
-## Troubleshooting
+在 `asset.py` 中扩展 `AssetGenerator` 类：
 
-### Common Issues
+```python
+def generate_asset_from_custom_source(self, object_name, custom_data):
+    # 实现自定义资产生成逻辑
+    pass
+```
 
-1. **Missing API Keys**
-   - Ensure `OPENAI_API_KEY` and `MESHY_API_KEY` are set
-   - Check API key validity and permissions
+### 集成场景编辑功能
 
-2. **Blender Execution Failures**
-   - Verify Blender executable path
-   - Check template .blend file exists
-   - Ensure pipeline script is accessible
+在 `demo.py` 的 `start_scene_editing` 方法中集成你的场景编辑逻辑：
 
-3. **VLM Analysis Failures**
-   - Check OpenAI API quota and rate limits
-   - Verify image file formats and sizes
-   - Ensure stable internet connection
+```python
+def start_scene_editing(self, blender_file_path):
+    # 调用main.py中的场景编辑功能
+    # 实现自动场景优化
+    pass
+```
 
-4. **Low Similarity Scores**
-   - Increase max iterations in refinement
-   - Adjust similarity threshold
-   - Check reference image quality and complexity
+## 故障排除
 
-### Performance Tips
+### 常见问题
 
-- Use smaller images for faster VLM processing
-- Limit max iterations for quick testing
-- Cache generated assets for reuse
-- Monitor API usage and costs
+1. **API密钥错误**: 确保 `MESHY_API_KEY` 环境变量设置正确
+2. **Blender导入失败**: 确保在Blender环境中运行
+3. **图片路径错误**: 检查输入图片路径是否存在
+4. **网络连接问题**: 确保可以访问Meshy API
 
-## Integration
+### 调试模式
 
-These modules can be integrated into larger workflows:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
-- **Batch Processing**: Process multiple images in sequence
-- **Pipeline Integration**: Combine with other AgenticVerifier components
-- **Custom Workflows**: Extend with domain-specific logic
-- **API Integration**: Wrap as web services for remote execution
+# 运行演示时会显示详细日志
+result = run_demo("input.jpg")
+```
+
+## 贡献
+
+欢迎提交Issue和Pull Request来改进这个演示系统。
+
+## 许可证
+
+请参考项目根目录的许可证文件。

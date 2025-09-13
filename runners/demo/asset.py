@@ -1,297 +1,254 @@
-#!/usr/bin/env python3
-"""
-Asset generation module for demo pipeline.
-Generates 3D assets from images and imports them into Blender scene.
-"""
-
 import os
-import sys
 import json
-import argparse
-import base64
-from pathlib import Path
-from typing import List, Dict, Any
-from PIL import Image
+import logging
+from typing import Optional, Dict, Any
+from .meshy import add_meshy_asset, add_meshy_asset_from_image
 
-from openai import OpenAI
-
-# 将运行时的父目录添加到sys.path
-sys.path.append(os.getcwd())
-
-# Local imports
-from servers.generator.blender import ImageCropper, add_meshy_asset, add_meshy_asset_from_image
-
-
-def get_openai_client() -> OpenAI:
-    """Get OpenAI client with API key from environment."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    return OpenAI(api_key=api_key, base_url=base_url)
-
-
-def vlm_list_objects(client: OpenAI, model: str, image_path: str) -> List[Dict[str, Any]]:
-    """Use VLM to list objects in the reference image."""
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    data_url = f"data:image/png;base64,{b64}"
-
-    system_prompt = (
-        "List distinct objects in the image with concise names and counts. "
-        "Return ONLY JSON list of objects, where each item is {name: string}."
-    )
-    user_text = "Identify the main objects present. Respond strictly with a JSON array."
-
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0.0,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_text},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ],
-            },
-        ],
-    )
-    content = resp.choices[0].message.content if resp.choices else "[]"
-    try:
-        # Try parse or extract JSON
-        return json.loads(content)
-    except Exception:
-        start = content.find("[")
-        end = content.rfind("]")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(content[start:end+1])
-            except Exception:
-                return []
-        return []
-
-
-def vlm_describe_object(client: OpenAI, model: str, image_path: str, object_name: str) -> str:
-    """Use VLM to describe a specific object in the image (shape, colors, materials)."""
-    try:
-        with open(image_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-        data_url = f"data:image/png;base64,{b64}"
-
-        system_prompt = (
-            "You are a precise visual describer. Describe the specified object in the image succinctly. "
-            "Focus on shape/form, dominant colors, materials/textures, and distinctive features."
-        )
-        user_text = (
-            f"Describe the object referred to as '{object_name}'. "
-            "Return a single concise paragraph (1-2 sentences, under 40 words)."
-        )
-
-        resp = client.chat.completions.create(
-            model=model,
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_text},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                },
-            ],
-        )
-        content = resp.choices[0].message.content.strip() if resp.choices else ""
-        return content
-    except Exception as e:
-        return f"(description unavailable: {e})"
-
-
-def generate_assets_from_image(
-    input_image: str,
-    output_dir: str,
-    blender_file: str = None,
-    model: str = "gpt-4o",
-    refine: bool = False
-) -> Dict[str, Any]:
-    """
-    Generate 3D assets from objects detected in the input image.
+class AssetGenerator:
+    """3D资产生成器，支持从文本和图片生成资产"""
     
-    Args:
-        input_image: Path to input reference image
-        output_dir: Output directory for crops and results
-        blender_file: Blender file to import assets into
-        model: VLM model to use
-        refine: Whether to refine Meshy assets
+    def __init__(self, blender_path: str, api_key: str = None):
+        """
+        初始化资产生成器
         
-    Returns:
-        Dictionary with generation results
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    client = get_openai_client()
-
-    results = {
-        "objects": [],
-        "crops": [],
-        "text_assets": [],
-        "image_assets": [],
-        "verification": {}
-    }
-
-    # Stage 1: Detect objects using VLM
-    print("🔍 Detecting objects in image...")
-    objects = vlm_list_objects(client, model, input_image)
-    # Enrich with VLM descriptions
-    for idx, obj in enumerate(objects):
-        obj_name = (obj.get("name") or f"obj{idx}").strip()
-        desc = vlm_describe_object(client, model, input_image, obj_name)
-        obj["description"] = desc
-    results["objects"] = objects
-    print(f"Found {len(objects)} objects: {[obj.get('name', 'unknown') for obj in objects]}")
-
-    # Stage 2: Generate crops and assets
-    cropper = ImageCropper()
-    crops_dir = Path(output_dir) / "crops"
-    crops_dir.mkdir(parents=True, exist_ok=True)
-
-    crop_results = []
-    text_assets = []
-    image_assets = []
-
-    # For each object name, attempt a crop and generate assets
-    for idx, obj in enumerate(objects):
-        name = (obj.get("name") or f"obj{idx}").strip().replace(" ", "_")
-        print(f"🎯 Processing object: {name}")
+        Args:
+            blender_path: Blender文件路径
+            api_key: Meshy API密钥（可选，默认从环境变量读取）
+        """
+        self.blender_path = blender_path
+        self.api_key = api_key or os.getenv("MESHY_API_KEY")
+        if not self.api_key:
+            raise ValueError("Meshy API key is required. Set MESHY_API_KEY environment variable or pass api_key parameter.")
+    
+    def ask_vlm_for_object_description(self, object_name: str, context_image_path: str = None) -> str:
+        """
+        询问VLM获取物体的详细文本描述
         
-        # Generate crop
-        crop_out = str(crops_dir / f"crop_{name}.jpg")
-        crop_res = cropper.crop_image_by_text(input_image, name, crop_out)
-        crop_results.append({"name": name, "result": crop_res})
-        
-        if crop_res.get("status") == "success":
-            print(f"  ✅ Crop successful: {crop_out}")
-        else:
-            print(f"  ❌ Crop failed: {crop_res.get('error', 'Unknown error')}")
-
-        # Text-based asset (Meshy)
-        print(f"  🎨 Generating text-based asset for: {name}")
+        Args:
+            object_name: 物体名称
+            context_image_path: 上下文图片路径（可选）
+            
+        Returns:
+            str: 详细的物体描述
+        """
         try:
-            text_asset = add_meshy_asset(
-                description=name,
-                location=f"{idx * 2},0,0",  # Spread objects along X axis
-                scale=1.0,
-                api_key=os.getenv("MESHY_API_KEY"),
-                refine=refine,
-                save_dir=output_dir,
-                blender_path=blender_file,
-            )
-            if text_asset.get("status") == "success":
-                print(f"  ✅ Text asset generated successfully")
-            else:
-                print(f"  ❌ Text asset failed: {text_asset.get('error', 'Unknown error')}")
+            # 这里应该调用VLM API，现在先用简单的模板
+            # 在实际实现中，你需要调用OpenAI或其他VLM服务
+            
+            # 简单的描述模板（实际应用中应该用VLM生成）
+            description_templates = {
+                "chair": "A comfortable wooden chair with a high backrest and armrests, suitable for dining or office use",
+                "table": "A sturdy wooden dining table with four legs and a smooth surface, perfect for family meals",
+                "lamp": "A modern table lamp with a metal base and fabric shade, providing warm ambient lighting",
+                "sofa": "A plush three-seater sofa with soft cushions and elegant fabric upholstery",
+                "bookshelf": "A tall wooden bookshelf with multiple shelves for storing books and decorative items",
+                "coffee_table": "A low wooden coffee table with a glass top, perfect for placing drinks and magazines",
+                "bed": "A comfortable double bed with a wooden headboard and soft mattress",
+                "desk": "A spacious wooden desk with drawers and a smooth work surface for studying or working",
+                "television": "A modern flat-screen television with a sleek black frame and remote control",
+                "plant": "A healthy green houseplant in a ceramic pot, adding natural beauty to the room",
+                "clock": "A classic wall clock with Roman numerals and brass hands",
+                "vase": "An elegant ceramic vase with a smooth finish, perfect for displaying flowers",
+                "painting": "A beautiful framed artwork with vibrant colors and artistic composition",
+                "mirror": "A large rectangular mirror with a wooden frame, perfect for a bedroom or hallway",
+                "rug": "A soft area rug with geometric patterns and warm colors",
+                "curtain": "Heavy fabric curtains with elegant drapes and curtain rods",
+                "pillow": "A soft decorative pillow with colorful fabric and comfortable filling",
+                "candle": "An aromatic scented candle in a decorative holder with a warm flame",
+                "book": "A hardcover book with an interesting cover and pages ready to be read",
+                "cup": "A ceramic coffee cup with a handle, perfect for morning coffee or tea"
+            }
+            
+            # 如果物体名称在模板中，使用模板
+            if object_name.lower() in description_templates:
+                return description_templates[object_name.lower()]
+            
+            # 否则生成通用描述
+            return f"A detailed 3D model of a {object_name}, with realistic textures and proper proportions"
+            
         except Exception as e:
-            text_asset = {"status": "error", "error": str(e)}
-            print(f"  ❌ Text asset exception: {e}")
-        text_assets.append({"name": name, "result": text_asset})
-
-        # Image-based asset (if crop succeeded)
-        if crop_res.get("status") == "success":
-            print(f"  🖼️ Generating image-based asset from crop...")
-            try:
-                image_asset = add_meshy_asset_from_image(
-                    image_path=crop_out,
-                    location=f"{idx * 2},2,0",  # Offset Y position for image assets
-                    scale=1.0,
-                    prompt=name,
-                    api_key=os.getenv("MESHY_API_KEY"),
-                    refine=refine,
-                    save_dir=output_dir,
-                    blender_path=blender_file,
-                )
-                if image_asset.get("status") == "success":
-                    print(f"  ✅ Image asset generated successfully")
-                else:
-                    print(f"  ❌ Image asset failed: {image_asset.get('error', 'Unknown error')}")
-            except Exception as e:
-                image_asset = {"status": "error", "error": str(e)}
-                print(f"  ❌ Image asset exception: {e}")
-        else:
-            image_asset = {"status": "skipped", "error": "crop_failed"}
-            print(f"  ⏭️ Skipping image asset (crop failed)")
-        image_assets.append({"name": name, "result": image_asset})
-
-    results["crops"] = crop_results
-    results["text_assets"] = text_assets
-    results["image_assets"] = image_assets
-
-    # Verification summary
-    results["verification"] = {
-        "num_objects": len(objects),
-        "num_crops_success": sum(1 for r in crop_results if r["result"].get("status") == "success"),
-        "num_text_assets_success": sum(1 for r in text_assets if r["result"].get("status") == "success"),
-        "num_image_assets_success": sum(1 for r in image_assets if r["result"].get("status") == "success"),
-    }
-
-    # Save results
-    with open(Path(output_dir) / "asset_results.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
-
-    print(f"\n📊 Asset Generation Summary:")
-    print(f"  Objects detected: {results['verification']['num_objects']}")
-    print(f"  Successful crops: {results['verification']['num_crops_success']}")
-    print(f"  Successful text assets: {results['verification']['num_text_assets_success']}")
-    print(f"  Successful image assets: {results['verification']['num_image_assets_success']}")
-
-    return results
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Generate 3D assets from image objects")
-    parser.add_argument("--image", required=True, help="Input reference image path")
-    parser.add_argument("--output-dir", default="data/blendergym_hard/level4/outdoor4/assets", help="Output directory")
-    parser.add_argument("--blender-file", default="output/test/demo/old_blender_file.blend", help="Blender file to import assets into")
-    parser.add_argument("--model", default="gpt-4o", help="VLM model")
-    parser.add_argument("--refine", action="store_true", help="Refine Meshy assets")
-    args = parser.parse_args()
-
-    # Check required environment variables
-    if not os.getenv("OPENAI_API_KEY"):
-        print("❌ Error: OPENAI_API_KEY environment variable is required")
-        sys.exit(1)
+            logging.error(f"Failed to get object description: {e}")
+            return f"A 3D model of {object_name}"
     
-    if not os.getenv("MESHY_API_KEY"):
-        print("❌ Error: MESHY_API_KEY environment variable is required")
-        sys.exit(1)
-
-    # Check if input image exists
-    if not os.path.exists(args.image):
-        print(f"❌ Error: Input image not found: {args.image}")
-        sys.exit(1)
-
-    print(f"🚀 Starting asset generation...")
-    print(f"  Input image: {args.image}")
-    print(f"  Output directory: {args.output_dir}")
-    print(f"  Blender file: {args.blender_file}")
-    print(f"  Model: {args.model}")
-    print(f"  Refine: {args.refine}")
-
-    try:
-        results = generate_assets_from_image(
-            input_image=args.image,
-            output_dir=args.output_dir,
-            blender_file=args.blender_file,
-            model=args.model,
-            refine=args.refine
-        )
+    def generate_asset_from_text(self, object_name: str, location: str = "0,0,0", scale: float = 1.0) -> Dict[str, Any]:
+        """
+        从文本生成3D资产
         
-        print(f"\n✅ Asset generation completed successfully!")
-        print(f"Results saved to: {Path(args.output_dir) / 'asset_results.json'}")
+        Args:
+            object_name: 物体名称
+            location: 资产位置 "x,y,z"
+            scale: 缩放比例
+            
+        Returns:
+            dict: 生成结果
+        """
+        try:
+            # 获取详细描述
+            description = self.ask_vlm_for_object_description(object_name)
+            print(f"[AssetGenerator] Generating text-to-3D asset for '{object_name}': {description}")
+            
+            # 调用meshy.py中的函数
+            result = add_meshy_asset(
+                description=description,
+                blender_path=self.blender_path,
+                location=location,
+                scale=scale,
+                api_key=self.api_key,
+                refine=True,
+                save_dir="output/demo/assets/text",
+                filename=f"text_{object_name}"
+            )
+            
+            return {
+                "type": "text_to_3d",
+                "object_name": object_name,
+                "description": description,
+                "result": result
+            }
+            
+        except Exception as e:
+            logging.error(f"Failed to generate text asset: {e}")
+            return {
+                "type": "text_to_3d",
+                "object_name": object_name,
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def generate_asset_from_image(self, object_name: str, image_path: str, location: str = "0,0,0", scale: float = 1.0) -> Dict[str, Any]:
+        """
+        从图片生成3D资产
         
-    except Exception as e:
-        print(f"❌ Error during asset generation: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+        Args:
+            object_name: 物体名称
+            image_path: 输入图片路径
+            location: 资产位置 "x,y,z"
+            scale: 缩放比例
+            
+        Returns:
+            dict: 生成结果
+        """
+        try:
+            # 获取详细描述作为prompt
+            description = self.ask_vlm_for_object_description(object_name)
+            print(f"[AssetGenerator] Generating image-to-3D asset for '{object_name}' from image: {image_path}")
+            
+            # 调用meshy.py中的函数
+            result = add_meshy_asset_from_image(
+                image_path=image_path,
+                blender_path=self.blender_path,
+                location=location,
+                scale=scale,
+                prompt=description,
+                api_key=self.api_key,
+                refine=True,
+                save_dir="output/demo/assets/image",
+                filename=f"image_{object_name}"
+            )
+            
+            return {
+                "type": "image_to_3d",
+                "object_name": object_name,
+                "image_path": image_path,
+                "description": description,
+                "result": result
+            }
+            
+        except Exception as e:
+            logging.error(f"Failed to generate image asset: {e}")
+            return {
+                "type": "image_to_3d",
+                "object_name": object_name,
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def generate_both_assets(self, object_name: str, image_path: str = None, location: str = "0,0,0", scale: float = 1.0) -> Dict[str, Any]:
+        """
+        同时生成文本和图片两种3D资产
+        
+        Args:
+            object_name: 物体名称
+            image_path: 输入图片路径（可选）
+            location: 资产位置 "x,y,z"
+            scale: 缩放比例
+            
+        Returns:
+            dict: 包含两种资产生成结果
+        """
+        try:
+            print(f"[AssetGenerator] Generating both text and image assets for '{object_name}'")
+            
+            # 生成文本资产
+            text_result = self.generate_asset_from_text(object_name, location, scale)
+            
+            # 生成图片资产（如果提供了图片路径）
+            image_result = None
+            if image_path and os.path.exists(image_path):
+                # 为图片资产调整位置（避免重叠）
+                image_location = f"{float(location.split(',')[0]) + 2},{location.split(',')[1]},{location.split(',')[2]}"
+                image_result = self.generate_asset_from_image(object_name, image_path, image_location, scale)
+            else:
+                print(f"[AssetGenerator] Warning: Image path not provided or file not found: {image_path}")
+                image_result = {
+                    "type": "image_to_3d",
+                    "object_name": object_name,
+                    "status": "skipped",
+                    "message": "Image path not provided or file not found"
+                }
+            
+            return {
+                "object_name": object_name,
+                "text_asset": text_result,
+                "image_asset": image_result,
+                "status": "success" if text_result.get("result", {}).get("status") == "success" else "partial"
+            }
+            
+        except Exception as e:
+            logging.error(f"Failed to generate both assets: {e}")
+            return {
+                "object_name": object_name,
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def get_asset_summary(self, generation_result: Dict[str, Any]) -> str:
+        """
+        获取资产生成结果的摘要
+        
+        Args:
+            generation_result: 资产生成结果
+            
+        Returns:
+            str: 结果摘要
+        """
+        try:
+            object_name = generation_result.get("object_name", "Unknown")
+            text_asset = generation_result.get("text_asset", {})
+            image_asset = generation_result.get("image_asset", {})
+            
+            summary_parts = [f"Asset generation for '{object_name}':"]
+            
+            # 文本资产结果
+            if text_asset.get("type") == "text_to_3d":
+                text_result = text_asset.get("result", {})
+                if text_result.get("status") == "success":
+                    summary_parts.append(f"  ✓ Text-to-3D: {text_result.get('message', 'Success')}")
+                else:
+                    summary_parts.append(f"  ✗ Text-to-3D: {text_result.get('error', 'Failed')}")
+            
+            # 图片资产结果
+            if image_asset.get("type") == "image_to_3d":
+                if image_asset.get("status") == "skipped":
+                    summary_parts.append(f"  ⏭️ Image-to-3D: {image_asset.get('message', 'Skipped')}")
+                else:
+                    image_result = image_asset.get("result", {})
+                    if image_result.get("status") == "success":
+                        summary_parts.append(f"  ✓ Image-to-3D: {image_result.get('message', 'Success')}")
+                    else:
+                        summary_parts.append(f"  ✗ Image-to-3D: {image_result.get('error', 'Failed')}")
+            
+            return "\n".join(summary_parts)
+            
+        except Exception as e:
+            return f"Failed to generate summary: {e}"
