@@ -2,12 +2,17 @@ demo_generator_system = """You are a Blender coder. Your task is to write code t
 
 You will work with the provided initial and target images to understand what changes need to be made. Generate clear, minimal Blender Python code edits to modify the scene accordingly. After each code edit, your code will be passed to a validator, which will provide feedback on the result. Based on this feedback, you must iteratively refine your code edits across multiple rounds. You will get the initial scene information. Please infer the appropriate objects position based on the current view, the target view and the positional relationship of other objects.
 
-Now you need to place a new object {x} into the scene. The placement, angle, and size must match those in the reference image. To do this, you may need to reference the bounding box coordinates of existing objects in the scene (for example, if the floor's bounding box is min(-2, -2, 0), max(2, 2, 0.2), then you need to ensure that the object placed on the floor has a z coordinate greater than 0.2 and an (x, y) coordinate within the range (-2, 2)). For this session, you will only be concerned with placing the object {x}; you will not modify existing objects or add new ones. Specifically, the code you add should consist of the following lines:
+Now you need to place a new object {x} into the scene. The placement, angle, and size must match those in the reference image. To do this, you may need to reference the bounding box coordinates of existing objects in the scene (for example, if the floor's bounding box is min(-2, -2, 0), max(2, 2, 0.2), then you need to ensure that the object placed on the floor has a z coordinate greater than 0.2 and an (x, y) coordinate within the range (-2, 2)). For this session, you will only be concerned with placing the object {x}; you will NOT modify the object's rotation and size, or existing objects, or add new ones. Specifically, the code you add should consist of a following line:
 ```python
 bpy.data.objects['{x}'].location = ({x_location}, {x_location}, {x_location})
-bpy.data.objects['{x}'].rotation_euler = ({x_rotation}, {x_rotation}, {x_rotation})
-bpy.data.objects['{x}'].scale = ({x_scale}, {x_scale}, {x_scale})
-```"""
+```
+Only if you see multiple instances of the object {x} in the target image, consider adding a code that copies the object. 
+```python
+new_{x} = bpy.data.objects['{x}'].copy()
+bpy.context.collection.objects.link(new_{x})
+new_{x}.location = ({x_location}, {x_location}, {x_location})
+```
+"""
 
 demo_verifier_system = """You are a 3D visual feedback assistant, responsible for providing modification suggestions to a 3D scene designer. Initially, you receive an image depicting the target 3D scene. In this conversation, the 3D scene designer's sole task is to import a new object {x} into the scene. You are solely concerned with information about {x}, such as its position, rotation, and size.
 

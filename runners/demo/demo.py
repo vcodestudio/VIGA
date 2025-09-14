@@ -17,14 +17,7 @@ from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from runners.demo.init import initialize_3d_scene_from_image, load_scene_info, update_scene_info
 from runners.demo.asset import AssetGenerator
-from utils.blender.get_scene_info import get_scene_info
-
-
-notice_assets = {
-    'level4-1': ['clock', 'fireplace', 'lounge', 'snowman', 'christmastree', 'giftboxes', 'decoration', 'goldenbells', 'floor', 'left wall', 'right wall', 'CUADRO'],
-    'level4-2': [],
-    'level4-3': ['Tree1', 'Tree2', 'Tree3', 'Tree4', 'Tree5', 'Tree6', 'Car1', 'Car2', 'Car3', 'Car4', 'Road1', 'Road2', 'Road3', 'Building1', 'Building2', 'Building3', 'Building4', 'Building5', 'Building6'],
-}
+from utils.blender.get_scene_info import get_scene_info, assets_data
 
 class SceneReconstructionDemo:
     """Scene Reconstruction Demo Class"""
@@ -383,7 +376,7 @@ print("Blender file saved successfully")
         }
         try:
             print(f"[TestModeDemo] Starting main.py iteration for scene adjustment")
-            task_description = 'The new object is x=' + object_name + '.\n\nThat means you should ONLY edit the code related to bpy.data.objects[' + object_name + '].\n\n' + get_scene_info(task_name, blender_file_path, notice_assets)
+            task_description = 'The new object is x=' + object_name + '.\n\nThat means you should ONLY edit the code related to bpy.data.objects[' + object_name + '].\n\n' + get_scene_info(task_name, blender_file_path)
             # Prepare main.py command
             cmd = [
                 "python", "main.py",
@@ -489,8 +482,8 @@ print("Blender file saved successfully")
                     blender_file_path=blender_file_path,
                     asset_path=os.path.join(object_dir, obj_file),
                     object_name=object_name,
-                    location=f"0,0,0",  # Spread objects along X axis
-                    scale=1.0
+                    location=f"{assets_data['location'][task_name][object_name]}",  # Spread objects along X axis
+                    scale=assets_data['size'][task_name][object_name]
                 )
                 
                 # copy current blender file to object directory
@@ -665,6 +658,9 @@ def test_demo():
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), type=str, help="OpenAI API key")
     parser.add_argument("--output-dir", default="output/demo/christmas1", type=str, help="Output directory")
     args = parser.parse_args()
+    
+    print(get_scene_info('1', 'data/blendergym_hard/level4/christmas1/_not_used/blender_file.blend'))
+    raise NotImplementedError("Not implemented")
     
     print("🧪 Testing Scene Reconstruction Demo...")
     

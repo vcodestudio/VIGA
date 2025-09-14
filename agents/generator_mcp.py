@@ -11,6 +11,7 @@ from agents.prompt_builder import PromptBuilder
 from agents.tool_manager import ToolManager
 from agents.tool_handler import ToolHandler
 from agents.utils import parse_generate_response, get_blendergym_hard_level, save_thought_process
+from utils.blender.get_scene_info import get_scene_info
 
 class GeneratorAgent:
     """
@@ -135,75 +136,16 @@ class GeneratorAgent:
         """
         if feedback:
             self.memory.append({"role": "user", "content": feedback})
+            
+        if self.mode == "blendergym-hard":
+            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.blender_file_path)})
         
         try:
-            # We do not use tools for code generation test
-            use_tools = False # self.mode == "blendergym-hard" and self._server_connected
-            
-            if use_tools:
-                # Get available tools
-                available_tools = self._get_tools()
-                
-                # Use tools-enabled generation
-                response = self.client.chat.completions.create(
-                    model=self.model, 
-                    messages=self.memory,
-                    tools=available_tools,
-                    tool_choice="auto"
-                )
-                message = response.choices[0].message
-                # Convert message to proper format for memory
-                assistant_content = message.content if isinstance(message.content, str) else (message.content or "")
-                message_dict = {
-                    "role": "assistant",
-                    "content": assistant_content,
-                }
-                # Only include tool_calls if there are any (avoid empty array which causes API error)
-                if getattr(message, "tool_calls", None):
-                    message_dict["tool_calls"] = [
-                        {
-                            "id": tool_call.id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_call.function.name,
-                                "arguments": tool_call.function.arguments
-                            }
-                        }
-                        for tool_call in message.tool_calls
-                    ]
-                self.memory.append(message_dict)
-                
-                # Handle tool calls
-                if hasattr(message, 'tool_calls') and message.tool_calls:
-                    for tool_call in message.tool_calls:
-                        tool_response = await self._handle_tool_call(tool_call)
-                        # Ensure tool response is a string
-                        content = tool_response.get('text', str(tool_response))
-                        if not isinstance(content, str):
-                            content = json.dumps(content)
-                        
-                        self.memory.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": tool_call.function.name,
-                            "content": content
-                        })
-                    
-                    # Continue generation after tool calls
-                    continue_response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=self.memory
-                    )
-                    generate_response = continue_response.choices[0].message.content
-                else:
-                    generate_response = message.content
-            else:
-                # Standard generation without tools
-                generate_response = self.client.chat.completions.create(
-                    model=self.model, 
-                    messages=self.memory
-                ).choices[0].message.content
-                
+            # Standard generation without tools
+            generate_response = self.client.chat.completions.create(
+                model=self.model, 
+                messages=self.memory
+            ).choices[0].message.content
             self.memory.append({"role": "assistant", "content": generate_response})
             
             # Parse the response to extract code if needed (only for modes that generate code)
