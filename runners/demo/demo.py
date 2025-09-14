@@ -3,6 +3,8 @@ import json
 import logging
 import time
 import argparse
+import asyncio
+import subprocess
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from .init import initialize_3d_scene_from_image, load_scene_info, update_scene_info
@@ -218,6 +220,292 @@ class SceneReconstructionDemo:
                 "error": str(e)
             }
 
+class TestModeDemo:
+    """Test Mode Demo Class - starts from existing Blender file and imports assets"""
+    
+    def __init__(self, api_key: str = None, model: str = "gpt-5", base_url: str = None):
+        """
+        Initialize test mode demo class
+        
+        Args:
+            api_key: OpenAI API key (optional, defaults to environment variable)
+            model: OpenAI model
+            base_url: OpenAI base URL
+        """
+        self.openai_api_key = api_key
+        self.model = model
+        if not self.openai_api_key:
+            raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
+        
+        kwargs = {'api_key': self.openai_api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self.client = OpenAI(**kwargs)
+        self.max_iterations = 20
+        self.completed_objects = []
+    
+    def import_asset_to_scene(self, blender_file_path: str, asset_path: str, object_name: str, location: str = "0,0,0", scale: float = 1.0) -> Dict[str, Any]:
+        """
+        Import a downloaded asset into the Blender scene
+        
+        Args:
+            blender_file_path: Path to the Blender file
+            asset_path: Path to the asset file (e.g., .obj, .fbx, .blend)
+            object_name: Name for the imported object
+            location: Position "x,y,z"
+            scale: Scale factor
+            
+        Returns:
+            dict: Import result
+        """
+        try:
+            print(f"[TestModeDemo] Importing asset '{object_name}' from {asset_path}")
+            
+            # Create import script
+            import_script = f"""
+import bpy
+import os
+
+# Clear existing mesh objects (optional - comment out if you want to keep existing objects)
+# bpy.ops.object.select_all(action='DESELECT')
+# bpy.ops.object.select_by_type(type='MESH')
+# bpy.ops.object.delete(use_global=False)
+
+# Import the asset based on file extension
+asset_path = r"{asset_path}"
+if asset_path.endswith('.obj'):
+    bpy.ops.import_scene.obj(filepath=asset_path)
+elif asset_path.endswith('.fbx'):
+    bpy.ops.import_scene.fbx(filepath=asset_path)
+elif asset_path.endswith('.blend'):
+    bpy.ops.wm.append(filepath=asset_path)
+else:
+    print(f"Unsupported file format: {{asset_path}}")
+    exit(1)
+
+# Get the imported object(s) and rename the first one
+imported_objects = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
+if imported_objects:
+    main_object = imported_objects[0]
+    main_object.name = "{object_name}"
+    
+    # Set location and scale
+    main_object.location = ({location.split(',')[0]}, {location.split(',')[1]}, {location.split(',')[2]})
+    main_object.scale = ({scale}, {scale}, {scale})
+    
+    print(f"Successfully imported {{main_object.name}} at location {{main_object.location}}")
+else:
+    print("No mesh objects found in the imported asset")
+    exit(1)
+
+# Save the file
+bpy.ops.wm.save_mainfile()
+print("Blender file saved successfully")
+"""
+            
+            # Write import script to temporary file
+            script_path = f"temp_import_{object_name}_{int(time.time())}.py"
+            with open(script_path, 'w') as f:
+                f.write(import_script)
+            
+            # Execute import script
+            cmd = [
+                'utils/blender/infinigen/blender/blender',
+                "--background", blender_file_path,
+                "--python", script_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            # Clean up temporary script
+            os.remove(script_path)
+            
+            print(f"✓ Asset '{object_name}' imported successfully")
+            
+            return {
+                "status": "success",
+                "message": f"Asset '{object_name}' imported successfully",
+                "object_name": object_name,
+                "asset_path": asset_path,
+                "location": location,
+                "scale": scale
+            }
+            
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to import asset: {e}")
+            return {
+                "status": "error",
+                "error": f"Import failed: {e.stderr if e.stderr else str(e)}"
+            }
+        except Exception as e:
+            logging.error(f"Failed to import asset: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    async def run_main_iteration(self, blender_file_path: str, target_image_path: str, output_dir: str, max_rounds: int = 5) -> Dict[str, Any]:
+        """
+        Run main.py iteration for scene adjustment
+        
+        Args:
+            blender_file_path: Path to the Blender file
+            target_image_path: Target image path
+            output_dir: Output directory
+            max_rounds: Maximum number of iteration rounds
+            
+        Returns:
+            dict: Iteration result
+        """
+        try:
+            print(f"[TestModeDemo] Starting main.py iteration for scene adjustment")
+            
+            # Prepare main.py command
+            cmd = [
+                "python", "main.py",
+                "--mode", "blendergym-hard",
+                "--vision-model", self.model,
+                "--api-key", self.openai_api_key,
+                "--max-rounds", str(max_rounds),
+                "--blender-file", blender_file_path,
+                "--target-image-path", target_image_path,
+                "--output-dir", output_dir,
+                "--task-name", "demo_test"
+            ]
+            
+            print(f"Running command: {' '.join(cmd)}")
+            
+            # Run main.py asynchronously
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=os.getcwd()
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                print("✓ Main.py iteration completed successfully")
+                return {
+                    "status": "success",
+                    "message": "Main.py iteration completed successfully",
+                    "stdout": stdout.decode() if stdout else "",
+                    "stderr": stderr.decode() if stderr else ""
+                }
+            else:
+                print(f"❌ Main.py iteration failed with return code {process.returncode}")
+                return {
+                    "status": "error",
+                    "error": f"Main.py failed with return code {process.returncode}",
+                    "stdout": stdout.decode() if stdout else "",
+                    "stderr": stderr.decode() if stderr else ""
+                }
+                
+        except Exception as e:
+            logging.error(f"Failed to run main.py iteration: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def run_test_mode(self, blender_file_path: str, asset_paths: List[str], target_image_path: str, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
+        """
+        Run test mode: import assets and iterate with main.py
+        
+        Args:
+            blender_file_path: Path to existing Blender file
+            asset_paths: List of asset file paths to import
+            target_image_path: Target image path
+            output_dir: Output directory
+            
+        Returns:
+            dict: Test mode result
+        """
+        try:
+            print("=" * 60)
+            print("🧪 Starting Test Mode Demo")
+            print("=" * 60)
+            print(f"Blender file: {blender_file_path}")
+            print(f"Asset paths: {asset_paths}")
+            print(f"Target image: {target_image_path}")
+            print(f"Output directory: {output_dir}")
+            
+            # Check if Blender file exists
+            if not os.path.exists(blender_file_path):
+                return {
+                    "status": "error",
+                    "error": f"Blender file not found: {blender_file_path}"
+                }
+            
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Step 1: Import assets
+            print("\n📦 Step 1: Importing assets...")
+            import_results = []
+            
+            for i, asset_path in enumerate(asset_paths):
+                if not os.path.exists(asset_path):
+                    print(f"⚠️ Asset file not found: {asset_path}")
+                    continue
+                
+                # Generate object name from asset path
+                object_name = f"imported_object_{i+1}_{os.path.splitext(os.path.basename(asset_path))[0]}"
+                
+                # Import asset
+                import_result = self.import_asset_to_scene(
+                    blender_file_path=blender_file_path,
+                    asset_path=asset_path,
+                    object_name=object_name,
+                    location=f"{i*2},0,0",  # Spread objects along X axis
+                    scale=1.0
+                )
+                
+                import_results.append(import_result)
+                self.completed_objects.append(object_name)
+                
+                if import_result.get("status") == "success":
+                    print(f"✓ Imported: {object_name}")
+                else:
+                    print(f"❌ Failed to import: {object_name} - {import_result.get('error')}")
+            
+            # Step 2: Run main.py iteration
+            print(f"\n🔄 Step 2: Running main.py iteration...")
+            iteration_result = asyncio.run(self.run_main_iteration(
+                blender_file_path=blender_file_path,
+                target_image_path=target_image_path,
+                output_dir=output_dir,
+                max_rounds=5
+            ))
+            
+            # Return final result
+            final_result = {
+                "status": "success" if iteration_result.get("status") == "success" else "partial",
+                "message": "Test mode completed",
+                "blender_file_path": blender_file_path,
+                "imported_objects": self.completed_objects,
+                "import_results": import_results,
+                "iteration_result": iteration_result,
+                "output_dir": output_dir
+            }
+            
+            print("\n" + "=" * 60)
+            print("🎉 Test Mode Demo Completed!")
+            print("=" * 60)
+            print(f"Objects imported: {len(self.completed_objects)}")
+            print(f"Final objects: {self.completed_objects}")
+            print(f"Main.py status: {iteration_result.get('status')}")
+            
+            return final_result
+            
+        except Exception as e:
+            logging.error(f"Failed to run test mode: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
 def run_demo(target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/") -> Dict[str, Any]:
     """
     Run scene reconstruction demo
@@ -251,11 +539,58 @@ def run_demo(target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: 
             "error": str(e)
         }
 
+def run_test_mode_demo(blender_file_path: str, asset_paths: List[str], target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
+    """
+    Run test mode demo: import assets and iterate with main.py
+    
+    Args:
+        blender_file_path: Path to existing Blender file
+        asset_paths: List of asset file paths to import
+        target_image_path: Target image path
+        model: OpenAI model
+        base_url: OpenAI base URL
+        api_key: OpenAI API key
+        output_dir: Output directory
+        
+    Returns:
+        dict: Test mode result
+    """
+    try:
+        # Check if Blender file exists
+        if not os.path.exists(blender_file_path):
+            return {
+                "status": "error",
+                "error": f"Blender file not found: {blender_file_path}"
+            }
+        
+        # Check if target image exists
+        if not os.path.exists(target_image_path):
+            return {
+                "status": "error",
+                "error": f"Target image not found: {target_image_path}"
+            }
+        
+        # Create test mode demo instance and run
+        demo = TestModeDemo(api_key=api_key, model=model, base_url=base_url)
+        result = demo.run_test_mode(blender_file_path, asset_paths, target_image_path, output_dir)
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Failed to run test mode demo: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 def test_demo():
     """
     Test demo functionality
     """
     parser = argparse.ArgumentParser(description="Test demo functionality")
+    parser.add_argument("--test-mode", action="store_true", help="Enable test mode (start from existing Blender file)")
+    parser.add_argument("--blender-file", default=None, type=str, help="Path to existing Blender file (required for test mode)")
+    parser.add_argument("--asset-paths", default=None, type=str, help="Paths to asset files to import (required for test mode)")
     parser.add_argument("--target-image-path", default="data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png", type=str, help="Target image path")
     parser.add_argument("--model", default="gpt-5", type=str, help="OpenAI model")
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL"), type=str, help="OpenAI base URL")
@@ -265,26 +600,71 @@ def test_demo():
     
     print("🧪 Testing Scene Reconstruction Demo...")
     
-    # Ensure output directory exists
-    os.makedirs(os.path.dirname(args.output_dir), exist_ok=True)
+    # Check if test mode is enabled
+    if args.test_mode:
+        print("🔧 Running in TEST MODE")
+        
+        # Validate test mode arguments
+        if not args.blender_file:
+            print("❌ Error: --blender-file is required for test mode")
+            return {"status": "error", "error": "--blender-file is required for test mode"}
+        
+        if not args.asset_paths:
+            print("❌ Error: --asset-paths is required for test mode")
+            return {"status": "error", "error": "--asset-paths is required for test mode"}
+        
+        # Ensure output directory exists
+        os.makedirs(args.output_dir, exist_ok=True)
+        
+        # Run test mode demo
+        try:
+            result = run_test_mode_demo(
+                blender_file_path=args.blender_file,
+                asset_paths=args.asset_paths,
+                target_image_path=args.target_image_path,
+                model=args.model,
+                base_url=args.base_url,
+                api_key=args.api_key,
+                output_dir=args.output_dir
+            )
+            print(f"\n📊 Test Mode Result: {result.get('status', 'unknown')}")
+            
+            if result.get("status") in ["success", "partial"]:
+                print(f"✓ Test mode completed")
+                print(f"  - Objects imported: {len(result.get('imported_objects', []))}")
+                print(f"  - Main.py status: {result.get('iteration_result', {}).get('status', 'unknown')}")
+            else:
+                print(f"❌ Test mode failed: {result.get('error', 'Unknown error')}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Test mode error: {e}")
+            return {"status": "error", "error": str(e)}
     
-    # Run demo
-    try:
-        result = run_demo(target_image_path=args.target_image_path, model=args.model, base_url=args.base_url, api_key=args.api_key, output_dir=args.output_dir)
-        print(f"\n📊 Demo Result: {result.get('status', 'unknown')}")
+    else:
+        print("🔧 Running in NORMAL MODE")
         
-        if result.get("status") == "success":
-            print(f"✓ Demo completed successfully")
-            print(f"  - Iterations: {result.get('iterations', 0)}")
-            print(f"  - Objects added: {len(result.get('completed_objects', []))}")
-        else:
-            print(f"❌ Demo failed: {result.get('error', 'Unknown error')}")
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(args.output_dir), exist_ok=True)
         
-        return result
-        
-    except Exception as e:
-        print(f"❌ Demo test error: {e}")
-        return {"status": "error", "error": str(e)}
+        # Run normal demo
+        try:
+            result = run_demo(target_image_path=args.target_image_path, model=args.model, base_url=args.base_url, api_key=args.api_key, output_dir=args.output_dir)
+            print(f"\n📊 Demo Result: {result.get('status', 'unknown')}")
+            
+            if result.get("status") == "success":
+                print(f"✓ Demo completed successfully")
+                print(f"  - Iterations: {result.get('iterations', 0)}")
+                print(f"  - Objects added: {len(result.get('completed_objects', []))}")
+            else:
+                print(f"❌ Demo failed: {result.get('error', 'Unknown error')}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Demo test error: {e}")
+            return {"status": "error", "error": str(e)}
 
 if __name__ == "__main__":
     # Run test
