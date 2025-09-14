@@ -21,7 +21,7 @@ from utils.blender.get_scene_info import get_scene_info
 
 
 notice_assets = {
-    'level4-1': ['clock', 'fireplace', 'lounge area', 'snowman', 'christmas_tree', 'box_inside', 'box_outside', 'tree_decoration_inside', 'tree_decoration_outside', 'bell', 'floor', 'left wall', 'right wall', 'CUADRO'],
+    'level4-1': ['clock', 'fireplace', 'lounge', 'snowman', 'christmastree', 'giftboxes', 'decoration', 'goldenbells', 'floor', 'left wall', 'right wall', 'CUADRO'],
     'level4-2': [],
     'level4-3': ['Tree1', 'Tree2', 'Tree3', 'Tree4', 'Tree5', 'Tree6', 'Car1', 'Car2', 'Car3', 'Car4', 'Road1', 'Road2', 'Road3', 'Building1', 'Building2', 'Building3', 'Building4', 'Building5', 'Building6'],
 }
@@ -273,7 +273,7 @@ class TestModeDemo:
             
         Returns:
             dict: Import result
-        """
+        """      
         try:
             print(f"[TestModeDemo] Importing asset '{object_name}' from {asset_path}")
             
@@ -296,7 +296,7 @@ elif asset_path.endswith('.fbx'):
 elif asset_path.endswith('.blend'):
     bpy.ops.wm.append(filepath=asset_path)
 else:
-    print(f"Unsupported file format: {{asset_path}}")
+    print(f"Unsupported file format: {asset_path}")
     exit(1)
 
 # Get the imported object(s) and rename the first one
@@ -479,22 +479,34 @@ print("Blender file saved successfully")
             print("\n📦 Step 1: Importing assets...")
             import_results = []
             
-            for i, asset_path in enumerate(asset_paths):
-                if not os.path.exists(asset_path):
+            for i, asset_path in enumerate(os.listdir(asset_paths)):
+                if not os.path.exists(os.path.join(asset_paths, asset_path)):
                     print(f"⚠️ Asset file not found: {asset_path}")
                     continue
                 
                 # Generate object name from asset path
-                object_name = f"imported_object_{i+1}_{os.path.splitext(os.path.basename(asset_path))[0]}"
+                object_name = asset_path
+                object_dir = os.path.join(asset_paths, object_name)
+
+                # Find .obj file in object_dir
+                obj_file = [f for f in os.listdir(object_dir) if f.endswith('.obj')]
+                if not obj_file:
+                    print(f"⚠️ No .obj file found in {object_dir}")
+                    continue
+                obj_file = obj_file[0]
                 
                 # Import asset
                 import_result = self.import_asset_to_scene(
                     blender_file_path=blender_file_path,
-                    asset_path=asset_path,
+                    asset_path=os.path.join(object_dir, obj_file),
                     object_name=object_name,
-                    location=f"{i*2},0,0",  # Spread objects along X axis
+                    location=f"0,0,0",  # Spread objects along X axis
                     scale=1.0
                 )
+                
+                # copy current blender file to object directory
+                os.makedirs(output_dir + f"/blender/{object_name}", exist_ok=True)
+                shutil.copy(blender_file_path, output_dir + f"/blender/{object_name}/blender_file.blend")
                 
                 import_results.append(import_result)
                 self.completed_objects.append(object_name)
@@ -504,35 +516,36 @@ print("Blender file saved successfully")
                 else:
                     print(f"❌ Failed to import: {object_name} - {import_result.get('error')}")
             
-            # Step 2: Run main.py iteration
+                # Step 2: Run main.py iteration
+                print(f"\n🔄 Step 2: Running main.py iteration...")
+                iteration_result = asyncio.run(self.run_main_iteration(
+                    blender_file_path=blender_file_path,
+                    task_name=task_name,
+                    target_image_path=target_image_path,
+                    output_dir=output_dir,
+                    max_rounds=10,
+                    object_name=object_name
+                ))
             
-            print(f"\n🔄 Step 2: Running main.py iteration...")
-            iteration_result = asyncio.run(self.run_main_iteration(
-                blender_file_path=blender_file_path,
-                task_name=task_name,
-                target_image_path=target_image_path,
-                output_dir=output_dir,
-                max_rounds=10,
-                object_name=object_name
-            ))
-            
-            # Return final result
-            final_result = {
-                "status": "success" if iteration_result.get("status") == "success" else "partial",
-                "message": "Test mode completed",
-                "blender_file_path": blender_file_path,
-                "imported_objects": self.completed_objects,
-                "import_results": import_results,
-                "iteration_result": iteration_result,
-                "output_dir": output_dir
-            }
-            
-            print("\n" + "=" * 60)
-            print("🎉 Test Mode Demo Completed!")
-            print("=" * 60)
-            print(f"Objects imported: {len(self.completed_objects)}")
-            print(f"Final objects: {self.completed_objects}")
-            print(f"Main.py status: {iteration_result.get('status')}")
+                # Return final result
+                final_result = {
+                    "status": "success" if iteration_result.get("status") == "success" else "partial",
+                    "message": "Test mode completed",
+                    "blender_file_path": blender_file_path,
+                    "imported_objects": self.completed_objects,
+                    "import_results": import_results,
+                    "iteration_result": iteration_result,
+                    "output_dir": output_dir
+                }
+                
+                print("\n" + "=" * 60)
+                print("🎉 Test Mode Demo Completed!")
+                print("=" * 60)
+                print(f"Objects imported: {len(self.completed_objects)}")
+                print(f"Final objects: {self.completed_objects}")
+                print(f"Main.py status: {iteration_result.get('status')}")
+                
+                raise NotImplementedError("Not implemented")
             
             return final_result
             
@@ -661,11 +674,10 @@ def test_demo():
         # Run easy mode demo
         try:
             result = run_test_mode_demo(
-                blender_file_path=args.output_dir + "blender_file.blend",
+                blender_file_path=args.output_dir + "/blender_file.blend",
                 asset_paths=args.asset_paths,
                 task_name=args.task_name,
                 target_image_path=args.target_image_path,
-                task_name=args.task_name,
                 model=args.model,
                 base_url=args.base_url,
                 api_key=args.api_key,
