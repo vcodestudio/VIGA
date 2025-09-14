@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 
 # Add the project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -359,12 +360,13 @@ print("Blender file saved successfully")
                 "error": str(e)
             }
     
-    async def run_main_iteration(self, blender_file_path: str, target_image_path: str, output_dir: str, max_rounds: int = 5) -> Dict[str, Any]:
+    async def run_main_iteration(self, blender_file_path: str, task_name: str, target_image_path: str, output_dir: str, max_rounds: int = 5, object_name: str = None) -> Dict[str, Any]:
         """
         Run main.py iteration for scene adjustment
         
         Args:
             blender_file_path: Path to the Blender file
+            task_name: Task name
             target_image_path: Target image path
             output_dir: Output directory
             max_rounds: Maximum number of iteration rounds
@@ -372,6 +374,13 @@ print("Blender file saved successfully")
         Returns:
             dict: Iteration result
         """
+        level = task_name.split("-")[0]
+        id = task_name.split("-")[1]
+        map_id_name = {
+            '1': 'christmas1',
+            '2': 'meeting2',
+            '3': 'outdoor3',
+        }
         try:
             print(f"[TestModeDemo] Starting main.py iteration for scene adjustment")
             
@@ -384,8 +393,16 @@ print("Blender file saved successfully")
                 "--max-rounds", str(max_rounds),
                 "--blender-file", blender_file_path,
                 "--target-image-path", target_image_path,
+                "--target-description", get_scene_info(task_name, blender_file_path, notice_assets),
                 "--output-dir", output_dir,
-                "--task-name", "demo_test"
+                "--task-name", task_name,
+                "--init-code-path", output_dir + f"scripts/{object_name}/start.py",
+                "--init-image-path", output_dir + f"renders/{object_name}/start.png",
+                "--blender-server-path", "servers/generator/blender.py",
+                "--blender-command", "utils/blender/infinigen/blender/blender",
+                "--blender-file", blender_file_path,
+                "--blender-script", f'data/blendergym_hard/{level}/{map_id_name[id]}/pipeline_render_script.py',
+                "--save-blender-file",
             ]
             
             print(f"Running command: {' '.join(cmd)}")
@@ -424,28 +441,27 @@ print("Blender file saved successfully")
                 "error": str(e)
             }
     
-    def run_test_mode(self, blender_file_path: str, asset_paths: List[str], target_image_path: str, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
+    def run_test_mode(self, blender_file_path: str, asset_paths: List[str], task_name: str, target_image_path: str, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
         """
         Run test mode: import assets and iterate with main.py
         
         Args:
             blender_file_path: Path to existing Blender file
             asset_paths: List of asset file paths to import
+            task_name: Task name
             target_image_path: Target image path
             output_dir: Output directory
             
         Returns:
             dict: Test mode result
         """
-        print(blender_file_path)
-        print(get_scene_info('level4-1', blender_file_path, notice_assets))
-        raise NotImplementedError("Not implemented")
         try:
             print("=" * 60)
             print("🧪 Starting Test Mode Demo")
             print("=" * 60)
             print(f"Blender file: {blender_file_path}")
             print(f"Asset paths: {asset_paths}")
+            print(f"Task name: {task_name}")
             print(f"Target image: {target_image_path}")
             print(f"Output directory: {output_dir}")
             
@@ -493,9 +509,11 @@ print("Blender file saved successfully")
             print(f"\n🔄 Step 2: Running main.py iteration...")
             iteration_result = asyncio.run(self.run_main_iteration(
                 blender_file_path=blender_file_path,
+                task_name=task_name,
                 target_image_path=target_image_path,
                 output_dir=output_dir,
-                max_rounds=5
+                max_rounds=10,
+                object_name=object_name
             ))
             
             # Return final result
@@ -525,7 +543,7 @@ print("Blender file saved successfully")
                 "error": str(e)
             }
 
-def run_demo(target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/") -> Dict[str, Any]:
+def run_demo(target_image_path: str, task_name: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/") -> Dict[str, Any]:
     """
     Run scene reconstruction demo
     
@@ -558,13 +576,14 @@ def run_demo(target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: 
             "error": str(e)
         }
 
-def run_test_mode_demo(blender_file_path: str, asset_paths: List[str], target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
+def run_test_mode_demo(blender_file_path: str, asset_paths: List[str], task_name: str, target_image_path: str, model: str = "gpt-5-2025-08-07", base_url: str = None, api_key: str = None, output_dir: str = "output/demo/test_mode") -> Dict[str, Any]:
     """
     Run test mode demo: import assets and iterate with main.py
     
     Args:
         blender_file_path: Path to existing Blender file
         asset_paths: List of asset file paths to import
+        task_name: Task name
         target_image_path: Target image path
         model: OpenAI model
         base_url: OpenAI base URL
@@ -591,7 +610,7 @@ def run_test_mode_demo(blender_file_path: str, asset_paths: List[str], target_im
         
         # Create test mode demo instance and run
         demo = TestModeDemo(api_key=api_key, model=model, base_url=base_url)
-        result = demo.run_test_mode(blender_file_path, asset_paths, target_image_path, output_dir)
+        result = demo.run_test_mode(blender_file_path, asset_paths, task_name, target_image_path, output_dir)
         
         return result
         
@@ -610,6 +629,7 @@ def test_demo():
     parser.add_argument("--easy-mode", action="store_true", help="Enable test mode (start from existing Blender file)")
     parser.add_argument("--blender-file", default='data/blendergym_hard/level4/christmas1/blender_file.blend', type=str, help="Path to existing Blender file (required for test mode)")
     parser.add_argument("--asset-paths", default='data/blendergym_hard/level4/christmas1/assets', type=str, help="Paths to asset files to import (required for test mode)")
+    parser.add_argument("--task-name", default="level4-1", type=str, help="Task name")
     parser.add_argument("--target-image-path", default="data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png", type=str, help="Target image path")
     parser.add_argument("--model", default="gpt-5", type=str, help="OpenAI model")
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL"), type=str, help="OpenAI base URL")
@@ -635,12 +655,17 @@ def test_demo():
         # Ensure output directory exists
         os.makedirs(args.output_dir, exist_ok=True)
         
+        # Copy blender file to output directory
+        shutil.copy(args.blender_file, args.output_dir)
+
         # Run easy mode demo
         try:
             result = run_test_mode_demo(
-                blender_file_path=args.blender_file,
+                blender_file_path=args.output_dir + "blender_file.blend",
                 asset_paths=args.asset_paths,
+                task_name=args.task_name,
                 target_image_path=args.target_image_path,
+                task_name=args.task_name,
                 model=args.model,
                 base_url=args.base_url,
                 api_key=args.api_key,
@@ -669,7 +694,7 @@ def test_demo():
         
         # Run hard demo
         try:
-            result = run_demo(target_image_path=args.target_image_path, model=args.model, base_url=args.base_url, api_key=args.api_key, output_dir=args.output_dir)
+            result = run_demo(target_image_path=args.target_image_path, task_name=args.task_name, model=args.model, base_url=args.base_url, api_key=args.api_key, output_dir=args.output_dir)
             print(f"\n📊 Hard Mode Result: {result.get('status', 'unknown')}")
             
             if result.get("status") == "success":
