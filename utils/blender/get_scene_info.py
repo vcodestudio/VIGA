@@ -126,6 +126,7 @@ def get_scene_info(task_name: str, blender_file_path: str) -> str:
             ))
             bbox_size = bbox_max - bbox_min
             
+            # scene_info.append(f"- Name: {obj_name}; Location: {obj.location}; Rotation: {obj.rotation_euler}; Scale: {obj.scale}; BBox: min({bbox_min.x:.3f}, {bbox_min.y:.3f}, {bbox_min.z:.3f}), max({bbox_max.x:.3f}, {bbox_max.y:.3f}, {bbox_max.z:.3f})")
             scene_info.append(f"- Name: {obj_name}; BBox: min({bbox_min.x:.3f}, {bbox_min.y:.3f}, {bbox_min.z:.3f}), max({bbox_max.x:.3f}, {bbox_max.y:.3f}, {bbox_max.z:.3f})")
             
         if len(scene_info) == 1:

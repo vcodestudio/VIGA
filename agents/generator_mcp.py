@@ -5,13 +5,11 @@ from openai import OpenAI
 from typing import Dict, List, Optional, Any
 import logging
 from mcp.server.fastmcp import FastMCP
-from prompts import prompts_dict
 from agents.external_tool_client import ExternalToolClient
 from agents.prompt_builder import PromptBuilder
 from agents.tool_manager import ToolManager
 from agents.tool_handler import ToolHandler
-from agents.utils import parse_generate_response, get_blendergym_hard_level, save_thought_process
-from utils.blender.get_scene_info import get_scene_info
+from agents.utils import parse_generate_response, get_blendergym_hard_level, save_thought_process, get_scene_info, get_image_base64
 
 class GeneratorAgent:
     """
@@ -59,6 +57,7 @@ class GeneratorAgent:
         self._server_connected = False
         self.output_dir = output_dir
         self.init_code_path = init_code_path
+        self.blender_file_path = blender_file_path
         # Decide which server to use
         if mode == "blendergym" or mode == "blendergym-hard":
             self.server_type = "blender"
@@ -190,7 +189,15 @@ class GeneratorAgent:
         Args:
             feedback: Feedback from verifier or executor
         """
-        self.memory.append({"role": "user", "content": feedback})
+        if os.path.isdir(feedback):
+            feedback = get_image_base64(os.path.join(feedback, 'render1.png'))
+            self.memory.append({"role": "user", "content": [{"type": "text", "text": "Generated image:"}, {"type": "image_url", "image_url": {"url": feedback}}]})
+        elif os.path.isfile(feedback):
+            feedback = get_image_base64(feedback)
+            self.memory.append({"role": "user", "content": [{"type": "text", "text": "Generated image:"}, {"type": "image_url", "image_url": {"url": feedback}}]})
+        else:
+            feedback = [{"type": "text", "text": feedback}]
+            self.memory.append({"role": "user", "content": feedback})
     
     def save_thought_process(self) -> None:
         """Save the current thought process to file."""

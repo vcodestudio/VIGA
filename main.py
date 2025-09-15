@@ -487,6 +487,9 @@ async def main():
                 # print("   - Execution handled by generator agent internally")
                 raise ValueError("Unknown error in automatic execution")
             
+            # Add render results to generator as feedback
+            await generator.add_feedback(result["output"])
+            
             print("Step 3: Verifier analyzing scene...")
             verify_result = await verifier.verify_scene(
                 code=code,

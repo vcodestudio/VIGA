@@ -55,7 +55,7 @@ blendergym_hard_generator_system_dict = {
     "level1": blendergym_hard_generator_system,
     "level2": blendergym_hard_generator_system,
     "level3": blendergym_hard_generator_system,
-    "level4": demo_generator_system,
+    "level4": blendergym_hard_generator_system, #demo_generator_system,
 }
 
 # Verifier system prompts for different levels
@@ -71,7 +71,7 @@ blendergym_hard_verifier_system_dict = {
     "level1": blendergym_hard_verifier_system,
     "level2": blendergym_hard_verifier_system,
     "level3": blendergym_hard_verifier_system,
-    "level4": demo_verifier_system,
+    "level4": blendergym_hard_verifier_system, #demo_verifier_system,
 }
 
 # Generator formats for different levels
@@ -90,7 +90,7 @@ blendergym_hard_generator_format_dict = {
     "level1": blendergym_hard_generator_format,
     "level2": blendergym_hard_generator_format,
     "level3": blendergym_hard_generator_format,
-    "level4": demo_generator_format,
+    "level4": blendergym_hard_generator_format, #demo_generator_format,
 }
 
 # Verifier formats for different levels
@@ -107,7 +107,7 @@ blendergym_hard_verifier_format_dict = {
     "level1": blendergym_hard_verifier_format,
     "level2": blendergym_hard_verifier_format,
     "level3": blendergym_hard_verifier_format,
-    "level4": demo_verifier_format,
+    "level4": blendergym_hard_verifier_format, #demo_verifier_format,
 }
 
 blendergym_hard_generator_hints = {

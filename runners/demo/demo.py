@@ -642,27 +642,76 @@ def run_test_mode_demo(blender_file_path: str, asset_paths: List[str], task_name
             "status": "error",
             "error": str(e)
         }
+        
+def direct_run(task_name: str, model: str, api_key: str, output_dir: str, max_rounds: int, blender_file_path: str, target_image_path: str, task_description: str):
+    time_stamp = time.strftime("%Y%m%d_%H%M%S")
+    output_dir = output_dir + "/" + task_name + "/" + time_stamp
+    os.makedirs(output_dir, exist_ok=True)
+    level = task_name.split('-')[0]
+    id = task_name.split('-')[1]
+    map_id_name = {
+        '1': 'christmas1',
+        '2': 'meeting2',
+        '3': 'outdoor3',
+    }
+    cmd = [
+        "python", "main.py",
+        "--mode", "blendergym-hard",
+        "--vision-model", model,
+        "--api-key", api_key,
+        "--max-rounds", str(max_rounds),
+        "--blender-file", blender_file_path,
+        "--target-image-path", target_image_path,
+        "--target-description", get_scene_info(task_name, blender_file_path),
+        "--output-dir", output_dir,
+        "--task-name", task_name,
+        "--init-code-path", os.path.dirname(blender_file_path) + "/start.py",
+        "--init-image-path", os.path.dirname(blender_file_path) + "/renders/start",
+        "--blender-server-path", "servers/generator/blender.py",
+        "--blender-command", "utils/blender/infinigen/blender/blender",
+        "--blender-script", f'data/blendergym_hard/{level}/{map_id_name[id]}/pipeline_render_script.py',
+        "--save-blender-file",
+    ]
+    
+    print(f"Command: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600)  # 1 hour timeout
+        print(f"Task completed successfully: {task_name}")
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Task failed: {task_name}, Error: {e}"
+        print(error_msg)
+    except subprocess.TimeoutExpired:
+        error_msg = f"Task timed out: {task_name}"
+        print(error_msg)
+    except Exception as e:
+        error_msg = f"Task failed with exception: {task_name}, Error: {e}"
+        print(error_msg)
+    return result
 
 def test_demo():
     """
     Test demo functionality
     """
     parser = argparse.ArgumentParser(description="Test demo functionality")
+    parser.add_argument("--direct-run", action="store_true", help="Direct run")
     parser.add_argument("--easy-mode", action="store_true", help="Enable test mode (start from existing Blender file)")
     parser.add_argument("--blender-file", default='data/blendergym_hard/level4/christmas1/blender_file.blend', type=str, help="Path to existing Blender file (required for test mode)")
     parser.add_argument("--asset-paths", default='data/blendergym_hard/level4/christmas1/assets', type=str, help="Paths to asset files to import (required for test mode)")
     parser.add_argument("--task-name", default="level4-1", type=str, help="Task name")
     parser.add_argument("--target-image-path", default="data/blendergym_hard/level4/christmas1/renders/goal", type=str, help="Target image path")
+    parser.add_argument("--max-rounds", default=20, type=int, help="Max rounds")
     parser.add_argument("--model", default="o4-mini", type=str, help="OpenAI model")
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL"), type=str, help="OpenAI base URL")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), type=str, help="OpenAI API key")
-    parser.add_argument("--output-dir", default="output/demo/christmas1", type=str, help="Output directory")
+    parser.add_argument("--output-dir", default="output/demo", type=str, help="Output directory")
     args = parser.parse_args()
     
-    print(get_scene_info('1', 'data/blendergym_hard/level4/christmas1/_not_used/blender_file.blend'))
-    raise NotImplementedError("Not implemented")
-    
     print("🧪 Testing Scene Reconstruction Demo...")
+    
+    if args.direct_run:
+        print("🔧 Running in DIRECT RUN MODE")
+        result = direct_run(args.task_name, args.model, args.api_key, args.output_dir, args.max_rounds, args.blender_file, args.target_image_path, 'No task description')
+        return {'status': 'success', 'result': result}
     
     # Check if test mode is enabled
     if args.easy_mode:

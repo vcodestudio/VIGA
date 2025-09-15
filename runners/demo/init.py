@@ -1,4 +1,12 @@
 import os
+import sys
+import shutil
+
+# Add the project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import bpy
 import json
 import time
@@ -6,99 +14,70 @@ from pathlib import Path
 import logging
 from openai import OpenAI
 import subprocess
+from utils.blender.get_scene_info import get_scene_info, notice_assets
+from agents.utils import get_image_base64
 
-system_prompt = """You are a 3D scene designer. You are good at initializing the scene's background, walls, lights, and other information. Now I will give you a picture that describes the scene, and ask you to write a Blender code to initialize various scene information. Note: Be very careful when initializing your scene and camera coordinates so they match the image settings as closely as possible."""
+system_prompt = """You are a 3D spatial perception assistant, skilled at inferring the three-dimensional structure of an image. I will now give you an image depicting a 3D scene, the scene's initial coordinate settings (do not output these objects), and a list of objects to be inferred (you will simply output the objects in the list in the code). Based on this information, infer the position of each object in the list.
 
-def initialize_3d_scene_from_image(client: OpenAI, model: str, image_path: str, output_dir: str = "output/demo") -> dict:
+For example, if the coordinate range of a wall is min(-2, 2, 0) and max(2, 2, 3), then the coordinates of an object hanging on this wall should fall within this range (i.e., x-2 to 2, y-2, and z-0 to 3). If the object is in the center of the wall, its coordinates should be (0, 2, 1.5).
+
+First, output a reasoning process for each object, for example, "Object A is in the center of the wall, and the wall's coordinate range is xxx, so its coordinates are yyy." Then, output the code according to the bpy code format, for example:
+```python
+import bpy
+
+bpy.data.objects['object_1'].location = (0,0,0)
+bpy.data.objects['object_2'].location = (0,1,0)
+```"""
+
+def initialize_3d_scene_from_image(client: OpenAI, model: str, task_name: str, image_path: str, blender_path: str) -> dict:
     """
     Initialize a 3D scene from an input image
     
     Args:
         image_path: Input image path
-        output_dir: Output directory
+        blender_path: Blender file path
         
     Returns:
         dict: Dictionary containing scene information
     """
-    try:
-        # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
+    # 将image转换为base64
+    image_base64 = get_image_base64(image_path)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": [
+            {"type": "text", "text": 'Object list: ' + str(notice_assets[task_name])},
+            {"type": "text", "text": 'Initial image:'},
+            {"type": "image_url", "image_url": {"url": image_base64}},
+            {"type": "text", "text": 'Initial scene information (Do NOT include these objects in the output.): ' + get_scene_info(task_name, blender_path)}
+        ]}
+    ]
+    # Generate init code
+    code_response = client.chat.completions.create(model=model, messages=messages)
+    
+    messages.append({"role": "assistant", "content": code_response.choices[0].message.content})
+    
+    with open(os.path.join(os.path.dirname(blender_path), f"init_code.json"), 'w', encoding='utf-8') as f:
+        json.dump(messages, f, indent=2, ensure_ascii=False)
         
-        # Generate scene filename
-        timestamp = int(time.time())
-        image_name = Path(image_path).stem
-        scene_name = f"scene_{image_name}_{timestamp}"
-        blender_file_path = os.path.join(output_dir, f"{scene_name}.blend")
-        
-        # Create new Blender scene
-        bpy.ops.wm.read_homefile(app_template="")
-        bpy.ops.wm.save_mainfile(filepath=blender_file_path)
-        
-        # Generate init code
-        code_response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": [
-                    {"type": "text", "text": 'Initial Image:'},
-                    {"type": "image_url", "image_url": {"url": image_path}}
-                ]}
-            ]
-        )
-        
-        # parse init code
-        init_code = code_response.choices[0].message.content
-        if '```python' in init_code:
-            init_code = init_code.split('```python')[1].split('```')[0].strip()
-            code_path = os.path.join(output_dir, f"{scene_name}.py")
-            with open(code_path, 'w', encoding='utf-8') as f:
-                f.write(init_code)
-        else:
-            raise ValueError("Init code is not a valid Python code")
-        
-        # execute init_code
-        cmd = [
-            'utils/blender/infinigen/blender/blender',
-            "--background", blender_file_path,
-            "--python", code_path
-        ]
-        subprocess.run(cmd, check=True)
-        
-        # Create scene info file
-        scene_info = {
-            "scene_name": scene_name,
-            "blender_file_path": blender_file_path,
-            "code_path": code_path,
-            "source_image": image_path,
-            "created_at": timestamp,
-            "objects": [],
-            "target_objects": []  # Will be populated in subsequent loops
-        }
-        
-        # Save scene info
-        info_file_path = os.path.join(output_dir, f"{scene_name}_info.json")
-        with open(info_file_path, 'w', encoding='utf-8') as f:
-            json.dump(scene_info, f, indent=2, ensure_ascii=False)
-        
-        print(f"✓ 3D scene initialization completed: {scene_name}")
-        print(f"  - Blender file: {blender_file_path}")
-        print(f"  - Scene info: {info_file_path}")
-        
-        return {
-            "status": "success",
-            "message": f"3D scene '{scene_name}' initialized successfully",
-            "scene_name": scene_name,
-            "blender_file_path": blender_file_path,
-            "scene_info_path": info_file_path,
-            "code_path": code_path,
-        }
-        
-    except Exception as e:
-        logging.error(f"Failed to initialize 3D scene: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+    return {
+        "status": "success",
+        "message": f"3D scene initialized successfully",
+    }
+    
+    code_path = os.path.dirname(blender_path) + f"/start.py"
+    init_code = code_response.choices[0].message.content
+    if '```python' in init_code:
+        init_code = init_code.split('```python')[1].split('```')[0].strip()
+        with open(code_path, 'w', encoding='utf-8') as f:
+            f.write(init_code)
+    else:
+        raise ValueError("Init code is not a valid Python code")
+    
+    return {
+        "status": "success",
+        "message": f"3D scene initialized successfully",
+    }
+
 
 def load_scene_info(scene_info_path: str) -> dict:
     """
@@ -150,3 +129,7 @@ def update_scene_info(scene_info_path: str, updates: dict) -> dict:
     except Exception as e:
         logging.error(f"Failed to update scene info: {e}")
         return {"status": "error", "error": str(e)}
+
+if __name__ == "__main__":
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    initialize_3d_scene_from_image(client, "o4-mini", "level4-1", "data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png", "data/blendergym_hard/level4/christmas1/blender_file.blend")
