@@ -95,24 +95,6 @@ class GeneratorAgent:
     async def setup_executor(self, **kwargs):
         await self._ensure_server_connected()
         result = await self.tool_client.initialize_executor(self.server_type, **kwargs)
-        
-        # Store blender file path for Meshy asset generation
-        # if self.server_type == "blender" and "blender_file" in kwargs:
-        #     self.blender_file_path = kwargs["blender_file"]
-        #     # Update tool handler with blender file path
-        #     self.tool_handler.blender_file_path = self.blender_file_path
-            
-        #     # Initialize investigator for blendergym-hard
-        #     if self.mode == "blendergym-hard":
-        #         try:
-        #             investigator_result = await self.tool_client.call_tool("blender", "initialize_investigator", {"blender_path": kwargs["blender_file"]})
-        #             if investigator_result.get("status") == "success":
-        #                 logging.info("Investigator initialized successfully")
-        #             else:
-        #                 logging.warning(f"Investigator initialization failed: {investigator_result.get('error')}")
-        #         except Exception as e:
-        #             logging.warning(f"Failed to initialize investigator: {e}")
-        
         return result
     
     def _get_tools(self) -> List[Dict]:
@@ -140,15 +122,31 @@ class GeneratorAgent:
             self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.blender_file_path)})
         
         try:
-            # Standard generation without tools
-            generate_response = self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model=self.model, 
-                messages=self.memory
-            ).choices[0].message.content
-            self.memory.append({"role": "assistant", "content": generate_response})
+                messages=self.memory, 
+                tools=self._get_tools()
+            )
+            message = response.choices[0].message
             
-            # Parse the response to extract code if needed (only for modes that generate code)
-            _, _, full_code = parse_generate_response(generate_response)
+            self.memory.append(message.model_dump())
+            
+            if message.tool_calls:
+                for tool_call in message.tool_calls:
+                    object_name = tool_call.function.arguments.get('object_name', '')
+                    tool_response = await self._handle_tool_call(tool_call)
+                    self.memory.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": tool_response['text']
+                    })
+                    with open(self.init_code_path, 'a') as f:
+                        f.write(f"\n# import a 3D asset: {object_name}\n# To edit this asset, please use `bpy.data.objects['{object_name}']`\n# To copy this asset (if you think you'll need more than one of it in the target image), please use `new_object = bpy.data.objects['{object_name}'].copy()\nnew_object.name = 'your_new_name'`\n# To delete this object (if you think the quality of this asset is really bad), please use `bpy.data.objects.remove(bpy.data.objects['{object_name}'])`\n")
+                    
+            else:
+                # Parse the response to extract code if needed (only for modes that generate code)
+                _, _, full_code = parse_generate_response(message.content)
                 
             # If the full code is None, just copy the init code
             if full_code is None:
@@ -170,7 +168,7 @@ class GeneratorAgent:
             return {
                 "status": "success",
                 "code": full_code,
-                "response": generate_response,
+                "response": message.content,
                 "round": self.current_round,
                 "execution_result": execution_result
             }

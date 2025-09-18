@@ -15,8 +15,8 @@ import asyncio
 import subprocess
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
-from runners.demo.init import initialize_3d_scene_from_image, load_scene_info, update_scene_info
-from runners.demo.asset import AssetGenerator
+from runners.demo_parts.init import initialize_3d_scene_from_image, load_scene_info, update_scene_info
+from runners.demo_parts.asset import AssetGenerator
 from utils.blender.get_scene_info import get_scene_info, assets_data
 
 class SceneReconstructionDemo:

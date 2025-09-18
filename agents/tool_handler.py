@@ -20,24 +20,20 @@ class ToolHandler:
                 if self.server_type != "blender":
                     return {'text': "Error: 3D asset generation is only available for Blender mode", 'success': False}
                 
-                # Call the Meshy asset generation tool
-                result = await self.tool_client.call_tool("blender", "add_meshy_asset", {
-                    "description": function_args.get("description", ""),
-                    "blender_path": self.blender_file_path,
-                    "location": function_args.get("location", "0,0,0"),
-                    "scale": function_args.get("scale", 1.0),
-                    "refine": function_args.get("refine", True)
+                result = await self.tool_client.call_tool("blender", "generate_and_import_3d_asset", {
+                    "object_name": function_args.get("object_name", ""),
+                    "reference_type": function_args.get("reference_type", ""),
+                    "object_description": function_args.get("object_description", "")
                 })
                 
                 if result.get("status") == "success":
                     return {
-                        'text': f"Successfully generated and imported 3D asset: {function_args.get('description')}. Object name: {result.get('object_name', 'Unknown')}. Location: {result.get('location', 'Unknown')}. Scale: {result.get('scale', 'Unknown')}",
-                        'success': True,
-                        'asset_info': result
+                        'text': f"Successfully generated and imported 3D asset: {function_args.get('object_name', '')}. {result.get('message', '')}",
+                        'success': True
                     }
                 else:
                     return {
-                        'text': f"Failed to generate 3D asset: {result.get('error', 'Unknown error')}",
+                        'text': f"Failed to generate and import 3D asset: {result.get('error', 'Unknown error')}",
                         'success': False
                     }
 
