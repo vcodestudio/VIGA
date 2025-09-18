@@ -587,7 +587,7 @@ def generate_and_import_3d_asset(
     object_description: str = None,
 ) -> dict:
     if reference_type == "text":
-        return add_meshy_asset(description=object_description)
+        return add_meshy_asset(object_name=object_name, description=object_description)
     elif reference_type == "image":
         cropped_bbox = _image_cropper.crop_image_by_text(object_name=object_name)
         # cropped_bbox = {'data': [[{'label': 'snowman', 'score': 1.0, 'bounding_box': [551.0, 711.0, 653.0, 830.0]}]]}
@@ -691,8 +691,8 @@ def main():
         # 使用图片参考分支，避免 text 分支参数不匹配问题
         gen_resp = generate_and_import_3d_asset(
             object_name="snowman",
-            reference_type="image",
-            object_description=None,
+            reference_type="text",
+            object_description="A white snowman with a black hat and a red scarf.",
         )
         print(f"[TEST] generate_and_import_3d_asset response: {gen_resp}")
         sys.exit(0)
