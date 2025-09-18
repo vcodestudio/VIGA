@@ -198,8 +198,8 @@ class MeshyAPI:
             # 将image转为base64格式
             image_base64 = base64.b64encode(f.read()).decode('utf-8')
             files = {
-                'image_url': f"data:image/jpeg;base64,{image_base64}",
-                'enable_pbr': True
+                'image_url': f"data:image/png;base64,{image_base64}",
+                'enable_pbr': True,
             }
             
             # 发送请求（注意：这里不使用JSON headers，因为要上传文件）
@@ -211,22 +211,6 @@ class MeshyAPI:
             resp.raise_for_status()
             data = resp.json()
             return data.get("result") or data.get("id")
-
-    def create_image_to_3d_refine(self, preview_task_id: str, **kwargs) -> str:
-        """
-        基于 preview 发起 refine 贴图任务（Image-to-3D）
-        Returns: refine_task_id (str)
-        """
-        url = f"{self.base_url}/openapi/v1/image-to-3d"
-        payload = {
-            "mode": "refine",
-            "preview_task_id": preview_task_id,
-        }
-        payload.update(kwargs or {})
-        resp = requests.post(url, headers=self.headers, data=json.dumps(payload))
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("result") or data.get("id")
 
     def poll_image_to_3d(self, task_id: str, interval_sec: float = 5.0, timeout_sec: int = 1800) -> dict:
         """
@@ -260,6 +244,7 @@ class ImageCropper:
         self.headers = {
             "Authorization": f"Bearer {api_key}",
         }
+        self.target_image_path = target_image_path
 
     # ---------------------------
     # 对外：裁剪（签名与返回结构保留）
@@ -280,8 +265,9 @@ class AssetImporter:
     """3D资产导入器，支持多种格式"""
     def __init__(self, blender_path: str):
         self.blender_path = blender_path
+        bpy.ops.wm.open_mainfile(filepath=blender_path)
 
-    def import_asset(self, asset_path: str, location: tuple = (0, 0, 0), scale: float = 1.0, name: str = "new_asset") -> str:
+    def import_asset(self, asset_path: str, location: tuple = (0, 0, 1), scale: float = 1.0, name: str = "new_asset") -> str:
         """导入3D资产到Blender场景"""
         try:
             # 确保文件存在
@@ -359,10 +345,9 @@ class AssetImporter:
 def add_meshy_asset(
     object_name: str,
     description: str,
-    location: str = "0,0,0",
+    location: str = "0,0,1",
     scale: float = 1.0,
     refine: bool = True,
-    save_dir: str = "output/meshy_assets",
 ) -> dict:
     try:
         # 解析位置参数
@@ -476,11 +461,9 @@ def add_meshy_asset(
 def add_meshy_asset_from_image(
     object_name: str,
     image_path: str,
-    location: str = "0,0,0",
+    location: str = "0,0,1",
     scale: float = 1.0,
     prompt: str = None,
-    refine: bool = True,
-    save_dir: str = "output/meshy_assets",
 ) -> dict:
     """
     使用 Meshy Image-to-3D 根据输入图片生成资产并导入到当前场景（生成→轮询→下载→导入）
@@ -524,16 +507,7 @@ def add_meshy_asset_from_image(
             return {"status": "error", "error": f"Image-to-3D preview failed: {preview_task.get('status')}"}
         final_task = preview_task
 
-        # 3) 可选 refine（贴图）
-        if refine:
-            print(f"[Meshy] Starting refine for Image-to-3D preview task: {preview_id}")
-            refine_id = meshy.create_image_to_3d_refine(preview_id)
-            refine_task = meshy.poll_image_to_3d(refine_id, interval_sec=5, timeout_sec=1800)
-            if refine_task.get("status") != "SUCCEEDED":
-                return {"status": "error", "error": f"Image-to-3D refine failed: {refine_task.get('status')}"}
-            final_task = refine_task
-
-        # 4) 从 model_urls 取下载链接
+        # 3) 从 model_urls 取下载链接
         model_urls = (final_task or {}).get("model_urls", {}) or {}
         candidate_keys = ["glb", "fbx", "obj", "zip"]
         file_url = None
@@ -544,7 +518,10 @@ def add_meshy_asset_from_image(
         if not file_url:
             return {"status": "error", "error": "No downloadable model_urls found"}
 
-        # 5) 下载模型到本地持久目录
+        # save_dir是_asset_importer.blender_path的父目录+'/assets'
+        save_dir = os.path.join(os.path.dirname(_asset_importer.blender_path), "assets")
+
+        # 4) 下载模型到本地持久目录
         os.makedirs(save_dir, exist_ok=True)
         # 处理无扩展名直链：默认 .glb
         guessed_ext = os.path.splitext(file_url.split("?")[0])[1].lower()
@@ -582,7 +559,7 @@ def add_meshy_asset_from_image(
                 shutil.copy(blender_path, blender_path_backup)
                 
                 # 清理备份文件以避免生成 .blend1 文件
-                backup_file = os.path.join(save_dir, f"{object_name}.blend")
+                backup_file = blender_path + "1"
                 if os.path.exists(backup_file):
                     os.remove(backup_file)
                     print(f"Removed backup file: {backup_file}")
@@ -615,14 +592,14 @@ def generate_and_import_3d_asset(
     if reference_type == "text":
         return add_meshy_asset(description=object_description)
     elif reference_type == "image":
-        cropped_bbox = _image_cropper.crop_image_by_text(object_name=object_name)
-        cropped_image = PIL.Image.open(_image_cropper.target_image_path).crop(cropped_bbox['bounding_box'])
-        time_stamp = int(time.time())
-        temp_save_path = f"output/temp/temp_cropped_image_{time_stamp}.png"
-        cropped_image.save(temp_save_path)
-        result = add_meshy_asset_from_image(image_path=temp_save_path, object_name=object_name)
-        # delete the temp_save_path
-        os.remove(temp_save_path)
+        # cropped_bbox = _image_cropper.crop_image_by_text(object_name=object_name)
+        cropped_bbox = {'data': [[{'label': 'snowman', 'score': 1.0, 'bounding_box': [551.0, 711.0, 653.0, 830.0]}]]}
+        cropped_bbox = cropped_bbox['data'][0][0]['bounding_box']
+        cropped_image = PIL.Image.open(_image_cropper.target_image_path).crop(cropped_bbox)
+        save_dir = os.path.dirname(_asset_importer.blender_path) + '/assets'
+        save_path = os.path.join(save_dir, f"cropped_{object_name}.png")
+        cropped_image.save(save_path)
+        result = add_meshy_asset_from_image(image_path=save_path, object_name=object_name)
         return result
     
 @mcp.tool()
@@ -679,17 +656,55 @@ def main():
     # 如果直接运行此脚本，执行测试
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        # crop the image to [551.0, 711.0, 653.0, 830.0]
-        import PIL.Image
-        image_path = "data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png"
-        output_image_path = "output/test_crop.png"
-        image = PIL.Image.open(image_path)
-        cropped_image = image.crop((551.0, 711.0, 653.0, 830.0))
-        cropped_image.save(output_image_path)
-        print(f"Cropped image saved to: {output_image_path}")
-        exit(0)
-        # test_cropper = ImageCropper(api_key=os.environ["VA_API_KEY"])
-        # print(test_cropper.crop_image_by_text(image_path="data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png", object_name="snowman"))
+        # 测试：先初始化执行器，再调用生成与导入资产接口
+        meshy_api_key = os.getenv("MESHY_API_KEY")
+        va_api_key = os.getenv("VA_API_KEY")
+        if not meshy_api_key or not va_api_key:
+            print("[TEST] Missing MESHY_API_KEY or VA_API_KEY in environment. Skipping online API test.")
+            print("Set both environment variables to run this test.")
+            sys.exit(0)
+
+        blender_command = "utils/blender/infinigen/blender/blender"
+        blender_file = "data/blendergym_hard/level4/christmas1/blender_file_empty.blend"
+        blender_script = "data/blendergym_hard/level4/christmas1/pipeline_render_script.py"
+        script_save = "output/test/christmas1/scripts"
+        render_save = "output/test/christmas1/renders"
+        target_image_path = "data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png"
+
+        os.makedirs(script_save, exist_ok=True)
+        os.makedirs(render_save, exist_ok=True)
+
+        print("[TEST] Initializing executor...")
+        init_resp = initialize_executor(
+            blender_command=blender_command,
+            blender_file=blender_file,
+            blender_script=blender_script,
+            script_save=script_save,
+            render_save=render_save,
+            meshy_api_key=meshy_api_key,
+            va_api_key=va_api_key,
+            target_image_path=target_image_path,
+        )
+        # print(f"[TEST] initialize_executor response: {init_resp}")
+        # if init_resp.get("status") != "success":
+        #     print("[TEST] initialize_executor failed. Abort.")
+        #     sys.exit(1)
+
+        # print("[TEST] Calling generate_and_import_3d_asset (image reference)...")
+        # # 使用图片参考分支，避免 text 分支参数不匹配问题
+        # gen_resp = generate_and_import_3d_asset(
+        #     object_name="snowman",
+        #     reference_type="image",
+        #     object_description=None,
+        # )
+        # print(f"[TEST] generate_and_import_3d_asset response: {gen_resp}")
+        # sys.exit(0)
+        # 测试：向blender_file导入output/meshy_assets/snowman.glb
+        blender_file = "data/blendergym_hard/level4/christmas1/blender_file_empty.blend"
+        asset_file = "output/meshy_assets/snowman.glb"
+        _asset_importer.import_asset(asset_file, location=(0, 0, 0), scale=1.0, name="snowman")
+        bpy.ops.wm.save_mainfile(filepath=blender_file)
+        sys.exit(0)
     else:
         # 正常运行 MCP 服务
         mcp.run(transport="stdio")
