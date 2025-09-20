@@ -132,13 +132,13 @@ class ImageDifferentiationTool:
         return response.choices[0].message.content
 
 @mcp.tool()
-def initialize_executor(vision_model: str, api_key: str, api_base_url: str = None) -> dict:
+def initialize_executor(**kwargs) -> dict:
     """
     初始化ImageDifferentiationTool，设置api_key。
     """
     global _image_tool
     try:
-        _image_tool = ImageDifferentiationTool(vision_model=vision_model, api_key=api_key, api_base_url=api_base_url)
+        _image_tool = ImageDifferentiationTool(vision_model=kwargs.get("vision_model"), api_key=kwargs.get("api_key"), api_base_url=kwargs.get("api_base_url"))
         return {"status": "success", "message": "ImageDifferentiationTool initialized with api_key."}
     except Exception as e:
         return {"status": "error", "error": str(e)}

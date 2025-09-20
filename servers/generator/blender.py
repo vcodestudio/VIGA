@@ -593,15 +593,7 @@ def generate_and_import_3d_asset(
         }
     
 @mcp.tool()
-def initialize_executor(blender_command: str,
-                       blender_file: str,
-                       blender_script: str,
-                       script_save: str,
-                       render_save: str,
-                       meshy_api_key: str,
-                       va_api_key: str,
-                       target_image_path: str,
-                       blender_save: Optional[str] = None) -> dict:
+def initialize_executor(**kwargs) -> dict:
     """
     初始化 Blender 执行器，设置所有必要的参数。
     """
@@ -611,16 +603,16 @@ def initialize_executor(blender_command: str,
     global _image_cropper
     try:
         _executor = Executor(
-            blender_command=blender_command,
-            blender_file=blender_file,
-            blender_script=blender_script,
-            script_save=script_save,
-            render_save=render_save,
-            blender_save=blender_save
+            blender_command=kwargs.get("blender_command"),
+            blender_file=kwargs.get("blender_file"),
+            blender_script=kwargs.get("blender_script"),
+            script_save=kwargs.get("script_save"),
+            render_save=kwargs.get("render_save"),
+            blender_save=kwargs.get("blender_save")
         )
-        _meshy_api = MeshyAPI(meshy_api_key)
-        _asset_importer = AssetImporter(blender_file)
-        _image_cropper = ImageCropper(va_api_key, target_image_path)
+        _meshy_api = MeshyAPI(kwargs.get("meshy_api_key"))
+        _asset_importer = AssetImporter(kwargs.get("blender_file"))
+        _image_cropper = ImageCropper(kwargs.get("va_api_key"), kwargs.get("target_image_path"))
         return {"status": "success", "message": "Executor initialized successfully"}
     except Exception as e:
         return {"status": "error", "error": str(e)}

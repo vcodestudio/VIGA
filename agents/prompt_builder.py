@@ -60,6 +60,175 @@ class PromptBuilder:
         base64enc_image = base64.b64encode(img_byte_array.read()).decode('utf-8')
         return f"data:image/{mime_subtype};base64,{base64enc_image}"
     
+    def build_generator_prompt(self, config: Dict) -> List[Dict]:
+        """Generic method to build generator prompts based on mode and config."""
+        mode = config.get("mode")
+        
+        if mode == "blendergym":
+            return self.build_blendergym_generator_prompt(
+                mode, 
+                config.get("task_name"), 
+                config.get("init_code_path"), 
+                config.get("init_image_path"), 
+                config.get("target_image_path")
+            )
+        elif mode == "autopresent":
+            return self.build_autopresent_generator_prompt(
+                mode, 
+                config.get("init_code_path"), 
+                config.get("init_image_path"), 
+                config.get("target_description")
+            )
+        elif mode == "blendergym-hard":
+            return self.build_blendergym_hard_generator_prompt(
+                mode, 
+                config.get("task_name"), 
+                config.get("init_code_path"), 
+                config.get("init_image_path"), 
+                config.get("target_image_path"), 
+                config.get("blender_file_path"), 
+                config.get("target_description")
+            )
+        elif mode == "design2code":
+            return self.build_design2code_generator_prompt(
+                mode, 
+                config.get("init_code_path"), 
+                config.get("target_image_path")
+            )
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
+    
+    def build_verifier_prompt(self, config: Dict) -> List[Dict]:
+        """Generic method to build verifier prompts based on mode and config."""
+        mode = config.get("mode")
+        
+        if mode == "blendergym":
+            return self.build_blendergym_verifier_prompt(
+                mode, 
+                config.get("task_name"), 
+                config.get("target_image_path")
+            )
+        elif mode == "autopresent":
+            return self.build_autopresent_verifier_prompt(
+                mode, 
+                config.get("target_description")
+            )
+        elif mode == "blendergym-hard":
+            return self.build_blendergym_hard_verifier_prompt(
+                mode, 
+                config.get("task_name"), 
+                config.get("target_image_path"), 
+                config.get("blender_file"), 
+                config.get("target_description")
+            )
+        elif mode == "design2code":
+            return self.build_design2code_verifier_prompt(
+                mode, 
+                config.get("target_image_path")
+            )
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
+    
+    def build_verify_message(self, config: Dict, code: str, render_path: str, current_image_path_ref: List) -> Dict:
+        """Generic method to build verify messages based on mode and config."""
+        mode = config.get("mode")
+        
+        if mode == "blendergym":
+            return self._build_blendergym_verify_message(code, render_path, current_image_path_ref)
+        elif mode == "autopresent":
+            return self._build_autopresent_verify_message(code, render_path)
+        elif mode == "blendergym-hard":
+            return self._build_blendergym_hard_verify_message(config, code, render_path, current_image_path_ref)
+        elif mode == "design2code":
+            return self._build_design2code_verify_message(code, render_path)
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
+    
+    def _build_blendergym_verify_message(self, code: str, render_path: str, current_image_path_ref: List) -> Dict:
+        """Build verify message for blendergym mode."""
+        verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current state:\nCode: {code}"}]}
+        
+        if os.path.isdir(render_path):
+            view1_path = os.path.join(render_path, 'render1.png')
+            view2_path = os.path.join(render_path, 'render2.png')
+        else:
+            view1_path = render_path
+            view2_path = None
+            
+        scene_content = []
+        if os.path.exists(view1_path):
+            current_image_path_ref[0] = os.path.abspath(view1_path)
+            scene_content.extend([
+                {"type": "text", "text": f"Current scene (View 1):"},
+                {"type": "image_url", "image_url": {"url": self._get_image_base64(view1_path)}}
+            ])
+        if os.path.exists(view2_path):
+            scene_content.extend([
+                {"type": "text", "text": f"Current scene (View 2):"},
+                {"type": "image_url", "image_url": {"url": self._get_image_base64(view2_path)}}
+            ])
+            
+        verify_message["content"].extend(scene_content)
+        verify_message["content"].append({"type": "text", "text": prompts_dict["blendergym"]['format']['verifier']})
+        
+        return verify_message
+    
+    def _build_autopresent_verify_message(self, code: str, render_path: str) -> Dict:
+        """Build verify message for autopresent mode."""
+        verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current code and generated slide:\nCode: {code}"}]}
+        
+        # add slide screenshot
+        if os.path.exists(render_path):
+            verify_message["content"].append({"type": "text", "text": f"Generated slide screenshot:"})
+            verify_message["content"].append({"type": "image_url", "image_url": {"url": self._get_image_base64(render_path)}})
+            
+        verify_message["content"].append({"type": "text", "text": prompts_dict["autopresent"]['format']['verifier']})
+        
+        return verify_message
+    
+    def _build_blendergym_hard_verify_message(self, config: Dict, code: str, render_path: str, current_image_path_ref: List) -> Dict:
+        """Build verify message for blendergym-hard mode."""
+        task_name = config.get("task_name")
+        level = task_name.split('-')[0]
+        verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current state:\n"}]}
+        
+        if os.path.isdir(render_path):
+            view1_path = os.path.join(render_path, 'render1.png')
+            view2_path = os.path.join(render_path, 'render2.png')
+        else:
+            view1_path = render_path
+            view2_path = None
+            
+        scene_content = []
+        if os.path.exists(view1_path):
+            current_image_path_ref[0] = os.path.abspath(view1_path)
+            scene_content.extend([
+                {"type": "text", "text": f"Current scene (View 1):"},
+                {"type": "image_url", "image_url": {"url": self._get_image_base64(view1_path)}}
+            ])
+        if os.path.exists(view2_path):
+            scene_content.extend([
+                {"type": "text", "text": f"Current scene (View 2):"},
+                {"type": "image_url", "image_url": {"url": self._get_image_base64(view2_path)}}
+            ])
+            
+        verify_message["content"].extend(scene_content)
+        verify_message["content"].append({"type": "text", "text": prompts_dict["blendergym-hard"]['format']['verifier'][level]})
+        
+        return verify_message
+    
+    def _build_design2code_verify_message(self, code: str, render_path: str) -> Dict:
+        """Build verify message for design2code mode."""
+        verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the generated HTML code and compare it with the target design:\nCode: {code}"}]}
+        
+        if os.path.exists(render_path):
+            verify_message["content"].append({"type": "text", "text": f"Generated webpage screenshot:"})
+            verify_message["content"].append({"type": "image_url", "image_url": {"url": self._get_image_base64(render_path)}})
+            
+        verify_message["content"].append({"type": "text", "text": prompts_dict["design2code"]['format']['verifier']})
+        
+        return verify_message
+    
     def build_blendergym_hard_generator_prompt(self, 
                                              mode: str, 
                                              task_name: str, 

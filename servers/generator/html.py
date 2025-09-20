@@ -136,20 +136,16 @@ class HTMLExecutor:
             }
 
 @mcp.tool()
-def initialize_executor(output_dir: str, browser_command: str = "google-chrome") -> dict:
+def initialize_executor(**kwargs) -> dict:
     """
     Initialize the HTML executor.
-    
-    Args:
-        output_dir: Directory to save screenshots
-        browser_command: Browser command to use for screenshots (default: google-chrome)
     """
     global _executor
     try:
-        _executor = HTMLExecutor(output_dir, browser_command)
+        _executor = HTMLExecutor(kwargs.get("output_dir"), kwargs.get("browser_command", "google-chrome"))
         return {
             "status": "success", 
-            "message": f"HTML executor initialized with output directory: {output_dir}"
+            "message": f"HTML executor initialized with output directory: {kwargs.get('output_dir')}"
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}

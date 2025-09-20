@@ -17,59 +17,47 @@ class GeneratorAgent:
     This agent follows the MCP server pattern for better encapsulation and tool integration.
     """
     
-    def __init__(self, 
-                 mode: str,
-                 vision_model: str,
-                 api_key: str,
-                 thought_save: str,
-                 task_name: str,
-                 max_rounds: int = 10,
-                 init_code_path: Optional[str] = None,
-                 init_image_path: Optional[str] = None,
-                 target_image_path: Optional[str] = None,
-                 target_description: Optional[str] = None,
-                 blender_server_path: Optional[str] = None,
-                 slides_server_path: Optional[str] = None,
-                 output_dir: Optional[str] = None,
-                 api_base_url: Optional[str] = None,
-                 blender_file_path: Optional[str] = None,
-                 html_server_path: Optional[str] = None,
-                 script_save: Optional[str] = None):
+    def __init__(self, **kwargs):
         """
         Initialize the Generator Agent.
         """
-        self.mode = mode
-        self.model = vision_model
-        self.api_key = api_key
-        self.task_name = task_name  # Store task_name for blendergym-hard level detection
+        self.config = kwargs
+        
+        # Extract commonly used parameters
+        self.mode = self.config.get("mode")
+        self.model = self.config.get("vision_model")
+        self.api_key = self.config.get("api_key")
+        self.task_name = self.config.get("task_name")
+        self.max_rounds = self.config.get("max_rounds", 10)
+        self.current_round = 0
+        
+        # Handle blendergym-hard level detection
         if self.mode == "blendergym-hard":
             self.level = get_blendergym_hard_level(self.task_name)
         else:
             self.level = None
-        # Support custom OpenAI-compatible base URL
+        
+        # Initialize OpenAI client
+        api_base_url = self.config.get("api_base_url")
         client_kwargs = {"api_key": self.api_key}
         if api_base_url or os.getenv("OPENAI_BASE_URL"):
             client_kwargs["base_url"] = api_base_url or os.getenv("OPENAI_BASE_URL")
         self.client = OpenAI(**client_kwargs)
-        self.thought_save = thought_save
-        self.max_rounds = max_rounds
-        self.current_round = 0
+        
+        # Initialize components
         self.tool_client = ExternalToolClient()
         self._server_connected = False
-        self.output_dir = output_dir
-        self.init_code_path = init_code_path
-        self.blender_file_path = blender_file_path
-        self.script_save = script_save
-        # Decide which server to use
-        if mode == "blendergym" or mode == "blendergym-hard":
+        
+        # Determine server type and path
+        if self.mode == "blendergym" or self.mode == "blendergym-hard":
             self.server_type = "blender"
-            self.server_path = blender_server_path
-        elif mode == "autopresent":
+            self.server_path = self.config.get("blender_server_path")
+        elif self.mode == "autopresent":
             self.server_type = "slides"
-            self.server_path = slides_server_path
-        elif mode == "design2code":
+            self.server_path = self.config.get("slides_server_path")
+        elif self.mode == "design2code":
             self.server_type = "html"
-            self.server_path = html_server_path
+            self.server_path = self.config.get("html_server_path")
         else:
             raise NotImplementedError("Mode not implemented")
         
@@ -77,17 +65,8 @@ class GeneratorAgent:
         self.prompt_builder = PromptBuilder(self.client, self.model)
         self.tool_handler = ToolHandler(self.tool_client, self.server_type)
         
-        # Initialize memory if initial parameters are provided
-        if mode == "blendergym":
-            self.memory = self.prompt_builder.build_blendergym_generator_prompt(mode, task_name, init_code_path, init_image_path, target_image_path)
-        elif mode == "autopresent":
-            self.memory = self.prompt_builder.build_autopresent_generator_prompt(mode, init_code_path, init_image_path, target_description)
-        elif mode == "blendergym-hard":
-            self.memory = self.prompt_builder.build_blendergym_hard_generator_prompt(mode, task_name, init_code_path, init_image_path, target_image_path, blender_file_path, target_description)
-        elif mode == "design2code":
-            self.memory = self.prompt_builder.build_design2code_generator_prompt(mode, init_code_path, target_image_path)
-        else:
-            raise NotImplementedError("Mode not implemented")
+        # Initialize memory using generic prompt builder
+        self.memory = self.prompt_builder.build_generator_prompt(self.config)
     
     async def _ensure_server_connected(self):
         if not self._server_connected and self.server_type and self.server_path:
@@ -121,9 +100,20 @@ class GeneratorAgent:
             self.memory.append({"role": "user", "content": feedback})
             
         if self.mode == "blendergym-hard" and self.level == "level4":
-            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.blender_file_path)})
+            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.config.get("blender_file_path"))})
         
         try:
+            chat_args = {
+                "model": self.model,
+                "messages": self.memory,
+                "tools": self._get_tools()
+            }
+            if chat_args['tools']:
+                if self.model == 'gpt-4o':
+                    chat_args['parallel_tool_calls'] = False
+                if self.model != 'Qwen2-VL-7B-Instruct':
+                    chat_args['tool_choice'] = "auto"
+
             response = self.client.chat.completions.create(
                 model=self.model, 
                 messages=self.memory, 
@@ -132,22 +122,29 @@ class GeneratorAgent:
             message = response.choices[0].message
             self.memory.append(message.model_dump())
             
-            last_full_code = self.script_save + f"/{self.current_round}.py"
+            last_full_code = self.config.get("script_save") + f"/{self.current_round}.py"
             
             if message.tool_calls:
-                for tool_call in message.tool_calls:
-                    tool_args = json.loads(tool_call.function.arguments)
-                    object_name = tool_args.get('object_name', '')
+                for i, tool_call in enumerate(message.tool_calls):
+                    if i > 0:
+                        self.memory.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_call.function.name,
+                            "content": "You can only call a tool once per conversation round."
+                        })
+                        continue
                     tool_response = await self._handle_tool_call(tool_call)
-                    output_content = f"# import a 3D asset: {object_name}\n# To edit this asset, please use `bpy.data.objects['{object_name}']`\n# To copy this asset (if you think you'll need more than one of it in the target image), please use `new_object = bpy.data.objects['{object_name}'].copy()\n# To delete this object (if you think the quality of this asset is really bad), please use `bpy.data.objects.remove(bpy.data.objects['{object_name}'])`\n"
                     self.memory.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "name": tool_call.function.name,
                         "content": tool_response['text']
                     })
-                full_code = open(last_full_code).read()
-                full_code += output_content
+                    full_code = open(last_full_code).read()
+                    # Add output content if available from tool response
+                    if tool_response.get('output_content'):
+                        full_code += tool_response['output_content']
                     
             else:
                 # Parse the response to extract code if needed (only for modes that generate code)
@@ -204,7 +201,7 @@ class GeneratorAgent:
     
     def save_thought_process(self) -> None:
         """Save the current thought process to file."""
-        save_thought_process(self.memory, self.thought_save)
+        save_thought_process(self.memory, self.config.get("thought_save"))
     
     def get_memory(self) -> List[Dict]:
         """Get the current memory/conversation history."""
@@ -227,96 +224,37 @@ def main():
     agent_holder = {}
 
     @mcp.tool()
-    async def initialize_generator(
-        mode: str,
-        vision_model: str,
-        api_key: str,
-        thought_save: str,
-        task_name: str,
-        max_rounds: int = 10,
-        init_code_path: str = None,
-        init_image_path: str = None,
-        target_image_path: str = None,
-        target_description: Optional[str] = None,
-        # Blender executor parameters
-        blender_server_path: str = None,
-        blender_command: str = None,
-        blender_file: str = None,
-        blender_script: str = None,
-        script_save: str = None,
-        render_save: str = None,
-        blender_save: Optional[str] = None,
-        meshy_api_key: str = None,
-        va_api_key: str = None,
-        # Slides executor parameters
-        slides_server_path: str = None,
-        output_dir: str = None,
-        api_base_url: Optional[str] = None,
-        # HTML executor parameters
-        html_server_path: str = None,
-    ) -> dict:
+    async def initialize_generator(**kwargs) -> dict:
         """
         Initialize a new Generator Agent with optional Blender or Slides executor setup.
         """
         try:
-            agent = GeneratorAgent(
-                mode=mode,
-                vision_model=vision_model,
-                api_key=api_key,
-                thought_save=thought_save,
-                task_name=task_name,
-                max_rounds=max_rounds,
-                init_code_path=init_code_path,
-                init_image_path=init_image_path,
-                target_image_path=target_image_path,
-                target_description=target_description,
-                blender_server_path=blender_server_path,
-                slides_server_path=slides_server_path,
-                output_dir=output_dir,
-                api_base_url=api_base_url,
-                blender_file_path=blender_file,
-                html_server_path=html_server_path,
-                script_save=script_save,
-            )
+            agent = GeneratorAgent(**kwargs)
             agent_holder['agent'] = agent
             
             setup_results = []
             
-            # Setup Blender executor if parameters are provided
-            if mode == "blendergym" or mode == "blendergym-hard":
+            # Setup executor based on mode
+            if kwargs.get("mode") == "blendergym" or kwargs.get("mode") == "blendergym-hard":
                 try:
-                    setup_result = await agent.setup_executor(
-                        blender_command=blender_command,
-                        blender_file=blender_file,
-                        blender_script=blender_script,
-                        script_save=script_save,
-                        render_save=render_save,
-                        blender_save=blender_save,
-                        meshy_api_key=meshy_api_key,
-                        va_api_key=va_api_key,
-                        target_image_path=target_image_path
-                    )
+                    setup_result = await agent.setup_executor(**kwargs)
                     setup_results.append(("Blender", setup_result))
                 except Exception as e:
                     setup_results.append(("Blender", {"status": "error", "error": str(e)}))
             
-            # Setup Slides executor if parameters are provided
-            elif mode == "autopresent":
+            elif kwargs.get("mode") == "autopresent":
                 try:
-                    setup_result = await agent.setup_executor(
-                        task_dir=os.path.dirname(init_code_path), 
-                        output_dir=output_dir
-                    )
+                    # Add task_dir from init_code_path
+                    setup_kwargs = kwargs.copy()
+                    setup_kwargs["task_dir"] = os.path.dirname(kwargs.get("init_code_path"))
+                    setup_result = await agent.setup_executor(**setup_kwargs)
                     setup_results.append(("Slides", setup_result))
                 except Exception as e:
                     setup_results.append(("Slides", {"status": "error", "error": str(e)}))
             
-            # Setup HTML executor if parameters are provided
-            elif mode == "design2code":
+            elif kwargs.get("mode") == "design2code":
                 try:
-                    setup_result = await agent.setup_executor(
-                        output_dir=output_dir
-                    )
+                    setup_result = await agent.setup_executor(**kwargs)
                     setup_results.append(("HTML", setup_result))
                 except Exception as e:
                     setup_results.append(("HTML", {"status": "error", "error": str(e)}))

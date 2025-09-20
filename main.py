@@ -380,7 +380,7 @@ async def main():
         await generator.connect()
         await verifier.connect()
 
-        # Create generator session
+        # Create generator session - pass all args as kwargs
         generator_params = {
             "mode": args.mode,
             "vision_model": args.vision_model,
@@ -392,38 +392,27 @@ async def main():
             "target_image_path": args.target_image_path,
             "target_description": target_description,
             "api_base_url": args.openai_base_url,
-            "thought_save" : args.output_dir + "/generator_thoughts.json"
+            "thought_save": args.output_dir + "/generator_thoughts.json",
+            # Blender executor parameters
+            "blender_server_path": args.blender_server_path,
+            "blender_command": args.blender_command,
+            "blender_file": args.blender_file,
+            "blender_script": args.blender_script,
+            "render_save": args.output_dir + "/renders",
+            "script_save": args.output_dir + "/scripts",
+            "blender_save": args.output_dir + "/blender_file.blend" if args.save_blender_file else None,
+            "meshy_api_key": args.meshy_api_key,
+            "va_api_key": args.va_api_key,
+            # Slides executor parameters
+            "slides_server_path": args.slides_server_path,
+            "output_dir": args.output_dir,
+            # HTML executor parameters
+            "html_server_path": args.html_server_path,
         }
-        
-        # Add mode-specific parameters
-        if args.mode == "blendergym" or args.mode == "blendergym-hard":
-            generator_params.update({
-                "blender_server_path": args.blender_server_path,
-                "blender_command": args.blender_command,
-                "blender_file": args.blender_file,
-                "blender_script": args.blender_script,
-                "render_save": args.output_dir + "/renders",
-                "script_save": args.output_dir + "/scripts",
-                "blender_save": args.output_dir + "/blender_file.blend" if args.save_blender_file else None,
-                "meshy_api_key": args.meshy_api_key,
-                "va_api_key": args.va_api_key,
-            })
-        elif args.mode == "autopresent":
-            generator_params.update({
-                "slides_server_path": args.slides_server_path,
-                "output_dir": args.output_dir,
-            })
-        elif args.mode == "design2code":
-            generator_params.update({
-                "html_server_path": args.html_server_path,
-                "output_dir": args.output_dir,
-            })
-        else:
-            raise NotImplementedError("Mode not implemented")
         
         await generator.create_session(**generator_params)
         
-        # Create verifier session
+        # Create verifier session - pass all args as kwargs
         verifier_params = {
             "mode": args.mode,
             "vision_model": args.vision_model,
@@ -434,22 +423,12 @@ async def main():
             "target_description": target_description,
             "thought_save": args.output_dir + "/verifier_thoughts",
             "api_base_url": args.openai_base_url,
+            # Tool server paths
+            "image_server_path": args.image_server_path,
+            "scene_server_path": args.scene_server_path,
+            "blender_file": args.output_dir + "/blender_file.blend" if args.save_blender_file else None,
+            "web_server_path": None,  # Not used in current implementation
         }
-        
-        # Add mode-specific parameters
-        if args.mode == "blendergym" or args.mode == "autopresent" or args.mode == "design2code":
-            verifier_params.update({
-                "image_server_path": args.image_server_path,
-                "scene_server_path": None
-            })
-        elif args.mode == "blendergym-hard":
-            verifier_params.update({
-                "image_server_path": None,
-                "scene_server_path": args.scene_server_path, 
-                "blender_file": args.output_dir + "/blender_file.blend" if args.save_blender_file else None,
-            })
-        else:
-            raise NotImplementedError("Mode not implemented")
         
         await verifier.create_session(**verifier_params)
 

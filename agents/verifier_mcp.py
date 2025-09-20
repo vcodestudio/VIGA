@@ -14,48 +14,47 @@ from agents.tool_handler import ToolHandler
 from agents.utils import save_thought_process
 
 class VerifierAgent:
-    def __init__(self, 
-                 mode: str, 
-                 vision_model: str, 
-                 api_key: str, 
-                 thought_save: str, 
-                 task_name: str,
-                 max_rounds: int = 10, 
-                 target_image_path: Optional[str] = None,
-                 target_description: Optional[str] = None,
-                 image_server_path: Optional[str] = None,
-                 scene_server_path: Optional[str] = None,
-                 api_base_url: Optional[str] = None,
-                 blender_file: Optional[str] = None,
-                 web_server_path: Optional[str] = None):
-        self.mode = mode
-        self.vision_model = vision_model
-        self.api_key = api_key
-        # Support custom OpenAI-compatible base URL
+    def __init__(self, **kwargs):
+        self.config = kwargs
+        
+        # Extract commonly used parameters
+        self.mode = self.config.get("mode")
+        self.vision_model = self.config.get("vision_model")
+        self.api_key = self.config.get("api_key")
+        self.task_name = self.config.get("task_name")
+        self.max_rounds = self.config.get("max_rounds", 10)
+        self.current_round = 0
+        
+        # Initialize OpenAI client
+        api_base_url = self.config.get("api_base_url")
         client_kwargs = {"api_key": self.api_key}
         if api_base_url or os.getenv("OPENAI_BASE_URL"):
             client_kwargs["base_url"] = api_base_url or os.getenv("OPENAI_BASE_URL")
         self.client = OpenAI(**client_kwargs)
-        self.thought_save = thought_save
+        
+        # Setup thought save directory
+        self.thought_save = self.config.get("thought_save")
         os.makedirs(self.thought_save, exist_ok=True)
-        self.max_rounds = max_rounds
-        if mode == "blendergym":
+        
+        # Handle target image path
+        target_image_path = self.config.get("target_image_path")
+        if self.mode == "blendergym":
             self.target_image_path = os.path.abspath(os.path.join(target_image_path, 'render1.png'))
         else:
             self.target_image_path = None
         self.current_image_path = None
-        self.current_round = 0
+        
+        # Initialize components
         self.tool_client = ExternalToolClient()
         self._tools_connected = False
-        self.task_name = task_name
-        self.blender_file = blender_file
         
-        if mode == "blendergym" or mode == "autopresent" or mode == "design2code":
+        # Determine server type and path
+        if self.mode == "blendergym" or self.mode == "autopresent" or self.mode == "design2code":
             self.server_type = "image"
-            self.server_path = image_server_path
-        elif mode == "blendergym-hard":
+            self.server_path = self.config.get("image_server_path")
+        elif self.mode == "blendergym-hard":
             self.server_type = "scene"
-            self.server_path = scene_server_path
+            self.server_path = self.config.get("scene_server_path")
         else:
             raise NotImplementedError("Mode not implemented")
         
@@ -63,16 +62,8 @@ class VerifierAgent:
         self.prompt_builder = PromptBuilder(self.client, self.vision_model)
         self.tool_handler = ToolHandler(self.tool_client, self.server_type)
         
-        if mode == "blendergym":
-            self.system_prompt = self.prompt_builder.build_blendergym_verifier_prompt(mode, task_name, target_image_path)
-        elif mode == "autopresent":
-            self.system_prompt = self.prompt_builder.build_autopresent_verifier_prompt(mode, target_description)
-        elif mode == "blendergym-hard":
-            self.system_prompt = self.prompt_builder.build_blendergym_hard_verifier_prompt(mode, task_name, target_image_path, blender_file, target_description)
-        elif mode == "design2code":
-            self.system_prompt = self.prompt_builder.build_design2code_verifier_prompt(mode, target_image_path)
-        else:
-            raise NotImplementedError("Mode not implemented")
+        # Initialize system prompt using generic prompt builder
+        self.system_prompt = self.prompt_builder.build_verifier_prompt(self.config)
         
     async def _ensure_tools_connected(self):
         if not self._tools_connected:
@@ -106,7 +97,7 @@ class VerifierAgent:
     async def verify_scene(self, code: str, render_path: str, round_num: int) -> Dict[str, Any]:
         # reload investigator each time
         if self.mode == "blendergym-hard":
-            setup_result = await self.setup_executor(blender_file=self.blender_file, save_dir=self.thought_save)
+            setup_result = await self.setup_executor(blender_file=self.config.get("blender_file"), save_dir=self.thought_save)
             if setup_result.get("status") != "success":
                 return {"status": "error", "error": f"Scene server setup failed: {setup_result.get('error', setup_result)}"}
         await self._ensure_tools_connected()
@@ -117,71 +108,11 @@ class VerifierAgent:
         # clear the memory at each time to enable long conversation
         self.memory = copy.deepcopy(self.system_prompt)
         
-        # build memory
-        if self.mode == "blendergym":
-            verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current state:\nCode: {code}"}]}
-            if os.path.isdir(render_path):
-                view1_path = os.path.join(render_path, 'render1.png')
-                view2_path = os.path.join(render_path, 'render2.png')
-            else:
-                view1_path = render_path
-                view2_path = None
-            scene_content = []
-            if os.path.exists(view1_path):
-                self.current_image_path = os.path.abspath(view1_path)
-                scene_content.extend([
-                    {"type": "text", "text": f"Current scene (View 1):"},
-                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(view1_path)}}
-                ])
-            if os.path.exists(view2_path):
-                scene_content.extend([
-                    {"type": "text", "text": f"Current scene (View 2):"},
-                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(view2_path)}}
-                ])
-            verify_message["content"].extend(scene_content)
-            verify_message["content"].append({"type": "text", "text": prompts_dict[self.mode]['format']['verifier']})
-            self.memory.append(verify_message)
-        elif self.mode == "autopresent":
-            verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current code and generated slide:\nCode: {code}"}]}
-            # add slide screenshot
-            if os.path.exists(render_path):
-                verify_message["content"].append({"type": "text", "text": f"Generated slide screenshot:"})
-                verify_message["content"].append({"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(render_path)}})
-            verify_message["content"].append({"type": "text", "text": prompts_dict[self.mode]['format']['verifier']})
-            self.memory.append(verify_message)
-        elif self.mode == "blendergym-hard":
-            level = self.task_name.split('-')[0]
-            verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the current state:\n"}]}
-            if os.path.isdir(render_path):
-                view1_path = os.path.join(render_path, 'render1.png')
-                view2_path = os.path.join(render_path, 'render2.png')
-            else:
-                view1_path = render_path
-                view2_path = None
-            scene_content = []
-            if os.path.exists(view1_path):
-                self.current_image_path = os.path.abspath(view1_path)
-                scene_content.extend([
-                    {"type": "text", "text": f"Current scene (View 1):"},
-                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(view1_path)}}
-                ])
-            if os.path.exists(view2_path):
-                scene_content.extend([
-                    {"type": "text", "text": f"Current scene (View 2):"},
-                    {"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(view2_path)}}
-                ])
-            verify_message["content"].extend(scene_content)
-            verify_message["content"].append({"type": "text", "text": prompts_dict[self.mode]['format']['verifier'][level]})
-            self.memory.append(verify_message)
-        elif self.mode == "design2code":
-            verify_message = {"role": "user", "content": [{"type": "text", "text": f"Please analyze the generated HTML code and compare it with the target design:\nCode: {code}"}]}
-            if os.path.exists(render_path):
-                verify_message["content"].append({"type": "text", "text": f"Generated webpage screenshot:"})
-                verify_message["content"].append({"type": "image_url", "image_url": {"url": self.prompt_builder._get_image_base64(render_path)}})
-            verify_message["content"].append({"type": "text", "text": prompts_dict[self.mode]['format']['verifier']})
-            self.memory.append(verify_message)
-        else:
-            raise NotImplementedError("Mode not implemented")
+        # build memory using generic prompt builder
+        current_image_path_ref = [self.current_image_path]  # Use list for reference passing
+        verify_message = self.prompt_builder.build_verify_message(self.config, code, render_path, current_image_path_ref)
+        self.current_image_path = current_image_path_ref[0]  # Update the reference
+        self.memory.append(verify_message)
         
         # start verification
         try:
@@ -189,10 +120,9 @@ class VerifierAgent:
                 chat_args = {
                     "model": self.vision_model,
                     "messages": self.memory,
+                    "tools": self._get_tools()
                 }
-                tools = self._get_tools()
-                if tools:
-                    chat_args['tools'] = tools
+                if chat_args['tools']:
                     if self.vision_model == 'gpt-4o':
                         chat_args['parallel_tool_calls'] = False
                     if self.vision_model != 'Qwen2-VL-7B-Instruct':
@@ -203,7 +133,15 @@ class VerifierAgent:
                 self.memory.append(message.model_dump())
                 # Handle tool calls
                 if message.tool_calls:
-                    for tool_call in message.tool_calls:
+                    for i, tool_call in enumerate(message.tool_calls):
+                        if i > 0:
+                            self.memory.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": tool_call.function.name,
+                                "content": "You can only call a tool once per conversation round."
+                            })
+                            continue
                         tool_response = await self._handle_tool_call(tool_call, round_num)
                         self.memory.append({
                             "role": "tool",
@@ -221,7 +159,7 @@ class VerifierAgent:
                                     {"type": "text", "text": tool_response['camera_position']}
                                 ]
                             })
-                        result = {"status": "continue", "output": message.content if message.content else "Nothing to say"}
+                        result = {"status": "continue", "output": message.content if message.content else "Please continue to use the tool to observe the scene, or summarize the existing content and give feedback."}
                 else:
                     # No tool calls, check if verification is complete
                     if "OK" in message.content and "Code Localization" not in message.content:
@@ -261,52 +199,23 @@ def main():
     agent_holder = {}
     
     @mcp.tool()
-    async def initialize_verifier(
-        mode: str,
-        vision_model: str,
-        api_key: str,
-        thought_save: str,
-        task_name: str,
-        max_rounds: int = 10,
-        target_image_path: Optional[str] = None,
-        target_description: Optional[str] = None,
-        image_server_path: Optional[str] = None,
-        scene_server_path: Optional[str] = None,
-        blender_file: Optional[str] = None,
-        api_base_url: Optional[str] = None,
-        web_server_path: Optional[str] = None,
-    ) -> dict:
+    async def initialize_verifier(**kwargs) -> dict:
         
         try:
-            agent = VerifierAgent(
-                mode=mode,
-                vision_model=vision_model,
-                api_key=api_key,
-                thought_save=thought_save,
-                task_name=task_name,
-                max_rounds=max_rounds,
-                target_image_path=target_image_path,
-                target_description=target_description,
-                image_server_path=image_server_path,
-                scene_server_path=scene_server_path,
-                api_base_url=api_base_url,
-                blender_file=blender_file,
-                web_server_path=web_server_path
-            )
+            agent = VerifierAgent(**kwargs)
             agent_holder['agent'] = agent
             # Initialize server executor
-            if mode == "blendergym" or mode == "autopresent":
-                setup_result = await agent.setup_executor(vision_model=vision_model, api_key=api_key, api_base_url=api_base_url)
+            if kwargs.get("mode") == "blendergym" or kwargs.get("mode") == "autopresent" or kwargs.get("mode") == "design2code":
+                setup_result = await agent.setup_executor(**kwargs)
                 if setup_result.get("status") != "success":
-                    return {"status": "error", "error": f"Image server setup failed: {setup_result.get('error', setup_result)}"}
-            elif mode == "blendergym-hard":
-                setup_result = await agent.setup_executor(blender_file=blender_file, save_dir=thought_save)
+                    return {"status": "error", "error": f"Server setup failed: {setup_result.get('error', setup_result)}"}
+            elif kwargs.get("mode") == "blendergym-hard":
+                # For scene mode, we need to map save_dir to thoughtprocess_save
+                setup_kwargs = kwargs.copy()
+                setup_kwargs["save_dir"] = kwargs.get("thought_save")
+                setup_result = await agent.setup_executor(**setup_kwargs)
                 if setup_result.get("status") != "success":
                     return {"status": "error", "error": f"Scene server setup failed: {setup_result.get('error', setup_result)}"}
-            elif mode == "design2code":
-                setup_result = await agent.setup_executor(vision_model=vision_model, api_key=api_key, api_base_url=api_base_url)
-                if setup_result.get("status") != "success":
-                    return {"status": "error", "error": f"Web server setup failed: {setup_result.get('error', setup_result)}"}
             await agent._ensure_tools_connected()
             return {"status": "success", "message": "Verifier Agent initialized and tool servers connected"}
         except Exception as e:
