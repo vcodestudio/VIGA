@@ -94,7 +94,7 @@ class VerifierAgent:
             return result
         return {"status": "success", "message": "No executor setup needed for this mode."}
         
-    async def verify_scene(self, code: str, render_path: str, round_num: int) -> Dict[str, Any]:
+    async def call(self, code: str, render_path: str, round_num: int) -> Dict[str, Any]:
         # reload investigator each time
         if self.mode == "blendergym-hard":
             setup_result = await self.setup_executor(blender_file=self.config.get("blender_file"), save_dir=self.thought_save)
@@ -222,10 +222,10 @@ def main():
             return {"status": "error", "error": str(e)}
         
     @mcp.tool()
-    async def verify_scene(code: str, render_path: str, round_num: int) -> dict:
+    async def call(code: str, render_path: str, round_num: int) -> dict:
         try:
             agent = agent_holder['agent']
-            result = await agent.verify_scene(code, render_path, round_num)
+            result = await agent.call(code, render_path, round_num)
             return result
         except Exception as e:
             return {"status": "error", "error": str(e)}

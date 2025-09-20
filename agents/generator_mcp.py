@@ -86,7 +86,7 @@ class GeneratorAgent:
         """Handle tool calls from the generator agent."""
         return await self.tool_handler.handle_generator_tool_call(tool_call)
 
-    async def generate_code(self, feedback: Optional[str] = None) -> Dict[str, Any]:
+    async def call(self, feedback: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate code based on current memory and optional feedback.
         
@@ -293,14 +293,14 @@ def main():
             return {"status": "error", "error": str(e)}
     
     @mcp.tool()
-    async def generate_code(feedback: str = None) -> dict:
+    async def call(feedback: str = None) -> dict:
         """
         Generate code using the initialized Generator Agent.
         """
         try:
             if 'agent' not in agent_holder:
                 return {"status": "error", "error": "Generator Agent not initialized. Call initialize_generator first."}
-            result = await agent_holder['agent'].generate_code(feedback)
+            result = await agent_holder['agent'].call(feedback)
             return result
         except Exception as e:
             return {"status": "error", "error": str(e)}

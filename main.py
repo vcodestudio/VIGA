@@ -125,7 +125,7 @@ class GeneratorAgentClient:
                 return "success"
         raise RuntimeError(f"Failed to create session: {result.content}")
 
-    async def generate_code(self, feedback: Optional[str] = None):
+    async def call(self, feedback: Optional[str] = None):
         """Generate code, optionally with feedback."""
         if not self.initialized:
             raise RuntimeError("Generator not initialized. Call create_session() first.")
@@ -134,7 +134,7 @@ class GeneratorAgentClient:
         if feedback:
             params["feedback"] = feedback
         
-        result = await self.mcp_session.client.call_tool("generate_code", params)
+        result = await self.mcp_session.client.call_tool("call", params)
         if result.content and len(result.content) > 0:
             content = result.content[0].text
             return json.loads(content)
@@ -267,12 +267,12 @@ class VerifierAgentClient:
                 pass
         raise RuntimeError(f"Failed to create session: {result.content}")
 
-    async def verify_scene(self, code: str, render_path: str, round_num: int):
+    async def call(self, code: str, render_path: str, round_num: int):
         """Verify the scene with given parameters."""
         if not self.initialized:
             raise RuntimeError("Verifier not initialized. Call create_session() first.")
         
-        result = await self.mcp_session.client.call_tool("verify_scene", {
+        result = await self.mcp_session.client.call_tool("call", {
             "code": code,
             "render_path": render_path,
             "round_num": round_num
@@ -437,7 +437,7 @@ async def main():
             print(f"\n=== Round {round_num+1} ===")
             
             print("Step 1: Generator generating code...")
-            gen_result = await generator.generate_code()
+            gen_result = await generator.call()
             if gen_result.get("status") == "max_rounds_reached":
                 print("Max rounds reached. Stopping.")
                 break
@@ -481,7 +481,7 @@ async def main():
             await generator.add_feedback(result["output"])
             
             print("Step 3: Verifier analyzing scene...")
-            verify_result = await verifier.verify_scene(
+            verify_result = await verifier.call(
                 code=code,
                 render_path=result["output"],
                 round_num=round_num,
