@@ -255,6 +255,8 @@ class VerifierAgentClient:
         if not self.mcp_session:
             raise RuntimeError("Not connected. Call connect() first.")
         
+        with open('ok.txt', 'a') as f:
+            f.write(str(kwargs) + '\n')
         result = await self.mcp_session.client.call_tool("initialize_verifier", {'args': kwargs})
         if result.content and len(result.content) > 0:
             content = result.content[0].text

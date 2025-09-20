@@ -22,8 +22,6 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-from utils.blender.get_scene_info import get_scene_info
 
 def check_failed_tasks(test_output_dir: str) -> List[Dict]:
     """
@@ -153,6 +151,12 @@ def load_blendergym_dataset(base_path: str, task_name: str, task_id: Optional[st
             print(f"Warning: blender_file.blend not found in {task_dir}")
             continue
             
+        task_name_path = task_dir / "task.txt"
+        if os.path.exists(task_name_path):
+            task_description = open(task_name_path, 'r').read()
+        else:
+            task_description = ""
+            
         task_config = {
             "task_name": task_name,
             "task_dir": str(task_dir),
@@ -160,7 +164,7 @@ def load_blendergym_dataset(base_path: str, task_name: str, task_id: Optional[st
             "init_image_path": str(start_renders_dir),
             "target_image_path": str(goal_renders_dir),
             "blender_file": str(blender_file),
-            "target_description": get_scene_info(task_name, str(blender_file)),
+            "target_description": task_description,
         }
         tasks.append(task_config)
         print(f"Found task: {task_name}")
@@ -323,8 +327,8 @@ def main():
     parser.add_argument("--save-blender-file", default=True, action="store_true", help="Save blender file")
     
     # Tool server paths
-    parser.add_argument("--generator-script", default="agents/generator_mcp.py", help="Generator MCP script path")
-    parser.add_argument("--verifier-script", default="agents/verifier_mcp.py", help="Verifier MCP script path")
+    parser.add_argument("--generator-script", default="agents/generator.py", help="Generator MCP script path")
+    parser.add_argument("--verifier-script", default="agents/verifier.py", help="Verifier MCP script path")
     parser.add_argument("--image-server-path", default="servers/verifier/image.py", help="Path to image processing MCP server script")
     parser.add_argument("--scene-server-path", default="servers/verifier/scene.py", help="Path to scene investigation MCP server script")
     
@@ -393,6 +397,8 @@ def main():
     # Save task list for reference
     with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
         json.dump(tasks, f, indent=2)
+        
+    tasks = tasks[:1]
 
     # Run tasks
     start_time = time.time()

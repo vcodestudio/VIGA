@@ -132,7 +132,7 @@ class ImageDifferentiationTool:
         return response.choices[0].message.content
 
 @mcp.tool()
-def initialize_executor(args: dict) -> dict:
+def initialize_investigator(args: dict) -> dict:
     """
     初始化ImageDifferentiationTool，设置api_key。
     """
@@ -195,12 +195,12 @@ def test_tools():
     try:
         # 尝试从环境变量获取 API key，如果没有则使用测试 key
         api_key = os.getenv("OPENAI_API_KEY", "test_key_for_testing")
-        result = initialize_executor(api_key)
+        result = initialize_investigator(api_key)
         print(f"Result: {result}")
         if result.get("status") == "success":
-            print("✓ initialize_executor passed")
+            print("✓ initialize_investigator passed")
         else:
-            print("✗ initialize_executor failed")
+            print("✗ initialize_investigator failed")
     except Exception as e:
         print(f"✗ initialize_executor failed with exception: {e}")
     

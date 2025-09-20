@@ -6,3 +6,4 @@ output
 .venv
 *.zip
 *.pt
+autopresent_baseline/

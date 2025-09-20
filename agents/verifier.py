@@ -46,7 +46,7 @@ class VerifierAgent:
         
         # Initialize components
         self.tool_client = ExternalToolClient()
-        self._tools_connected = False
+        self._server_connected = False
         
         # Determine server type and path
         if self.mode == "blendergym" or self.mode == "autopresent" or self.mode == "design2code":
@@ -66,42 +66,23 @@ class VerifierAgent:
         self.system_prompt = self.prompt_builder.build_verifier_prompt(self.config)
         self.memory = copy.deepcopy(self.system_prompt)
         
-    async def _ensure_tools_connected(self):
-        if not self._tools_connected:
-            if self.server_type == "image":
-                await self.tool_client.connect_server("image", self.server_path, self.api_key)
-            elif self.server_type == "scene":
-                await self.tool_client.connect_server("scene", self.server_path)
-            elif self.server_type == "web":
-                await self.tool_client.connect_server("web", self.server_path, self.api_key)
-            self._tools_connected = True
+    async def _ensure_server_connected(self):
+        if not self._server_connected:
+            await self.tool_client.connect_server(self.server_type, self.server_path, self.api_key)
+            self._server_connected = True
             
-    async def setup_executor(self, **kwargs):
-        await self._ensure_tools_connected()
-        if self.server_type == "image":
-            result = await self.tool_client.initialize_executor("image", **kwargs)
-            return result
-        elif self.server_type == "scene":
-            # Initialize scene investigator
-            blender_file = kwargs.get("blender_file", None)
-            save_dir = kwargs.get("save_dir", None)
-            result = await self.tool_client.call_tool("scene", "initialize_investigator", {
-                "thoughtprocess_save": save_dir,
-                "blender_path": blender_file,
-            })
-            return result
-        elif self.server_type == "web":
-            result = await self.tool_client.initialize_executor("web", **kwargs)
-            return result
-        return {"status": "success", "message": "No executor setup needed for this mode."}
+    async def setup_investigator(self, **kwargs):
+        await self._ensure_server_connected()
+        result = await self.tool_client.initialize_investigator(self.server_type, **kwargs)
+        return result
         
     async def call(self, code: str, render_path: str, round_num: int) -> Dict[str, Any]:
         # reload investigator each time
         if self.mode == "blendergym-hard":
-            setup_result = await self.setup_executor(blender_file=self.config.get("blender_file"), save_dir=self.thought_save)
+            setup_result = await self.setup_investigator(**self.config)
             if setup_result.get("status") != "success":
                 return {"status": "error", "error": f"Scene server setup failed: {setup_result.get('error', setup_result)}"}
-        await self._ensure_tools_connected()
+        await self._ensure_server_connected()
         
         # define current round
         current_round = 0
@@ -201,23 +182,14 @@ def main():
     
     @mcp.tool()
     async def initialize_verifier(args: dict) -> dict:
-        
         try:
             agent = VerifierAgent(**args)
             agent_holder['agent'] = agent
             # Initialize server executor
-            if args.get("mode") == "blendergym" or args.get("mode") == "autopresent" or args.get("mode") == "design2code":
-                setup_result = await agent.setup_executor(**args)
-                if setup_result.get("status") != "success":
-                    return {"status": "error", "error": f"Server setup failed: {setup_result.get('error', setup_result)}"}
-            elif args.get("mode") == "blendergym-hard":
-                # For scene mode, we need to map save_dir to thoughtprocess_save
-                setup_kwargs = args.copy()
-                setup_kwargs["save_dir"] = args.get("thought_save")
-                setup_result = await agent.setup_executor(**setup_kwargs)
-                if setup_result.get("status") != "success":
-                    return {"status": "error", "error": f"Scene server setup failed: {setup_result.get('error', setup_result)}"}
-            await agent._ensure_tools_connected()
+            setup_result = await agent.setup_investigator(**args)
+            if setup_result.get("status") != "success":
+                return {"status": "error", "error": f"Server setup failed: {setup_result.get('error', setup_result)}"}
+            await agent._ensure_server_connected()
             return {"status": "success", "message": "Verifier Agent initialized and tool servers connected"}
         except Exception as e:
             return {"status": "error", "error": str(e)}

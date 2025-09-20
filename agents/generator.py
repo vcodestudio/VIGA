@@ -72,7 +72,7 @@ class GeneratorAgent:
     
     async def _ensure_server_connected(self):
         if not self._server_connected and self.server_type and self.server_path:
-            await self.tool_client.connect_server(self.server_type, self.server_path)
+            await self.tool_client.connect_server(self.server_type, self.server_path, self.api_key)
             self._server_connected = True
     
     async def setup_executor(self, **kwargs):

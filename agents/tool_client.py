@@ -111,6 +111,23 @@ class ExternalToolClient:
             raise RuntimeError(f"{server_type.capitalize()} executor initialization timeout after 30s")
         except Exception as e:
             raise RuntimeError(f"{server_type.capitalize()} executor initialization failed: {str(e)}")
+        
+    async def initialize_investigator(self, server_type: str, **kwargs) -> Dict:
+        """Initialize the executor using external server with timeout."""
+        session = self.mcp_sessions.get(server_type)
+        if not session:
+            raise RuntimeError(f"{server_type.capitalize()} server not connected")
+        try:
+            result = await asyncio.wait_for(
+                session.client.call_tool("initialize_investigator", {'args': kwargs}),
+                timeout=30
+            )
+            content = json.loads(result.content[0].text) if result.content else {}
+            return content
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"{server_type.capitalize()} investigator initialization timeout after 30s")
+        except Exception as e:
+            raise RuntimeError(f"{server_type.capitalize()} investigator initialization failed: {str(e)}")
     
     async def exec_script(self, server_type: str, code: str, round_num: int, **kwargs) -> Dict:
         """Execute script using external server with timeout."""

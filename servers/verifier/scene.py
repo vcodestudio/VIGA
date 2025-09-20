@@ -224,7 +224,7 @@ def initialize_investigator(args: dict) -> dict:
     """
     global _investigator
     try:
-        _investigator = Investigator3D(args.get("thoughtprocess_save"), str(args.get("blender_path")))
+        _investigator = Investigator3D(args.get("thought_save"), str(args.get("blender_file")))
         return {"status": "success", "message": "Investigator3D initialized successfully"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
