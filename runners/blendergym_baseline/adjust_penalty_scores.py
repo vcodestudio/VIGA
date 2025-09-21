@@ -23,13 +23,37 @@ def load_tournament_results(results_path: str) -> Dict:
         return json.load(f)
 
 
-def adjust_penalty_scores(results: Dict, new_penalty: float = 0.1) -> Dict:
+def get_task_specific_penalty(task_name: str) -> float:
     """
-    Adjust penalty scores in tournament results.
+    Get task-specific penalty score based on task type.
+    
+    Args:
+        task_name: Name of the task (e.g., 'blendshape1', 'material5')
+        
+    Returns:
+        Penalty score for the task type
+    """
+    # Extract task type from task name
+    task_type = ''.join([c for c in task_name if not c.isdigit()]).lower()
+    
+    # Define penalty scores by task type
+    penalty_scores = {
+        'blendshape': 0.05,
+        'placement': 0.05,
+        'geometry': 0.5,
+        'lighting': 0.5,
+        'material': 0.5
+    }
+    
+    return penalty_scores.get(task_type, 1.0)
+
+
+def adjust_penalty_scores(results: Dict) -> Dict:
+    """
+    Adjust penalty scores in tournament results based on task type.
     
     Args:
         results: Tournament results dictionary
-        new_penalty: New penalty score value
         
     Returns:
         Adjusted results dictionary
@@ -38,16 +62,21 @@ def adjust_penalty_scores(results: Dict, new_penalty: float = 0.1) -> Dict:
     
     for task in adjusted_results.get("tasks", []):
         if task.get("special_case") == "no_rounds":
-            # Update penalty scores
+            # Get task-specific penalty score
+            task_name = task['task_name']
+            penalty_score = get_task_specific_penalty(task_name)
+            
+            # Update penalty scores (pl penalty is 1/3 of clip penalty)
+            pl_penalty_score = penalty_score / 3.0
             task["final_metrics"] = {
-                "n_clip_render1": new_penalty,
-                "n_clip_render2": new_penalty,
-                "avg_n_clip": new_penalty,
-                "pl_render1": new_penalty,
-                "pl_render2": new_penalty,
-                "avg_pl": new_penalty
+                "n_clip_render1": penalty_score,
+                "n_clip_render2": penalty_score,
+                "avg_n_clip": penalty_score,
+                "pl_render1": pl_penalty_score,
+                "pl_render2": pl_penalty_score,
+                "avg_pl": pl_penalty_score
             }
-            print(f"Adjusted penalty scores for {task['task_name']}: {1.0} -> {new_penalty}")
+            print(f"Adjusted penalty scores for {task_name}: {1.0} -> {penalty_score}")
     
     return adjusted_results
 
@@ -150,12 +179,12 @@ def print_final_scores(stats: Dict):
         print(f"  Tournaments run: {type_stats['tournaments_run']}")
         print(f"  Auto-wins: {type_stats['auto_wins']}")
         print(f"  Penalty scores: {type_stats['penalty_scores']}")
-        print(f"  Average n_clip: {type_stats['avg_n_clip']:.4f}")
-        print(f"  Average pl: {type_stats['avg_pl']:.4f}")
-        print(f"  Best n_clip: {type_stats['best_n_clip']:.4f}")
-        print(f"  Worst n_clip: {type_stats['worst_n_clip']:.4f}")
-        print(f"  Best pl: {type_stats['best_pl']:.4f}")
-        print(f"  Worst pl: {type_stats['worst_pl']:.4f}")
+        print(f"  Average n_clip: {type_stats['avg_n_clip']}")
+        print(f"  Average pl: {type_stats['avg_pl']}")
+        print(f"  Best n_clip: {type_stats['best_n_clip']}")
+        print(f"  Worst n_clip: {type_stats['worst_n_clip']}")
+        print(f"  Best pl: {type_stats['best_pl']}")
+        print(f"  Worst pl: {type_stats['worst_pl']}")
 
 
 def save_adjusted_results(results: Dict, output_path: str):
@@ -172,12 +201,10 @@ def save_adjusted_results(results: Dict, output_path: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Adjust penalty scores in tournament results")
+    parser = argparse.ArgumentParser(description="Adjust penalty scores in tournament results based on task type")
     
     parser.add_argument("--results-file", required=True, 
                        help="Path to tournament_results.json file")
-    parser.add_argument("--penalty-score", type=float, default=0.1,
-                       help="New penalty score value (default: 0.1)")
     parser.add_argument("--output-file", 
                        help="Path to save adjusted results (optional)")
     
@@ -192,9 +219,11 @@ def main():
                            if task.get("special_case") == "no_rounds")
     print(f"Found {original_penalties} tasks with penalty scores")
     
-    # Adjust penalty scores
-    print(f"Adjusting penalty scores from 1.0 to {args.penalty_score}")
-    adjusted_results = adjust_penalty_scores(results, args.penalty_score)
+    # Adjust penalty scores based on task type
+    print("Adjusting penalty scores based on task type:")
+    print("  blendshape, placement: 0.1")
+    print("  geometry, lighting, material: 1.0")
+    adjusted_results = adjust_penalty_scores(results)
     
     # Calculate final statistics
     print("Calculating final statistics...")

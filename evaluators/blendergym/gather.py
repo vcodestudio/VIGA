@@ -148,6 +148,49 @@ def compute_worst_scores(scores_across_instances: Dict[str, Any]) -> tuple:
     return worst_n_clip_list, worst_pl_list
 
 
+def compute_round1_averages_with_penalty(scores_across_instances: Dict[str, Any], 
+                                       task_type: str) -> tuple:
+    """
+    Compute round 1 averages with task-specific penalty for missing round 1.
+    
+    Args:
+        scores_across_instances: The intermediate scores structure
+        task_type: Task type to determine penalty score
+        
+    Returns:
+        tuple: (round1_n_clip_list, round1_pl_list)
+    """
+    # Define penalty scores by task type
+    penalty_scores = {
+        'blendshape': 0.05,
+        'placement': 0.05,
+        'geometry': 0.5,
+        'lighting': 0.5,
+        'material': 0.5
+    }
+    
+    penalty_score = penalty_scores.get(task_type.lower(), 1.0)
+    
+    round1_n_clip_list = []
+    round1_pl_list = []
+    
+    for instance_scores in scores_across_instances['instance_details'].values():
+        # Check if round 1 exists
+        if '1' in instance_scores and isinstance(instance_scores['1'], dict) and 'avg_n_clip' in instance_scores['1']:
+            # Round 1 exists, use actual scores
+            round1_n_clip = instance_scores['1']['avg_n_clip']
+            round1_pl = instance_scores['1']['avg_pl']
+        else:
+            # Round 1 missing, apply penalty score (pl penalty is 1/3 of clip penalty)
+            round1_n_clip = penalty_score
+            round1_pl = penalty_score / 3.0
+        
+        round1_n_clip_list.append(round1_n_clip)
+        round1_pl_list.append(round1_pl)
+    
+    return round1_n_clip_list, round1_pl_list
+
+
 def compute_overall_scores(intermediates: Dict[str, Any], 
                           penalty_factor: float = 2.0,
                           max_rounds: int = 10) -> Dict[str, Any]:
@@ -184,6 +227,11 @@ def compute_overall_scores(intermediates: Dict[str, Any],
             scores_across_instances['worst_n_clip'] = worst_n_clip_list
             scores_across_instances['worst_pl'] = worst_pl_list
         
+        # Compute round 1 averages with task-specific penalty
+        round1_n_clip_list, round1_pl_list = compute_round1_averages_with_penalty(scores_across_instances, task_type)
+        scores_across_instances['round1_n_clip'] = round1_n_clip_list
+        scores_across_instances['round1_pl'] = round1_pl_list
+        
         # Aggregate results for this task type
         if scores_across_instances.get('best_n_clip'):
             scores_across_tasks[task_type] = {
@@ -193,6 +241,8 @@ def compute_overall_scores(intermediates: Dict[str, Any],
                 'worst_pl': sum(scores_across_instances['worst_pl']) / len(scores_across_instances['worst_pl']),
                 'last_round_n_clip': sum(scores_across_instances['last_round_n_clip']) / len(scores_across_instances['last_round_n_clip']),
                 'last_round_pl': sum(scores_across_instances['last_round_pl']) / len(scores_across_instances['last_round_pl']),
+                'round1_n_clip': sum(scores_across_instances['round1_n_clip']) / len(scores_across_instances['round1_n_clip']),
+                'round1_pl': sum(scores_across_instances['round1_pl']) / len(scores_across_instances['round1_pl']),
                 'num_instances': len(scores_across_instances['best_n_clip']),
                 'per_round': per_round_summary
             }
@@ -204,6 +254,8 @@ def compute_overall_scores(intermediates: Dict[str, Any],
             print(f"    Average worst pl: {scores_across_tasks[task_type]['worst_pl']:.4f}")
             print(f"    Average last round n_clip: {scores_across_tasks[task_type]['last_round_n_clip']:.4f}")
             print(f"    Average last round pl: {scores_across_tasks[task_type]['last_round_pl']:.4f}")
+            print(f"    Average round 1 n_clip: {scores_across_tasks[task_type]['round1_n_clip']:.4f}")
+            print(f"    Average round 1 pl: {scores_across_tasks[task_type]['round1_pl']:.4f}")
             print(f"    Number of instances: {scores_across_tasks[task_type]['num_instances']}")
         else:
             print(f"  No valid scores for task type {task_type}")
@@ -268,6 +320,8 @@ def main():
             print(f"  Average worst pl: {scores['worst_pl']:.4f}")
             print(f"  Average last round n_clip: {scores['last_round_n_clip']:.4f}")
             print(f"  Average last round pl: {scores['last_round_pl']:.4f}")
+            print(f"  Average round 1 n_clip: {scores['round1_n_clip']:.4f}")
+            print(f"  Average round 1 pl: {scores['round1_pl']:.4f}")
             print(f"  Instances evaluated: {scores['num_instances']}")
         else:
             print(f"\n{task_type.upper()}: No valid scores")
