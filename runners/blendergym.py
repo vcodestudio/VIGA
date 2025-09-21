@@ -201,6 +201,7 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
         # Tool server paths (for verifier)
         "--image-server-path", args.image_server_path,
         "--scene-server-path", args.scene_server_path,
+        "--gpu-devices", args.gpu_devices,
     ]
     
     if args.save_blender_file:
@@ -210,7 +211,7 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     
     try:
         # Run the command
-        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600)  # 1 hour timeout
+        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600, env=os.environ)  # 1 hour timeout
         print(f"Task completed successfully: {task_name}")
         return (task_name, True, "")
     except subprocess.CalledProcessError as e:
@@ -312,6 +313,7 @@ def main():
     # Parallel execution parameters
     parser.add_argument("--max-workers", type=int, default=10, help="Maximum number of parallel workers")
     parser.add_argument("--sequential", action="store_true", help="Run tasks sequentially instead of in parallel")
+    parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     
     args = parser.parse_args()
     
@@ -374,6 +376,8 @@ def main():
     # Save task list for reference
     with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
         json.dump(tasks, f, indent=2)
+        
+    tasks = tasks[:1]
 
     # Run tasks
     start_time = time.time()

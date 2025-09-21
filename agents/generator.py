@@ -122,11 +122,14 @@ class GeneratorAgent:
                 tools=self._get_tools()
             )
             message = response.choices[0].message
-            self.memory.append(message.model_dump())
             
             last_full_code = self.config.get("script_save") + f"/{self.current_round}.py"
             
             if message.tool_calls:
+                # clean up the memory for a new object
+                self.memory = copy.deepcopy(self.system_prompt)
+                self.memory.append(message.model_dump())
+                # handle tool calls
                 for i, tool_call in enumerate(message.tool_calls):
                     if i > 0:
                         self.memory.append({
@@ -149,6 +152,7 @@ class GeneratorAgent:
                         full_code += tool_response['output_content']
                     
             else:
+                self.memory.append(message.model_dump())
                 # Parse the response to extract code if needed (only for modes that generate code)
                 _, _, full_code = parse_generate_response(message.content)
                 

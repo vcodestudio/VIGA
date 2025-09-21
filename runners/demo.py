@@ -20,8 +20,8 @@ if __name__ == "__main__":
     copy_target_image_path = f"{output_dir}/renders/goal"
     shutil.copytree(target_image_path, copy_target_image_path)
     task_name = "level4-1"
-    generator_script = "agents/generator_mcp.py"
-    verifier_script = "agents/verifier_mcp.py"
+    generator_script = "agents/generator.py"
+    verifier_script = "agents/verifier.py"
     blender_server_path = "servers/generator/blender.py"
     blender_command = "utils/blender/infinigen/blender/blender"
     blender_file = "data/blendergym_hard/level4/christmas1/blender_file.blend"

@@ -44,13 +44,15 @@ class Executor:
                  blender_script: str,
                  script_save: str,
                  render_save: str,
-                 blender_save: Optional[str] = None):
+                 blender_save: Optional[str] = None,
+                 gpu_devices: Optional[str] = None):
         self.blender_command = blender_command
         self.blender_file = blender_file
         self.blender_script = blender_script
         self.script_path = Path(script_save)
         self.render_path = Path(render_save)
         self.blend_path = blender_save
+        self.gpu_devices = gpu_devices  # 例如: "0,1" 或 "0"
 
         self.script_path.mkdir(parents=True, exist_ok=True)
         self.render_path.mkdir(parents=True, exist_ok=True)
@@ -65,8 +67,15 @@ class Executor:
         if self.blend_path:
             cmd.append(self.blend_path)
         cmd_str = " ".join(cmd)
+        
+        # 设置环境变量以控制GPU设备
+        env = os.environ.copy()
+        if self.gpu_devices:
+            env['CUDA_VISIBLE_DEVICES'] = self.gpu_devices
+            logging.info(f"Setting CUDA_VISIBLE_DEVICES to: {self.gpu_devices}")
+        
         try:
-            proc = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True)
+            proc = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True, env=env)
             out = proc.stdout
             err = proc.stderr
             # We do not consider intermediate errors that do not affect the result.
@@ -596,6 +605,19 @@ def generate_and_import_3d_asset(
 def initialize_executor(args: dict) -> dict:
     """
     初始化 Blender 执行器，设置所有必要的参数。
+    
+    Args:
+        args: 包含以下键的字典:
+            - blender_command: Blender可执行文件路径
+            - blender_file: Blender文件路径
+            - blender_script: Blender脚本路径
+            - script_save: 脚本保存目录
+            - render_save: 渲染结果保存目录
+            - blender_save: Blender文件保存路径（可选）
+            - gpu_devices: GPU设备ID，如"0"或"0,1"（可选）
+            - meshy_api_key: Meshy API密钥（可选）
+            - va_api_key: VA API密钥（可选）
+            - target_image_path: 目标图片路径（可选）
     """
     global _executor
     global _meshy_api
@@ -608,7 +630,8 @@ def initialize_executor(args: dict) -> dict:
             blender_script=args.get("blender_script"),
             script_save=args.get("script_save"),
             render_save=args.get("render_save"),
-            blender_save=args.get("blender_save")
+            blender_save=args.get("blender_save"),
+            gpu_devices=args.get("gpu_devices")
         )
         if args.get("meshy_api_key"):
             _meshy_api = MeshyAPI(args.get("meshy_api_key"))

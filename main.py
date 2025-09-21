@@ -31,6 +31,7 @@ async def main():
     parser.add_argument("--target-description", default=None, help="Target description for 2D mode")
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument("--task-name", default="blendshape", help="Task name for hints extraction")
+    parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     
     # Agent server paths 
     parser.add_argument("--generator-script", default="agents/generator_mcp.py", help="Generator MCP script path")
@@ -109,6 +110,7 @@ async def main():
             "blender_save": args.output_dir + "/blender_file.blend" if args.save_blender_file else None,
             "meshy_api_key": args.meshy_api_key,
             "va_api_key": args.va_api_key,
+            "gpu_devices": args.gpu_devices,
             # Slides executor parameters
             "slides_server_path": args.slides_server_path,
             "output_dir": args.output_dir,
