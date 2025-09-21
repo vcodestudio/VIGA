@@ -119,6 +119,35 @@ def compute_last_round_scores(scores_across_instances: Dict[str, Any]) -> tuple:
     return last_round_n_clip_list, last_round_pl_list
 
 
+def compute_worst_scores(scores_across_instances: Dict[str, Any]) -> tuple:
+    """
+    Compute worst round scores from instance details, similar to best scores logic but finding max values.
+    
+    Args:
+        scores_across_instances: The intermediate scores structure
+        
+    Returns:
+        tuple: (worst_n_clip_list, worst_pl_list)
+    """
+    worst_n_clip_list = []
+    worst_pl_list = []
+    
+    for instance_scores in scores_across_instances['instance_details'].values():
+        # Find valid rounds for this instance
+        valid_rounds = {k: v for k, v in instance_scores.items() 
+                       if isinstance(v, dict) and 'avg_n_clip' in v and 'avg_pl' in v}
+        
+        if valid_rounds:
+            # Get the worst round (highest n_clip value, which means worst performance)
+            worst_round_key = max(valid_rounds.keys(), key=lambda r: valid_rounds[r]['avg_n_clip'])
+            worst_n_clip = valid_rounds[worst_round_key]['avg_n_clip']
+            worst_pl = valid_rounds[worst_round_key]['avg_pl']
+            worst_n_clip_list.append(worst_n_clip)
+            worst_pl_list.append(worst_pl)
+    
+    return worst_n_clip_list, worst_pl_list
+
+
 def compute_overall_scores(intermediates: Dict[str, Any], 
                           penalty_factor: float = 2.0,
                           max_rounds: int = 10) -> Dict[str, Any]:
@@ -149,11 +178,19 @@ def compute_overall_scores(intermediates: Dict[str, Any],
             scores_across_instances['last_round_n_clip'] = last_round_n_clip_list
             scores_across_instances['last_round_pl'] = last_round_pl_list
         
+        # Compute worst scores if not already present
+        if not scores_across_instances.get('worst_n_clip'):
+            worst_n_clip_list, worst_pl_list = compute_worst_scores(scores_across_instances)
+            scores_across_instances['worst_n_clip'] = worst_n_clip_list
+            scores_across_instances['worst_pl'] = worst_pl_list
+        
         # Aggregate results for this task type
         if scores_across_instances.get('best_n_clip'):
             scores_across_tasks[task_type] = {
                 'best_n_clip': sum(scores_across_instances['best_n_clip']) / len(scores_across_instances['best_n_clip']),
                 'best_pl': sum(scores_across_instances['best_pl']) / len(scores_across_instances['best_pl']),
+                'worst_n_clip': sum(scores_across_instances['worst_n_clip']) / len(scores_across_instances['worst_n_clip']),
+                'worst_pl': sum(scores_across_instances['worst_pl']) / len(scores_across_instances['worst_pl']),
                 'last_round_n_clip': sum(scores_across_instances['last_round_n_clip']) / len(scores_across_instances['last_round_n_clip']),
                 'last_round_pl': sum(scores_across_instances['last_round_pl']) / len(scores_across_instances['last_round_pl']),
                 'num_instances': len(scores_across_instances['best_n_clip']),
@@ -163,6 +200,8 @@ def compute_overall_scores(intermediates: Dict[str, Any],
             print(f"  Task {task_type} overall scores:")
             print(f"    Average best n_clip: {scores_across_tasks[task_type]['best_n_clip']:.4f}")
             print(f"    Average best pl: {scores_across_tasks[task_type]['best_pl']:.4f}")
+            print(f"    Average worst n_clip: {scores_across_tasks[task_type]['worst_n_clip']:.4f}")
+            print(f"    Average worst pl: {scores_across_tasks[task_type]['worst_pl']:.4f}")
             print(f"    Average last round n_clip: {scores_across_tasks[task_type]['last_round_n_clip']:.4f}")
             print(f"    Average last round pl: {scores_across_tasks[task_type]['last_round_pl']:.4f}")
             print(f"    Number of instances: {scores_across_tasks[task_type]['num_instances']}")
@@ -225,6 +264,8 @@ def main():
             print(f"\n{task_type.upper()}:")
             print(f"  Average best n_clip: {scores['best_n_clip']:.4f}")
             print(f"  Average best pl: {scores['best_pl']:.4f}")
+            print(f"  Average worst n_clip: {scores['worst_n_clip']:.4f}")
+            print(f"  Average worst pl: {scores['worst_pl']:.4f}")
             print(f"  Average last round n_clip: {scores['last_round_n_clip']:.4f}")
             print(f"  Average last round pl: {scores['last_round_pl']:.4f}")
             print(f"  Instances evaluated: {scores['num_instances']}")
