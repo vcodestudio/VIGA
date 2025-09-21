@@ -102,9 +102,9 @@ class VerifierAgent:
                 chat_args = {
                     "model": self.vision_model,
                     "messages": self.memory,
-                    "tools": self._get_tools()
                 }
-                if chat_args['tools']:
+                if self._get_tools():
+                    chat_args['tools'] = self._get_tools()
                     if 'gpt' in self.vision_model:
                         chat_args['parallel_tool_calls'] = False
                     if self.vision_model != 'Qwen2-VL-7B-Instruct':

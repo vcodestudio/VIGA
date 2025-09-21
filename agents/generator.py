@@ -108,9 +108,9 @@ class GeneratorAgent:
             chat_args = {
                 "model": self.model,
                 "messages": self.memory,
-                "tools": self._get_tools()
             }
-            if chat_args['tools']:
+            if self._get_tools():
+                chat_args['tools'] = self._get_tools()
                 if 'gpt' in self.model:
                     chat_args['parallel_tool_calls'] = False
                 if self.model != 'Qwen2-VL-7B-Instruct':
