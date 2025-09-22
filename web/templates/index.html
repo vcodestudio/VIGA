@@ -16,26 +16,139 @@
     h2 { margin: 0 0 12px; font-size: 18px; }
     .meta { color: #475569; font-size: 12px; }
   </style>
-  <script>
-    function toggle(id) {
-      const el = document.getElementById(id);
-      el.style.display = (el.style.display === 'none') ? 'block' : 'none';
-    }
-  </script>
-  <script>
-    function pretty(obj) { return JSON.stringify(obj, null, 2); }
-  </script>
   <script type="application/json" id="generatorData">{{ generator | tojson }}</script>
-  <script type="application/json" id="scoresData">{{ scores | tojson }}</script>
-  <script type="application/json" id="refFreeScoresData">{{ ref_free_scores | tojson }}</script>
   <script>
+    function prefixDataPath(url) {
+      if (!url) return url;
+      const isAbsolute = /^(https?:)?\/\//i.test(url) || url.startsWith('data:');
+      const isRooted = url.startsWith('/');
+      return (isAbsolute || isRooted) ? url : ('/data/' + url.replace(/^\.\/?/, ''));
+    }
+
+    function guessMimeFromBase64(b64) {
+      if (!b64) return 'image/png';
+      const head = b64.slice(0, 5);
+      if (b64.startsWith('/9j/')) return 'image/jpeg';
+      if (b64.startsWith('iVBOR')) return 'image/png';
+      if (b64.startsWith('R0lGO')) return 'image/gif';
+      if (b64.startsWith('UklGR')) return 'image/webp';
+      return 'image/png';
+    }
+
+    function normalizeImageUrl(imageUrl) {
+      if (!imageUrl) return null;
+      let url = imageUrl;
+      if (typeof imageUrl === 'object' && imageUrl.url) url = imageUrl.url;
+      if (!url) return null;
+      if (url.startsWith('data:')) return url;
+      const base64Like = /^[A-Za-z0-9+/=]+$/.test(url) && (url.length > 64);
+      if (base64Like) {
+        const mime = guessMimeFromBase64(url);
+        return `data:${mime};base64,${url}`;
+      }
+      return prefixDataPath(url);
+    }
+
+    function renderTextWithImages(text) {
+      if (!text) return '';
+      let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      html = html.replace(/!\[[^\]]*\]\(([^)]+)\)/g, (m, p1) => {
+        const src = prefixDataPath(p1.trim());
+        return '<img src="' + src + '" alt="image" />';
+      });
+      html = html.replace(/(\S+\.(?:png|jpg|jpeg|gif|webp))/gi, (m) => {
+        const src = prefixDataPath(m);
+        return '<img src="' + src + '" alt="image" />';
+      });
+      html = html.replace(/\n/g, '<br/>');
+      return html;
+    }
+
+    function renderMessageContent(msg) {
+      const container = document.createElement('div');
+      container.className = 'bubble';
+      const content = msg && (msg.content || msg.text || msg.message);
+      if (Array.isArray(content)) {
+        content.forEach(part => {
+          if (!part) return;
+          if (part.type === 'text' || typeof part === 'string') {
+            const div = document.createElement('div');
+            div.innerHTML = renderTextWithImages(String(part.text || part));
+            container.appendChild(div);
+          } else if (part.type === 'image_url' || part.image_url) {
+            const src = normalizeImageUrl(part.image_url || part.url);
+            if (src) {
+              const img = document.createElement('img');
+              img.src = src;
+              img.alt = 'image';
+              img.style.maxWidth = '100%';
+              container.appendChild(img);
+            }
+          }
+        });
+      } else if (content && typeof content === 'object') {
+        if (content.image_url || content.images) {
+          const maybeUrls = [];
+          if (content.image_url) maybeUrls.push(content.image_url);
+          if (Array.isArray(content.images)) maybeUrls.push(...content.images);
+          maybeUrls.forEach(u => {
+            const src = normalizeImageUrl(u);
+            if (src) {
+              const img = document.createElement('img');
+              img.src = src;
+              img.alt = 'image';
+              img.style.maxWidth = '100%';
+              container.appendChild(img);
+            }
+          });
+        }
+        if (content.text) {
+          const div = document.createElement('div');
+          div.innerHTML = renderTextWithImages(String(content.text));
+          container.appendChild(div);
+        }
+      } else {
+        const div = document.createElement('div');
+        div.innerHTML = renderTextWithImages(String(content || ''));
+        container.appendChild(div);
+      }
+      return container;
+    }
+
+    function tryGetMessages(generatorJson) {
+      if (!generatorJson) return [];
+      if (Array.isArray(generatorJson)) return generatorJson;
+      if (Array.isArray(generatorJson.messages)) return generatorJson.messages;
+      if (Array.isArray(generatorJson.conversation)) return generatorJson.conversation;
+      return [];
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
-      const g = document.getElementById('generatorData').textContent;
-      const s = document.getElementById('scoresData').textContent;
-      const r = document.getElementById('refFreeScoresData').textContent;
-      try { document.getElementById('generatorPre').textContent = JSON.stringify(JSON.parse(g), null, 2); } catch {}
-      try { document.getElementById('scoresPre').textContent = JSON.stringify(JSON.parse(s), null, 2); } catch {}
-      try { document.getElementById('refScoresPre').textContent = JSON.stringify(JSON.parse(r), null, 2); } catch {}
+      let data = null;
+      try { data = JSON.parse(document.getElementById('generatorData').textContent || 'null'); } catch {}
+      const messages = tryGetMessages(data);
+      const list = document.getElementById('generatorList');
+      const fallback = document.getElementById('generatorPre');
+      if (messages.length > 0) {
+        fallback.style.display = 'none';
+        messages.forEach((msg, idx) => {
+          const role = (msg && (msg.role || msg.speaker || msg.name)) || 'message';
+          const item = document.createElement('div');
+          item.className = 'msg';
+          item.style.marginBottom = '12px';
+          const header = document.createElement('div');
+          header.className = 'meta';
+          header.innerHTML = '<strong>' + role + '</strong>';
+          item.appendChild(header);
+          item.appendChild(renderMessageContent(msg));
+          list.appendChild(item);
+        });
+      } else {
+        try { fallback.textContent = JSON.stringify(data, null, 2); } catch {}
+      }
     });
   </script>
   </head>
@@ -46,24 +159,59 @@
   </header>
   <main>
     <section class="panel rounds">
-      <h2>Rounds</h2>
-      <ul>
-        {% for r in rounds %}
-          <li><a href="/round/{{ r }}">Round {{ r }}</a></li>
-        {% endfor %}
-      </ul>
+      <h2>Cameras</h2>
+      <div id="cameraButtons" style="display: grid; grid-template-columns: 1fr; gap: 8px;"></div>
+      <script>
+        (function() {
+          function getQueryParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+          }
+          function makeButton(label, value, isActive) {
+            const a = document.createElement('a');
+            a.textContent = label;
+            a.href = '/?camera=' + encodeURIComponent(value);
+            a.style.display = 'block';
+            a.style.padding = '8px 10px';
+            a.style.textDecoration = 'none';
+            a.style.background = isActive ? '#eef2ff' : '#fff';
+            a.style.border = '1px solid ' + (isActive ? '#c7d2fe' : '#e5e7eb');
+            a.style.borderRadius = '6px';
+            a.style.textAlign = 'center';
+            a.style.color = '#0f172a';
+            a.addEventListener('mouseover', function() {
+              if (!isActive) {
+                a.style.background = '#eef2ff';
+                a.style.borderColor = '#c7d2fe';
+              }
+            });
+            a.addEventListener('mouseout', function() {
+              if (!isActive) {
+                a.style.background = '#fff';
+                a.style.borderColor = '#e5e7eb';
+              }
+            });
+            return a;
+          }
+          const selected = getQueryParam('camera') || 'camera1';
+          const container = document.getElementById('cameraButtons');
+          for (let i = 1; i <= 9; i++) {
+            const cam = 'camera' + i;
+            const btn = makeButton('Camera ' + i, cam, cam === selected);
+            container.appendChild(btn);
+          }
+        })();
+      </script>
     </section>
     <section class="panel">
-      <h2>Generator Thoughts (full)</h2>
+      <h2>Generator Thoughts</h2>
+      <div id="generatorList"></div>
       <pre id="generatorPre"></pre>
-      <h2>Scores</h2>
-      <pre id="scoresPre"></pre>
-      <h2>Reference-free Scores</h2>
-      <pre id="refScoresPre"></pre>
     </section>
   </main>
 </body>
 </html>
+
 
 
 

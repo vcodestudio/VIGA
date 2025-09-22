@@ -82,8 +82,6 @@ def render_template(name: str, **context: Any) -> HTMLResponse:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     generator_json = read_json(DATA_ROOT / "generator_thoughts.json")
-    scores = read_json(DATA_ROOT / "scores.json")
-    ref_free_scores = read_json(DATA_ROOT / "reference_free_scores.json")
     rounds = discover_rounds(DATA_ROOT)
     return render_template(
         "index.html",
@@ -91,8 +89,6 @@ def index(request: Request) -> HTMLResponse:
         data_root=str(DATA_ROOT),
         rounds=rounds,
         generator=generator_json,
-        scores=scores,
-        ref_free_scores=ref_free_scores,
     )
 
 
@@ -108,6 +104,7 @@ def round_details(request: Request, round_id: int) -> HTMLResponse:
         round_info=info,
         rounds=rounds,
     )
+
 
 
 
