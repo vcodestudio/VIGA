@@ -9,7 +9,39 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
-DATA_ROOT = Path(os.environ.get("DATA_ROOT", Path(__file__).resolve().parent.parent / "output/blendergym_hard/gpt-4o/level1/camera1")).resolve()
+# DATA_ROOT = Path(os.environ.get("DATA_ROOT", Path(__file__).resolve().parent.parent / "output/demo/christmas1/20250921_070451")).resolve()
+
+# Manually configured dataset roots (edit these placeholders)
+DATA_ROOT_1 = Path("/absolute/path/to/output/demo/christmas1/20250921_070451").resolve()
+DATA_ROOT_2 = Path("/absolute/path/to/output/REPLACE_ME_2").resolve()
+DATA_ROOT_3 = Path("/absolute/path/to/output/REPLACE_ME_3").resolve()
+DATA_ROOT_4 = Path("/absolute/path/to/output/REPLACE_ME_4").resolve()
+DATA_ROOT_5 = Path("/absolute/path/to/output/REPLACE_ME_5").resolve()
+DATA_ROOT_6 = Path("/absolute/path/to/output/REPLACE_ME_6").resolve()
+DATA_ROOT_7 = Path("/absolute/path/to/output/REPLACE_ME_7").resolve()
+DATA_ROOT_8 = Path("/absolute/path/to/output/REPLACE_ME_8").resolve()
+DATA_ROOT_9 = Path("/absolute/path/to/output/REPLACE_ME_9").resolve()
+
+DATASETS: List[Path] = [
+    DATA_ROOT_1,
+    DATA_ROOT_2,
+    DATA_ROOT_3,
+    DATA_ROOT_4,
+    DATA_ROOT_5,
+    DATA_ROOT_6,
+    DATA_ROOT_7,
+    DATA_ROOT_8,
+    DATA_ROOT_9,
+]
+
+
+def infer_dataset_name_from_path(path: Path) -> str:
+    try:
+        # Split by 'output' and take the trailing segment like 'demo/xxx/yyyy'
+        parts = path.as_posix().split("/output/")
+        return parts[-1] if parts and parts[-1] else path.name
+    except Exception:
+        return path.name
 
 
 def read_json(path: Path) -> Any:
@@ -69,8 +101,14 @@ env = Environment(
 )
 
 
-# Mount static data directory for serving images and scripts read-only
-app.mount("/data", StaticFiles(directory=str(DATA_ROOT), html=False), name="data")
+# Mount static data directories /data1..9 when they exist
+for i, p in enumerate(DATASETS, start=1):
+    try:
+        if p.exists():
+            app.mount(f"/data{i}", StaticFiles(directory=str(p), html=False), name=f"data{i}")
+    except Exception:
+        # Skip mounting invalid paths
+        pass
 
 
 def render_template(name: str, **context: Any) -> HTMLResponse:
@@ -81,30 +119,41 @@ def render_template(name: str, **context: Any) -> HTMLResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    generator_json = read_json(DATA_ROOT / "generator_thoughts.json")
-    rounds = discover_rounds(DATA_ROOT)
+    # Determine selected dataset index (1..9)
+    try:
+        selected_idx = int(request.query_params.get("dataset") or "1")
+    except ValueError:
+        selected_idx = 1
+    if selected_idx < 1 or selected_idx > len(DATASETS):
+        selected_idx = 1
+
+    selected_root = DATASETS[selected_idx - 1]
+
+    # Build dataset list for sidebar; names can be adjusted by editing paths above
+    def name_from_output(path: Path) -> str:
+        s = path.as_posix()
+        parts = s.split("/output/")
+        return parts[-1] if len(parts) > 1 else s
+
+    datasets: List[Dict[str, str]] = []
+    for i, p in enumerate(DATASETS, start=1):
+        label = name_from_output(p) if p else ""
+        datasets.append({"index": str(i), "name": label})
+
+    data_prefix = f"/data{selected_idx}"
+
+    generator_json = read_json(selected_root / "generator_thoughts.json")
+    rounds = discover_rounds(selected_root)
     return render_template(
         "index.html",
         request=request,
-        data_root=str(DATA_ROOT),
+        data_root=str(selected_root),
+        data_prefix=data_prefix,
+        datasets=datasets,
+        selected_dataset_index=str(selected_idx),
         rounds=rounds,
         generator=generator_json,
     )
-
-
-@app.get("/round/{round_id}", response_class=HTMLResponse)
-def round_details(request: Request, round_id: int) -> HTMLResponse:
-    rounds = discover_rounds(DATA_ROOT)
-    if round_id not in rounds:
-        raise HTTPException(status_code=404, detail="Round not found")
-    info = get_round_info(DATA_ROOT, round_id)
-    return render_template(
-        "round.html",
-        request=request,
-        round_info=info,
-        rounds=rounds,
-    )
-
 
 
 
