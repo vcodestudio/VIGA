@@ -26,7 +26,12 @@ if __name__ == "__main__":
     copy_blender_file = f"{output_dir}/blender_file.blend"
     create_empty_blend_cmd = (
         f"{blender_command} --background --factory-startup "
-        f"--python-expr \"import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.save_mainfile(filepath=\\\"{copy_blender_file}\\\")\""
+        f"--python-expr \"import bpy, math; "
+        f"bpy.ops.wm.read_factory_settings(use_empty=True); "
+        f"cam=bpy.data.cameras.new(name='Camera'); cam_obj=bpy.data.objects.new('Camera', cam); "
+        f"bpy.context.scene.collection.objects.link(cam_obj); bpy.context.scene.camera=cam_obj; "
+        f"cam_obj.location=(0.0, -5.0, 3.0); cam_obj.rotation_euler=(math.radians(60), 0.0, 0.0); "
+        f"bpy.ops.wm.save_mainfile(filepath=\\\"{copy_blender_file}\\\")\""
     )
     print(create_empty_blend_cmd)
     subprocess.run(create_empty_blend_cmd, shell=True, check=True)
@@ -39,7 +44,7 @@ if __name__ == "__main__":
     va_api_key = os.getenv("VA_API_KEY")
     api_key = os.getenv("OPENAI_API_KEY")
     openai_base_url = os.getenv("OPENAI_BASE_URL")
-    max_rounds = 100
+    max_rounds = 40
     vision_model = "gpt-5"
     cmd = f"python main.py --mode blendergym-hard --vision-model {vision_model} --api-key {api_key} --max-rounds {max_rounds} --init-code-path {copy_init_code_path} --init-image-path {init_image_path} --target-image-path {target_image_path} --output-dir {output_dir} --task-name {task_name} --generator-script {generator_script} --verifier-script {verifier_script} --blender-server-path {blender_server_path} --blender-command {blender_command} --blender-file {copy_blender_file} --blender-script {copy_blender_script} --save-blender-file --scene-server-path {scene_server_path} --meshy_api_key {meshy_api_key} --va_api_key {va_api_key}"
     print(cmd)

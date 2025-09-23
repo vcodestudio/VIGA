@@ -180,7 +180,7 @@ async def main():
             # Add render results to generator as feedback
             await generator.add_feedback(result["output"])
             
-            print("Step 3: Verifier analyzing scene...")
+            print("Step 2: Verifier analyzing scene...")
             verify_result = await verifier.call(
                 code=gen_result["code"],
                 render_path=result["output"],
@@ -199,7 +199,7 @@ async def main():
                 print(f"Verifier error: {verify_result.get('error')}")
                 break
             
-            print("Step 4: Saving thought processes...")
+            print("Step 3: Saving thought processes...")
             await generator.save_thought_process()
             await verifier.save_thought_process()
             await asyncio.sleep(1)
