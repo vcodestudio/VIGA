@@ -34,6 +34,9 @@ _meshy_api = None
 # Global image cropper instance
 _image_cropper = None
 
+# Global save_dir
+_save_dir = None
+
 class Executor:
     def __init__(self,
                  blender_command: str,
@@ -406,20 +409,19 @@ def generate_and_download_3d_asset(
     object_name: str,
     reference_type: str,
     object_description: str = None,
-    save_dir: str = "assets",
 ) -> dict:
     generate_result = None
     if generate_result is None:
         if reference_type == "text":
-            generate_result = download_meshy_asset(object_name=object_name, description=object_description, save_dir=save_dir)
+            generate_result = download_meshy_asset(object_name=object_name, description=object_description, save_dir=_save_dir)
         elif reference_type == "image":
             cropped_bbox = _image_cropper.crop_image_by_text(object_name=object_name)
             cropped_bbox = cropped_bbox['data'][0][0]['bounding_box']
             cropped_image = PIL.Image.open(_image_cropper.target_image_path).crop(cropped_bbox)
-            save_path = os.path.join(save_dir, f"cropped_{object_name}.png")
-            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(_save_dir, f"cropped_{object_name}.png")
+            os.makedirs(_save_dir, exist_ok=True)
             cropped_image.save(save_path)
-            generate_result = download_meshy_asset_from_image(image_path=save_path, object_name=object_name, save_dir=save_dir)
+            generate_result = download_meshy_asset_from_image(image_path=save_path, object_name=object_name, save_dir=_save_dir)
     
     return generate_result
     
@@ -454,6 +456,7 @@ def initialize_executor(args: dict) -> dict:
             blender_save=args.get("blender_save"),
             gpu_devices=args.get("gpu_devices")
         )
+        _save_dir = os.path.dirname(args.get("script_save")) + '/assets'
         if args.get("meshy_api_key"):
             _meshy_api = MeshyAPI(args.get("meshy_api_key"))
         if args.get("va_api_key") and args.get("target_image_path"):
@@ -497,7 +500,7 @@ def main():
         script_save = "output/test/christmas1/scripts"
         render_save = "output/test/christmas1/renders"
         target_image_path = "data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png"
-
+        save_dir = os.path.dirname(script_save) + '/assets'
         os.makedirs(script_save, exist_ok=True)
         os.makedirs(render_save, exist_ok=True)
 
@@ -523,7 +526,7 @@ def main():
             object_name="snowman",
             reference_type="text",
             object_description="A white snowman with a black hat and a red scarf.",
-            save_dir="output/test/christmas1/assets"
+            save_dir=_save_dir
         )
         print(f"[TEST] generate_and_download_3d_asset response: {gen_resp}")
         sys.exit(0)

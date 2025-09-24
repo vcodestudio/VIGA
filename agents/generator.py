@@ -102,7 +102,7 @@ class GeneratorAgent:
             self.memory = copy.deepcopy(self.system_prompt)
             
         if self.mode == "blendergym-hard" and self.level == "level4":
-            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.config.get("blender_file_path"))})
+            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.config.get("blender_file"))})
         
         try:
             chat_args = {

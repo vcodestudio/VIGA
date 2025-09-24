@@ -157,7 +157,7 @@ class ExternalToolClient:
         except Exception as e:
             raise RuntimeError(f"{server_type.capitalize()} script execution failed: {str(e)}")
     
-    async def call_tool(self, server_type: str, tool_name: str, tool_args: dict, timeout: int = 120) -> Any:
+    async def call_tool(self, server_type: str, tool_name: str, tool_args: dict, timeout: int = 3600) -> Any:
         """Call a specific tool on the external server with timeout."""
         session = self.mcp_sessions.get(server_type)
         if not session:
