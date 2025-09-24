@@ -446,6 +446,7 @@ def initialize_executor(args: dict) -> dict:
     global _executor
     global _meshy_api
     global _image_cropper
+    global _save_dir
     try:
         _executor = Executor(
             blender_command=args.get("blender_command"),
