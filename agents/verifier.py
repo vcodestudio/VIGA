@@ -11,7 +11,7 @@ from agents.tool_client import ExternalToolClient
 from agents.prompt_builder import PromptBuilder
 from agents.tool_manager import ToolManager
 from agents.tool_handler import ToolHandler
-from agents.utils import save_thought_process
+from agents.utils import get_scene_info, save_thought_process, get_blendergym_hard_level
 
 class VerifierAgent:
     def __init__(self, **kwargs):
@@ -24,6 +24,12 @@ class VerifierAgent:
         self.task_name = self.config.get("task_name")
         self.max_rounds = self.config.get("max_rounds", 10)
         self.current_round = 0
+        
+        # Handle blendergym-hard level detection
+        if self.mode == "blendergym-hard":
+            self.level = get_blendergym_hard_level(self.task_name)
+        else:
+            self.level = None
         
         # Initialize OpenAI client
         api_base_url = self.config.get("api_base_url")
@@ -95,6 +101,9 @@ class VerifierAgent:
         verify_message = self.prompt_builder.build_verify_message(self.config, code, render_path, current_image_path_ref)
         self.current_image_path = current_image_path_ref[0]  # Update the reference
         self.memory.append(verify_message)
+        
+        if self.mode == "blendergym-hard" and self.level == "level4":
+            self.memory.append({"role": "user", "content": get_scene_info(self.task_name, self.config.get("blender_file"))})
         
         # start verification
         try:

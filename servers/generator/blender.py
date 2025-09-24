@@ -27,7 +27,6 @@ mcp = FastMCP("blender-executor")
 # Global executor instance
 _executor = None
 
-
 # Global meshy API instance
 _meshy_api = None
 
@@ -267,8 +266,6 @@ class ImageCropper:
         }
         response = requests.post(self.url, files=files, data=data, headers=self.headers)
         return response.json()
-
-
 
 
 def download_meshy_asset(

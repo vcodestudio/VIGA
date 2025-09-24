@@ -113,28 +113,24 @@ class Investigator3D:
         self.cam = self._get_or_create_cam()
 
     def _get_or_create_cam(self):
-        if "InvestigatorCamera" in bpy.data.objects:
-            return bpy.data.objects["InvestigatorCamera"]
-        bpy.ops.object.camera_add()
-        cam = bpy.context.active_object
-        cam.name = "InvestigatorCamera"
+        # if "InvestigatorCamera" in bpy.data.objects:
+        #     return bpy.data.objects["InvestigatorCamera"]
+        # bpy.ops.object.camera_add()
+        # cam = bpy.context.active_object
+        # cam.name = "InvestigatorCamera"
         # optional: copy from existing Camera1
         if 'Camera1' in bpy.data.objects:
-            cam.matrix_world.translation = bpy.data.objects['Camera1'].matrix_world.translation.copy()
-            print("Copy from Camera1!")
+            return bpy.data.objects['Camera1']
         else:
             # select any camera
             for existing_cam in bpy.data.objects:
                 if existing_cam.type == 'CAMERA':
-                    cam.matrix_world.translation = existing_cam.matrix_world.translation.copy()
-                    print(f"Copy from Camera: {existing_cam.name}!")
-                    break
-            else:
-                # randomly initialize a camera position
-                cam.location = (5, 5, 5)
-                cam.rotation_euler = (0, 0, 0)
-                cam.data.lens = 20
-        return cam
+                    return existing_cam
+            # randomly initialize a camera position
+            bpy.ops.object.camera_add(location=(5, 5, 5), rotation=(0, 0, 0))
+            cam = bpy.context.active_object
+            cam.data.lens = 20
+            return cam
 
     def _render(self, round_num: int):
         bpy.context.scene.camera = self.cam
@@ -337,8 +333,8 @@ def test_tools():
     print("=" * 50)
 
     # 设置测试路径
-    blender_file = "data/blendergym/_hard1/blender_file.blend"
-    test_save_dir = "output/scene_test"
+    blender_file = "output/demo/blendergym_hard/20250924_132209/blender_file.blend"
+    test_save_dir = "output/test/scene_test"
 
     # 检查 blender 文件是否存在
     if not os.path.exists(blender_file):
@@ -356,9 +352,9 @@ def test_tools():
         if result.get("status") == "success":
             print("✓ get_scene_info passed")
             info = result.get("info", {})
-            print(f"  - Objects: {len(info.get('objects', []))}")
-            print(f"  - Materials: {len(info.get('materials', []))}")
-            print(f"  - Lights: {len(info.get('lights', []))}")
+            # print(f"  - Objects: {len(info.get('objects', []))}")
+            # print(f"  - Materials: {len(info.get('materials', []))}")
+            # print(f"  - Lights: {len(info.get('lights', []))}")
             print(f"  - Cameras: {len(info.get('cameras', []))}")
 
             # 获取第一个对象名称用于后续测试
@@ -368,7 +364,7 @@ def test_tools():
                 # 继续 Meshy 测试
                 first_object = None
             else:
-                first_object = objects[0]["name"]
+                first_object = 'Chair_Rig'
                 print(f"  - Will focus on: {first_object}")
         else:
             print("✗ get_scene_info failed")
@@ -380,8 +376,8 @@ def test_tools():
     # 测试 2: 初始化调查工具
     print("\n2. Testing initialize_investigator...")
     try:
-        result = initialize_investigator(test_save_dir, blender_file)
-        print(f"Result: {result}")
+        args = {"thought_save": test_save_dir, "blender_file": blender_file}
+        result = initialize_investigator(args)
         if result.get("status") == "success":
             print("✓ initialize_investigator passed")
         else:
@@ -393,14 +389,12 @@ def test_tools():
     if first_object:
         print("\n3. Testing focus...")
         try:
-            result = focus(first_object, 1)
+            result = focus(object_name=first_object, round_num=1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ focus passed")
                 print(f"  - Focused on: {first_object}")
                 print(f"  - Image saved: {result.get('image', 'N/A')}")
-                camera_pos = result.get('camera_position', {})
-                print(f"  - Camera position: {camera_pos.get('location', 'N/A')}")
             else:
                 print("✗ focus failed")
         except Exception as e:
@@ -409,13 +403,11 @@ def test_tools():
         # 测试 4: 缩放功能
         print("\n4. Testing zoom...")
         try:
-            result = zoom("in", 1)
+            result = zoom(direction="in", round_num=1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ zoom passed")
                 print(f"  - Image saved: {result.get('image', 'N/A')}")
-                camera_pos = result.get('camera_position', {})
-                print(f"  - Camera position: {camera_pos.get('location', 'N/A')}")
             else:
                 print("✗ zoom failed")
         except Exception as e:
@@ -424,13 +416,11 @@ def test_tools():
         # 测试 5: 移动功能
         print("\n5. Testing move...")
         try:
-            result = move("up", 1)
+            result = move(direction="up", round_num=1)
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ move passed")
                 print(f"  - Image saved: {result.get('image', 'N/A')}")
-                camera_pos = result.get('camera_position', {})
-                print(f"  - Camera position: {camera_pos.get('location', 'N/A')}")
             else:
                 print("✗ move failed")
         except Exception as e:
