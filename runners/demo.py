@@ -26,11 +26,8 @@ if __name__ == "__main__":
     copy_blender_file = f"{output_dir}/blender_file.blend"
     create_empty_blend_cmd = (
         f"{blender_command} --background --factory-startup "
-        f"--python-expr \"import bpy, math; "
+        f"--python-expr \"import bpy; "
         f"bpy.ops.wm.read_factory_settings(use_empty=True); "
-        f"cam=bpy.data.cameras.new(name='Camera'); cam_obj=bpy.data.objects.new('Camera', cam); "
-        f"bpy.context.scene.collection.objects.link(cam_obj); bpy.context.scene.camera=cam_obj; "
-        f"cam_obj.location=(0.0, -5.0, 3.0); cam_obj.rotation_euler=(math.radians(60), 0.0, 0.0); "
         f"bpy.ops.wm.save_mainfile(filepath=\\\"{copy_blender_file}\\\")\""
     )
     print(create_empty_blend_cmd)
