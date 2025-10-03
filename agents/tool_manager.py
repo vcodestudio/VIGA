@@ -44,6 +44,34 @@ class ToolManager:
                     }
                 } 
                 return [meshy_tool]
+        elif mode in ["blendergym", "autopresent", "design2code"]:
+            # Add execute_script tool for code execution modes
+            exec_script_tool = {
+                "type": "function",
+                "function": {
+                    "name": "execute_script",
+                    "description": "Execute code with thought process, code edition, and full code. Use this tool to execute your code modifications.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "thought": {
+                                "type": "string",
+                                "description": "Analyze the current state and provide a clear plan for the required changes."
+                            },
+                            "code_edition": {
+                                "type": "string", 
+                                "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]"
+                            },
+                            "full_code": {
+                                "type": "string",
+                                "description": "Merge your code changes into the full code with proper formatting."
+                            }
+                        },
+                        "required": ["thought", "code_edition", "full_code"]
+                    }
+                }
+            }
+            return [exec_script_tool]
         else:
             return []
     

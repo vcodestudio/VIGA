@@ -77,7 +77,7 @@ class GeneratorAgent:
     
     async def setup_executor(self, **kwargs):
         await self._ensure_server_connected()
-        result = await self.tool_client.initialize_executor(self.server_type, **kwargs)
+        result = await self.tool_client.call_tool(self.server_type, "initialize_executor", **kwargs)
         return result
     
     def _get_tools(self) -> List[Dict]:
@@ -163,21 +163,10 @@ class GeneratorAgent:
                 # if full_code is None:
                 #     full_code = open(last_full_code).read()
             
-            # Auto-execute code if it contains "Full Code" and we're in a mode that supports code execution
+            # No auto-execution - exec_script is now handled as a tool
             execution_result = None
             if message.tool_calls: 
                 execution_result = {"status": "success", "result": {"status": "success", "output": return_results}}
-            else:
-                try:
-                    self.current_round += 1
-                    execution_result = await self.tool_handler.execute_script(
-                        code=full_code,
-                        round_num=self.current_round,
-                    )
-                    logging.info(f"Auto-executed code for round {self.current_round}")
-                except Exception as e:
-                    logging.error(f"Failed to auto-execute code: {e}")
-                    execution_result = {"status": "error", "error": str(e)}
             
             return {
                 "status": "success",

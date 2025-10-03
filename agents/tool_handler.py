@@ -93,22 +93,44 @@ class ToolHandler:
                         'text': f"Unknown operation: {op}",
                         'success': False
                     }
+            
+            elif function_name == "execute_script":
+                thought = function_args.get("thought", "")
+                code_edition = function_args.get("code_edition", "")
+                full_code = function_args.get("full_code", "")
+                
+                try:
+                    result = await self.tool_client.call_tool(
+                        server_type=self.server_type,
+                        tool_name="exec_script",
+                        code=full_code,
+                        round_num=1  # Default round number for tool calls
+                    )
+                    
+                    # Format the response to include all three components
+                    response_text = f"Thought: {thought}\n\nCode Edition: {code_edition}\n\nExecution Result: {result.get('text', 'No output')}"
+                    
+                    return {
+                        'text': response_text,
+                        'success': result.get('success', True),
+                        'thought': thought,
+                        'code_edition': code_edition,
+                        'full_code': full_code,
+                        'execution_result': result
+                    }
+                except Exception as e:
+                    return {
+                        'text': f"Error executing script: {str(e)}",
+                        'success': False,
+                        'thought': thought,
+                        'code_edition': code_edition,
+                        'full_code': full_code
+                    }
+            
             else:
                 return {'text': f"Unknown tool: {function_name}", 'success': False}
         except Exception as e:
             return {'text': f"Error executing tool: {str(e)}", 'success': False}
-    
-    async def execute_script(self, code: str, round_num: int = None) -> Dict[str, Any]:
-        """Execute code directly (Blender Python, HTML, etc.)."""
-        try:
-            result = await self.tool_client.exec_script(
-                server_type=self.server_type,
-                code=code,
-                round_num=round_num or 1,
-            )
-            return result
-        except Exception as e:
-            return {'text': f"Error executing script: {str(e)}", 'success': False}
     
     async def handle_verifier_tool_call(self, tool_call, current_image_path: str = None, target_image_path: str = None, round_num: int = None) -> Dict[str, Any]:
         """Handle tool calls from the verifier agent."""
