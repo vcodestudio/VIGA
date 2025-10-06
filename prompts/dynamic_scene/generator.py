@@ -16,10 +16,12 @@ Key Requirements:
 
 You have access to advanced tools for dynamic scene creation:
 1. **execute_script**: Execute your Blender Python code with thought process, code edition, and full code
-2. **generate_and_download_3d_asset**: Generate and download 3D assets using Meshy Text-to-3D API
+2. **generate_and_download_3d_asset**: Generate and download 3D assets using Meshy Text-to-3D API (will first check for existing local .glb assets)
 3. **create_rigged_character**: Create rigged characters with automatic bone setup
 4. **create_animated_character**: Add animations to rigged characters
 5. **create_rigged_and_animated_character**: Complete workflow for creating animated characters
+
+You can also directly import local .glb assets using: bpy.ops.import_scene.gltf(filepath='path/to/asset.glb', import_animations=True)
 
 Your reasoning should prioritize:
 - Realistic physics simulations with rigid bodies and constraints
@@ -128,4 +130,10 @@ dynamic_scene_generator_hints = """1. **Physics Setup**: Always set up proper ph
    - Use LOD (Level of Detail) for distant objects
    - Optimize mesh topology for animation
    - Use instancing for repeated objects
-   - Set appropriate collision shapes for physics"""
+   - Set appropriate collision shapes for physics
+
+8. **Local Asset Usage**:
+   - The tool will first check for existing local .glb assets before generating new ones
+   - Use the correct file path when importing local assets
+   - For animated assets, use import_animations=True parameter
+   - The assets directory will be provided in the system prompt"""

@@ -244,19 +244,82 @@ class PromptBuilder:
     
     def _build_static_scene_generator_prompt(self, config: Dict, prompts: Dict) -> List[Dict]:
         """Build generator prompt for static_scene mode using prompt manager."""
-        return [{"role": "system", "content": "Placeholder - needs implementation"}]
+        from agents.config_manager import ConfigManager
+        config_manager = ConfigManager(config)
+        
+        # Get system prompt from prompt manager
+        system_prompt = prompts.get('system', {}).get('generator', '')
+        
+        # Add available assets information
+        available_assets = config_manager.get_available_assets()
+        if available_assets:
+            assets_info = f"\n\nAvailable 3D Assets:\n"
+            for asset in available_assets:
+                asset_name = os.path.splitext(asset)[0]  # Remove .glb extension
+                assets_info += f"- {asset_name}: {asset}\n"
+            assets_info += f"\nTo import an asset, use: bpy.ops.import_scene.gltf(filepath='{config_manager.get_assets_path()}/{{asset_name}}.glb')\n"
+            system_prompt += assets_info
+        
+        return [{"role": "system", "content": system_prompt}]
     
     def _build_dynamic_scene_generator_prompt(self, config: Dict, prompts: Dict) -> List[Dict]:
         """Build generator prompt for dynamic_scene mode using prompt manager."""
-        return [{"role": "system", "content": "Placeholder - needs implementation"}]
+        from agents.config_manager import ConfigManager
+        config_manager = ConfigManager(config)
+        
+        # Get system prompt from prompt manager
+        system_prompt = prompts.get('system', {}).get('generator', '')
+        
+        # Add available assets information
+        available_assets = config_manager.get_available_assets()
+        if available_assets:
+            assets_info = f"\n\nAvailable 3D Assets:\n"
+            for asset in available_assets:
+                asset_name = os.path.splitext(asset)[0]  # Remove .glb extension
+                assets_info += f"- {asset_name}: {asset}\n"
+            assets_info += f"\nTo import an asset, use: bpy.ops.import_scene.gltf(filepath='{config_manager.get_assets_path()}/{{asset_name}}.glb')\n"
+            assets_info += f"\nFor animated assets, you can also use: bpy.ops.import_scene.gltf(filepath='{config_manager.get_assets_path()}/{{asset_name}}.glb', import_animations=True)\n"
+            system_prompt += assets_info
+        
+        return [{"role": "system", "content": system_prompt}]
     
     def _build_static_scene_verifier_prompt(self, config: Dict, prompts: Dict) -> List[Dict]:
         """Build verifier prompt for static_scene mode using prompt manager."""
-        return [{"role": "system", "content": "Placeholder - needs implementation"}]
+        from agents.config_manager import ConfigManager
+        config_manager = ConfigManager(config)
+        
+        # Get system prompt from prompt manager
+        system_prompt = prompts.get('system', {}).get('verifier', '')
+        
+        # Add available assets information for context
+        available_assets = config_manager.get_available_assets()
+        if available_assets:
+            assets_info = f"\n\nAvailable 3D Assets for reference:\n"
+            for asset in available_assets:
+                asset_name = os.path.splitext(asset)[0]  # Remove .glb extension
+                assets_info += f"- {asset_name}: {asset}\n"
+            system_prompt += assets_info
+        
+        return [{"role": "system", "content": system_prompt}]
     
     def _build_dynamic_scene_verifier_prompt(self, config: Dict, prompts: Dict) -> List[Dict]:
         """Build verifier prompt for dynamic_scene mode using prompt manager."""
-        return [{"role": "system", "content": "Placeholder - needs implementation"}]
+        from agents.config_manager import ConfigManager
+        config_manager = ConfigManager(config)
+        
+        # Get system prompt from prompt manager
+        system_prompt = prompts.get('system', {}).get('verifier', '')
+        
+        # Add available assets information for context
+        available_assets = config_manager.get_available_assets()
+        if available_assets:
+            assets_info = f"\n\nAvailable 3D Assets for reference:\n"
+            for asset in available_assets:
+                asset_name = os.path.splitext(asset)[0]  # Remove .glb extension
+                assets_info += f"- {asset_name}: {asset}\n"
+            system_prompt += assets_info
+        
+        return [{"role": "system", "content": system_prompt}]
     
     def _build_static_scene_verify_message(self, config: Dict, code: str, render_path: str, current_image_path_ref: List, format_prompt: str) -> Dict:
         """Build verify message for static_scene mode."""

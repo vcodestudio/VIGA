@@ -3,7 +3,7 @@ Configuration Manager for AgenticVerifier
 Centralizes configuration logic and provides clear boolean flags for complex conditions.
 """
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 class ConfigManager:
@@ -18,15 +18,17 @@ class ConfigManager:
         # Basic configuration
         self.mode = config.get("mode")
         self.task_name = config.get("task_name")
-        self.level = self._extract_level()
         
-        # Server configuration flags
+        # Server configuration flags (must be set before _extract_level)
         self.is_blender_mode = self.mode in ["blendergym", "blendergym-hard", "static_scene", "dynamic_scene"]
         self.is_slides_mode = self.mode == "autopresent"
         self.is_html_mode = self.mode == "design2code"
         self.is_blendergym_hard_mode = self.mode == "blendergym-hard"
         self.is_static_scene_mode = self.mode == "static_scene"
         self.is_dynamic_scene_mode = self.mode == "dynamic_scene"
+        
+        # Extract level after flags are set
+        self.level = self._extract_level()
         
         # Level-specific flags for blendergym-hard
         self.is_level4 = self.is_blendergym_hard_mode and self.level == "level4"
@@ -142,6 +144,33 @@ class ConfigManager:
         """Check if scene info should be added to the prompt."""
         return self.requires_scene_info
     
+    def get_assets_path(self) -> Optional[str]:
+        """Get the assets directory path for static_scene and dynamic_scene modes."""
+        if self.is_static_scene_mode or self.is_dynamic_scene_mode:
+            # Extract task path from target_image_path first, then output_dir
+            if self.target_image_path:
+                # target_image_path format: data/static_scene/task_name/target.png
+                task_path = os.path.dirname(self.target_image_path)
+                return os.path.join(task_path, "assets")
+            elif self.output_dir:
+                # output_dir format: output/static_scene/timestamp/task_name
+                # For output_dir, we need to look for assets in the original data directory
+                # This is a fallback and may not work in all cases
+                return None
+        return None
+    
+    def get_available_assets(self) -> List[str]:
+        """Get list of available .glb assets for static_scene and dynamic_scene modes."""
+        assets_path = self.get_assets_path()
+        if not assets_path or not os.path.exists(assets_path):
+            return []
+        
+        assets = []
+        for file in os.listdir(assets_path):
+            if file.endswith('.glb'):
+                assets.append(file)
+        return sorted(assets)
+    
     def get_scene_info_config(self) -> Dict[str, Any]:
         """Get configuration for scene info if needed."""
         if self.should_add_scene_info():
@@ -170,7 +199,7 @@ class ConfigManager:
         
         # Add mode-specific configurations
         if self.is_blender_mode:
-            setup_config.update({
+            blender_config = {
                 "blender_server_path": self.blender_server_path,
                 "blender_command": self.config.get("blender_command"),
                 "blender_file": self.blender_file,
@@ -180,7 +209,15 @@ class ConfigManager:
                 "blender_save": os.path.join(self.output_dir, "blender_file.blend") if self.save_blender_file else None,
                 "meshy_api_key": self.meshy_api_key,
                 "va_api_key": self.va_api_key,
-            })
+            }
+            
+            # Add task assets directory for static_scene and dynamic_scene modes
+            if self.is_static_scene_mode or self.is_dynamic_scene_mode:
+                assets_path = self.get_assets_path()
+                if assets_path:
+                    blender_config["task_assets_dir"] = assets_path
+            
+            setup_config.update(blender_config)
         elif self.is_slides_mode:
             setup_config.update({
                 "slides_server_path": self.slides_server_path,

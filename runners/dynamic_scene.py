@@ -84,12 +84,17 @@ def load_dynamic_scene_dataset(base_path: str, task_name: str, test_id: Optional
             with open(animation_config_path, 'r') as f:
                 animation_config = json.load(f)
         
+        # Check for assets directory
+        assets_path = task_path / "assets"
+        assets_dir = str(assets_path) if assets_path.exists() else None
+        
         task_config = {
             "task_name": task,
             "task_id": task,
             "target_image_path": target_image_path,
             "target_description": target_description,
             "animation_config": animation_config,
+            "assets_dir": assets_dir,  # Add assets directory path
             "output_dir": f"output/dynamic_scene/{test_id or time.strftime('%Y%m%d_%H%M%S')}/{task}",
             "init_code_path": None,  # Dynamic scenes start from scratch
             "init_image_path": None,  # No initial scene

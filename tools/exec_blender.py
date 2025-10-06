@@ -118,6 +118,18 @@ def generate_and_download_3d_asset(
     reference_type: str,
     object_description: str = None,
 ) -> dict:
+    # First check if local asset exists in task assets directory
+    local_asset_path = _check_local_asset(object_name)
+    if local_asset_path:
+        return {
+            "status": "success",
+            "message": f"Local asset found: {local_asset_path}",
+            "object_name": object_name,
+            "local_path": local_asset_path,
+            "save_dir": _save_dir
+        }
+    
+    # If no local asset found, proceed with Meshy generation
     if reference_type == "text":
         generate_result = download_meshy_asset(
             object_name=object_name, 
@@ -140,6 +152,32 @@ def generate_and_download_3d_asset(
         )
     
     return generate_result
+
+def _check_local_asset(object_name: str) -> str:
+    """Check if a local .glb asset exists for the given object name."""
+    if not hasattr(_check_local_asset, '_task_assets_dir'):
+        # Try to determine task assets directory from current context
+        # This will be set during initialization
+        return None
+    
+    assets_dir = _check_local_asset._task_assets_dir
+    if not assets_dir or not os.path.exists(assets_dir):
+        return None
+    
+    # Look for exact match first
+    exact_path = os.path.join(assets_dir, f"{object_name}.glb")
+    if os.path.exists(exact_path):
+        return exact_path
+    
+    # Look for fuzzy match (case-insensitive, space-removed)
+    object_name_clean = object_name.replace(" ", "").lower()
+    for asset_file in os.listdir(assets_dir):
+        if asset_file.endswith('.glb'):
+            asset_name_clean = os.path.splitext(asset_file)[0].replace(" ", "").lower()
+            if object_name_clean in asset_name_clean or asset_name_clean in object_name_clean:
+                return os.path.join(assets_dir, asset_file)
+    
+    return None
     
 @mcp.tool()
 def initialize_executor(args: dict) -> dict:
@@ -174,6 +212,12 @@ def initialize_executor(args: dict) -> dict:
             gpu_devices=args.get("gpu_devices")
         )
         _save_dir = os.path.dirname(args.get("script_save")) + '/assets'
+        
+        # Set up task assets directory for local asset checking
+        task_assets_dir = args.get("task_assets_dir")
+        if task_assets_dir:
+            _check_local_asset._task_assets_dir = task_assets_dir
+        
         if args.get("meshy_api_key"):
             _meshy_api = MeshyAPI(args.get("meshy_api_key"))
         if args.get("va_api_key") and args.get("target_image_path"):

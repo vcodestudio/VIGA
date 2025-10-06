@@ -32,6 +32,7 @@ async def main():
     parser.add_argument("--target-description", default=None, help="Target description for 2D mode")
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument("--task-name", default="blendshape", help="Task name for hints extraction")
+    parser.add_argument("--assets-dir", default=None, help="Assets directory path for static_scene and dynamic_scene modes")
     parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     
     # Agent server paths 
@@ -116,6 +117,7 @@ async def main():
             "meshy_api_key": args.meshy_api_key,
             "va_api_key": args.va_api_key,
             "gpu_devices": args.gpu_devices,
+            "assets_dir": args.assets_dir,
         }
         
         # Create config manager and get setup configurations

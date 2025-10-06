@@ -52,6 +52,8 @@ def load_static_scene_dataset(base_path: str, task_name: str, test_id: Optional[
         if not task_path.exists():
             print(f"Warning: Task directory not found: {task_path}")
             continue
+        
+        print("task_path:", task_path)
             
         # Look for target images
         target_image_path = None
@@ -73,11 +75,16 @@ def load_static_scene_dataset(base_path: str, task_name: str, test_id: Optional[
             with open(description_path, 'r') as f:
                 target_description = f.read().strip()
         
+        # Check for assets directory
+        assets_path = task_path / "assets"
+        assets_dir = str(assets_path) if assets_path.exists() else None
+        
         task_config = {
             "task_name": task,
             "task_id": task,
             "target_image_path": target_image_path,
             "target_description": target_description,
+            "assets_dir": assets_dir,  # Add assets directory path
             "output_dir": f"output/static_scene/{test_id or time.strftime('%Y%m%d_%H%M%S')}/{task}",
             "init_code_path": None,  # Static scenes start from scratch
             "init_image_path": None,  # No initial scene
