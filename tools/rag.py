@@ -402,73 +402,44 @@ def rag_query(instruction: str, use_enhanced: bool = False) -> Dict:
 
 
 # MCP 工具接口
-try:
-    from mcp.server.fastmcp import FastMCP
-    mcp = FastMCP("rag-tool")
-    
-    @mcp.tool()
-    def rag_query_tool(instruction: str, use_enhanced: bool = False) -> dict:
-        """
-        根据输入的指令查找bpy和Infinigen中相关的文档并生成代码示例
-        
-        Args:
-            instruction: 用户指令，例如"要遵循物理规律地放置某个物体"
-            use_enhanced: 是否使用OpenAI增强生成（需要OpenAI API key）
-            
-        Returns:
-            dict: 包含解析结果、相关API和生成代码的字典
-        """
-        return rag_query(instruction, use_enhanced)
-    
-    @mcp.tool()
-    def initialize_rag_tool(openai_api_key: str = None) -> dict:
-        """
-        初始化RAG工具
-        
-        Args:
-            openai_api_key: OpenAI API密钥（可选）
-            
-        Returns:
-            dict: 初始化结果
-        """
-        try:
-            global _rag_tool
-            _rag_tool = BlenderInfinigenRAG(openai_api_key)
-            return {"status": "success", "message": "RAG tool initialized successfully"}
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
-    
-    def main():
-        """运行MCP服务器"""
-        mcp.run(transport="stdio")
-        
-except ImportError:
-    # 如果没有MCP库，提供简单的命令行接口
-    def main():
-        print("MCP library not available. Running in standalone mode.")
-        print("Use the BlenderInfinigenRAG class directly.")
-        
-        # 示例使用
-        rag = BlenderInfinigenRAG()
-        
-        # 测试示例
-        test_instructions = [
-            "要遵循物理规律地放置一个立方体",
-            "创建一个球体并设置物理属性",
-            "在位置(1, 2, 3)创建一个平面作为地面",
-            "设置重力为-10，质量为2.0的物理模拟"
-        ]
-        
-        for instruction in test_instructions:
-            print(f"\n指令: {instruction}")
-            print("=" * 50)
-            result = rag.rag_query(instruction)
-            if result['status'] == 'success':
-                print("生成的代码:")
-                print(result['code_example'])
-            else:
-                print(f"错误: {result['error']}")
+from mcp.server.fastmcp import FastMCP
+mcp = FastMCP("rag-tool")
 
+@mcp.tool()
+def rag_query_tool(instruction: str, use_enhanced: bool = False) -> dict:
+    """
+    根据输入的指令查找bpy和Infinigen中相关的文档并生成代码示例
+    
+    Args:
+        instruction: 用户指令，例如"要遵循物理规律地放置某个物体"
+        use_enhanced: 是否使用OpenAI增强生成（需要OpenAI API key）
+        
+    Returns:
+        dict: 包含解析结果、相关API和生成代码的字典
+    """
+    return rag_query(instruction, use_enhanced)
+
+@mcp.tool()
+def initialize_rag_tool(openai_api_key: str = None) -> dict:
+    """
+    初始化RAG工具
+    
+    Args:
+        openai_api_key: OpenAI API密钥（可选）
+        
+    Returns:
+        dict: 初始化结果
+    """
+    try:
+        global _rag_tool
+        _rag_tool = BlenderInfinigenRAG(openai_api_key)
+        return {"status": "success", "message": "RAG tool initialized successfully"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+def main():
+    """运行MCP服务器"""
+    mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()

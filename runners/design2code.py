@@ -188,12 +188,12 @@ def main():
     parser.add_argument("--generator-script", default="agents/generator.py", help="Generator MCP script path")
     parser.add_argument("--verifier-script", default="agents/verifier.py", help="Verifier MCP script path")
 
-    # HTML execution parameters (for generator)
-    parser.add_argument("--html-server-path", default="tools/exec_html.py", help="Path to HTML execution MCP server script")
+    # Tool server scripts (comma-separated)
+    parser.add_argument("--generator-tools", default="tools/exec_html.py,tools/rag.py", help="Comma-separated list of generator tool server scripts")
     parser.add_argument("--browser-command", default="google-chrome", help="Browser command for HTML screenshots")
 
-    # Web comparison server path (verifier)
-    parser.add_argument("--image-server-path", default="tools/init_verify.py", help="Path to web comparison MCP server script")
+    # Verifier tools
+    parser.add_argument("--verifier-tools", default="tools/init_verify.py", help="Comma-separated list of verifier tool server scripts")
 
     # Parallel execution parameters
     parser.add_argument("--max-workers", type=int, default=8, help="Maximum number of parallel workers")

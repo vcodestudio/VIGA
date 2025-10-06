@@ -48,16 +48,14 @@ async def main():
     parser.add_argument("--meshy_api_key", default=os.getenv("MESHY_API_KEY"), help="Meshy API key")
     parser.add_argument("--va_api_key", default=os.getenv("VA_API_KEY"), help="VA API key")
     
-    # Slides execution parameters (for generator)
-    parser.add_argument("--slides-server-path", default="servers/generator/slides.py", help="Path to Slides MCP server script")
+    # Generator/Verifier tool servers (comma-separated list of script paths)
+    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/meshy.py,tools/exec_html.py,tools/exec_slides.py,tools/rag.py", help="Comma-separated list of generator tool server scripts")
     
     # HTML execution parameters (for generator)
-    parser.add_argument("--html-server-path", default="servers/generator/html.py", help="Path to HTML execution MCP server script")
     parser.add_argument("--browser-command", default="google-chrome", help="Browser command for HTML screenshots")
     
-    # Tool server paths (for verifier)
-    parser.add_argument("--image-server-path", default="servers/verifier/image.py", help="Path to image processing MCP server script")
-    parser.add_argument("--scene-server-path", default="servers/verifier/scene.py", help="Path to scene investigation MCP server script")
+    # Verifier tool servers (comma-separated list of script paths)
+    parser.add_argument("--verifier-tools", default="tools/init_verify.py,tools/investigator.py", help="Comma-separated list of verifier tool server scripts")
     
     args = parser.parse_args()
 
@@ -103,12 +101,9 @@ async def main():
             "api_base_url": args.openai_base_url,
             "thought_save": args.output_dir + "/generator_thoughts.json",
             "output_dir": args.output_dir,
-            # Server paths
-            "blender_server_path": args.blender_server_path,
-            "slides_server_path": args.slides_server_path,
-            "html_server_path": args.html_server_path,
-            "image_server_path": args.image_server_path,
-            "scene_server_path": args.scene_server_path,
+            # Tool server scripts
+            "generator_tools": [p for p in (args.generator_tools.split(",") if args.generator_tools else [])],
+            "verifier_tools": [p for p in (args.verifier_tools.split(",") if args.verifier_tools else [])],
             # Blender-specific parameters
             "blender_command": args.blender_command,
             "blender_file": args.blender_file,

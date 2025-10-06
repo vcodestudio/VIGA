@@ -122,6 +122,17 @@ def run_dynamic_scene_task(task_config: Dict, args) -> tuple:
     
     # Create output directory
     os.makedirs(task_config["output_dir"], exist_ok=True)
+
+    # Create an empty blender file inside output_dir for build-from-scratch flows
+    created_blender_file = os.path.join(task_config["output_dir"], "blender_file.blend")
+    try:
+        create_empty_blend_cmd = (
+            f"{args.blender_command} --background --factory-startup "
+            f"--python-expr \"import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.save_mainfile(filepath='" + created_blender_file + "')\""
+        )
+        subprocess.run(create_empty_blend_cmd, shell=True, check=True)
+    except Exception as e:
+        print(f"Warning: Failed to create empty blender file: {e}. Proceeding anyway.")
     
     # Build main.py command
     cmd = [
@@ -138,7 +149,7 @@ def run_dynamic_scene_task(task_config: Dict, args) -> tuple:
         "--verifier-script", args.verifier_script,
         "--blender-server-path", args.blender_server_path,
         "--blender-command", args.blender_command,
-        "--blender-file", args.blender_file,
+        "--blender-file", created_blender_file,
         "--blender-script", args.blender_script,
         "--scene-server-path", args.scene_server_path,
         "--meshy_api_key", args.meshy_api_key,
@@ -240,10 +251,9 @@ def main():
     parser.add_argument("--blender-script", default="data/dynamic_scene/pipeline_render_script.py", help="Blender execution script")
     parser.add_argument("--save-blender-file", action="store_true", help="Save blender file")
     
-    # Tool server paths
-    parser.add_argument("--generator-script", default="agents/generator.py", help="Generator MCP script path")
-    parser.add_argument("--verifier-script", default="agents/verifier.py", help="Verifier MCP script path")
-    parser.add_argument("--scene-server-path", default="tools/investigator.py", help="Scene server path")
+    # Tool server scripts (comma-separated)
+    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/meshy.py,tools/rag.py", help="Comma-separated list of generator tool server scripts")
+    parser.add_argument("--verifier-tools", default="tools/init_verify.py,tools/investigator.py", help="Comma-separated list of verifier tool server scripts")
     
     # API keys
     parser.add_argument("--meshy_api_key", default=os.getenv("MESHY_API_KEY"), help="Meshy API key")

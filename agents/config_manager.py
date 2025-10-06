@@ -39,12 +39,9 @@ class ConfigManager:
         self.has_execute_tools = self.mode in ["blendergym", "autopresent", "design2code", "static_scene", "dynamic_scene"]
         self.has_verifier_tools = self.mode in ["blendergym", "blendergym-hard", "static_scene", "dynamic_scene"]
         
-        # Server paths
-        self.blender_server_path = config.get("blender_server_path")
-        self.slides_server_path = config.get("slides_server_path")
-        self.html_server_path = config.get("html_server_path")
-        self.image_server_path = config.get("image_server_path")
-        self.scene_server_path = config.get("scene_server_path")
+        # Tool server scripts (lists)
+        self.generator_tools = config.get("generator_tools", [])
+        self.verifier_tools = config.get("verifier_tools", [])
         
         # File paths
         self.init_code_path = config.get("init_code_path")
@@ -84,24 +81,16 @@ class ConfigManager:
         return None
     
     def get_generator_server_type_and_path(self) -> tuple[Optional[str], Optional[str]]:
-        """Get server type and path based on mode."""
-        if self.is_blender_mode:
-            return "blender", self.blender_server_path
-        elif self.is_slides_mode:
-            return "slides", self.slides_server_path
-        elif self.is_html_mode:
-            return "html", self.html_server_path
-        else:
-            return None, None
+        """Deprecated single-server helper: return first generator tool if provided, else None."""
+        if self.generator_tools:
+            return "blender", self.generator_tools[0]
+        return None, None
     
     def get_verifier_server_type_and_path(self) -> tuple[Optional[str], Optional[str]]:
-        """Get verifier server type and path based on mode."""
-        if self.mode in ["blendergym", "autopresent", "design2code"]:
-            return "image", self.image_server_path
-        elif self.mode in ["blendergym-hard", "static_scene", "dynamic_scene"]:
-            return "scene", self.scene_server_path
-        else:
-            return None, None
+        """Deprecated single-server helper: return first verifier tool if provided, else None."""
+        if self.verifier_tools:
+            return "image", self.verifier_tools[0]
+        return None, None
     
     def get_target_image_path_for_mode(self) -> Optional[str]:
         """Get the appropriate target image path based on mode and level."""
@@ -201,7 +190,7 @@ class ConfigManager:
         # Add mode-specific configurations
         if self.is_blender_mode:
             blender_config = {
-                "blender_server_path": self.blender_server_path,
+                "blender_server_path": None,
                 "blender_command": self.config.get("blender_command"),
                 "blender_file": self.blender_file,
                 "blender_script": self.config.get("blender_script"),
@@ -219,14 +208,7 @@ class ConfigManager:
                     blender_config["task_assets_dir"] = assets_path
             
             setup_config.update(blender_config)
-        elif self.is_slides_mode:
-            setup_config.update({
-                "slides_server_path": self.slides_server_path,
-            })
-        elif self.is_html_mode:
-            setup_config.update({
-                "html_server_path": self.html_server_path,
-            })
+        # Multi-server provided via generator_tools/verifier_tools lists in main config_dict
         
         return setup_config
     
@@ -242,9 +224,9 @@ class ConfigManager:
             "target_description": self.target_description,
             "thought_save": self.thought_save,
             "api_base_url": self.api_base_url,
-            "image_server_path": self.image_server_path,
-            "scene_server_path": self.scene_server_path,
-            "blender_file": os.path.join(self.output_dir, "blender_file.blend") if self.save_blender_file else None,
+            "image_server_path": None,
+            "scene_server_path": None,
+            "blender_file": self.blender_file,
             "web_server_path": None,  # Not used in current implementation
         }
         
@@ -262,15 +244,7 @@ class ConfigManager:
         if not self.vision_model:
             return False, "Vision model is required"
         
-        # Check mode-specific requirements
-        if self.is_blender_mode and not self.blender_server_path:
-            return False, "Blender server path is required for blender modes"
-        
-        if self.is_slides_mode and not self.slides_server_path:
-            return False, "Slides server path is required for autopresent mode"
-        
-        if self.is_html_mode and not self.html_server_path:
-            return False, "HTML server path is required for design2code mode"
+        # No server path requirements; tools are connected on-demand
         
         return True, None
     
@@ -286,7 +260,6 @@ class ConfigManager:
         if not self.vision_model:
             return False, "Vision model is required"
         
-        if self.has_verifier_tools and not self.image_server_path and not self.scene_server_path:
-            return False, "Verifier server path is required"
+        # No server path requirements for verifier
         
         return True, None

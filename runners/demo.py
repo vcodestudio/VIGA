@@ -25,9 +25,8 @@ if __name__ == "__main__":
     # shutil.copytree(init_image_path, copy_init_image_path)
     target_image_path = args.target_image_path
     task_name = "level4-1"
-    generator_script = "agents/generator.py"
-    verifier_script = "agents/verifier.py"
-    blender_server_path = "tools/exec_blender.py"
+    generator_tools = "tools/exec_blender.py,tools/meshy.py,tools/rag.py"
+    verifier_tools = "tools/init_verify.py,tools/investigator.py"
     blender_command = "utils/blender/infinigen/blender/blender"
     # Create a fresh empty .blend file as the initial editable state for each run
     copy_blender_file = f"{output_dir}/blender_file.blend"
@@ -57,6 +56,6 @@ if __name__ == "__main__":
         num_gpus = int(torch.cuda.device_count())
         availble_gpu_devices = ",".join(range(num_gpus))
 
-    cmd = f"python main.py --mode blendergym-hard --vision-model {vision_model} --api-key {api_key} --max-rounds {max_rounds} --init-code-path {copy_init_code_path} --init-image-path {init_image_path} --target-image-path {target_image_path} --output-dir {output_dir} --task-name {task_name} --generator-script {generator_script} --verifier-script {verifier_script} --blender-server-path {blender_server_path} --blender-command {blender_command} --blender-file {copy_blender_file} --blender-script {copy_blender_script} --save-blender-file --scene-server-path {scene_server_path} --meshy_api_key {meshy_api_key} --va_api_key {va_api_key} --gpu-devices {availble_gpu_devices}"
+    cmd = f"python main.py --mode blendergym-hard --vision-model {vision_model} --api-key {api_key} --max-rounds {max_rounds} --init-code-path {copy_init_code_path} --init-image-path {init_image_path} --target-image-path {target_image_path} --output-dir {output_dir} --task-name {task_name} --generator-tools {generator_tools} --verifier-tools {verifier_tools} --blender-command {blender_command} --blender-file {copy_blender_file} --blender-script {copy_blender_script} --save-blender-file --meshy_api_key {meshy_api_key} --va_api_key {va_api_key} --gpu-devices {availble_gpu_devices}"
     print(cmd)
     subprocess.run(cmd, shell=True)

@@ -7,7 +7,10 @@ import time
 import logging
 import PIL
 from typing import Optional
+from mcp.server.fastmcp import FastMCP
 
+
+mcp = FastMCP("meshy-executor")
 
 class MeshyAPI:
     """Meshy API 客户端：Text-to-3D 生成 + 轮询 + 下载"""
@@ -254,6 +257,7 @@ class ImageCropper:
         return response.json()
 
 
+@mcp.tool()
 def download_meshy_asset(
     object_name: str,
     description: str,
@@ -329,6 +333,7 @@ def download_meshy_asset(
         return {"status": "error", "error": str(e)}
 
 
+@mcp.tool()
 def download_meshy_asset_from_image(
     object_name: str,
     image_path: str,
@@ -402,6 +407,7 @@ def download_meshy_asset_from_image(
         return {"status": "error", "error": str(e)}
 
 
+@mcp.tool()
 def create_rigged_character(
     model_url: str,
     save_dir: str = "assets",
@@ -469,6 +475,7 @@ def create_rigged_character(
         return {"status": "error", "error": str(e)}
 
 
+@mcp.tool()
 def create_animated_character(
     rig_task_id: str,
     action_id: int = 92,
@@ -534,6 +541,7 @@ def create_animated_character(
         return {"status": "error", "error": str(e)}
 
 
+@mcp.tool()
 def create_rigged_and_animated_character(
     model_url: str,
     action_id: int = 92,
@@ -600,3 +608,9 @@ def create_rigged_and_animated_character(
     except Exception as e:
         logging.error(f"Failed to create rigged and animated character: {e}")
         return {"status": "error", "error": str(e)}
+
+def main():
+    mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()

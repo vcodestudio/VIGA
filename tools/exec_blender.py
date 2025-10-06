@@ -20,21 +20,13 @@ import numpy as np
 import time
 from openai import OpenAI
 import re
-import PIL
-from .meshy import MeshyAPI, ImageCropper, download_meshy_asset, download_meshy_asset_from_image
 
 mcp = FastMCP("blender-executor")
 
 # Global executor instance
 _executor = None
 
-# Global meshy API instance
-_meshy_api = None
-
-# Global image cropper instance
-_image_cropper = None
-
-# Global save_dir
+# Global save_dir for executor outputs
 _save_dir = None
 
 class Executor:
@@ -113,73 +105,6 @@ class Executor:
 
 
 @mcp.tool()
-def generate_and_download_3d_asset(
-    object_name: str,
-    reference_type: str,
-    object_description: str = None,
-) -> dict:
-    # First check if local asset exists in task assets directory
-    local_asset_path = _check_local_asset(object_name)
-    if local_asset_path:
-        return {
-            "status": "success",
-            "message": f"Local asset found: {local_asset_path}",
-            "object_name": object_name,
-            "local_path": local_asset_path,
-            "save_dir": _save_dir
-        }
-    
-    # If no local asset found, proceed with Meshy generation
-    if reference_type == "text":
-        generate_result = download_meshy_asset(
-            object_name=object_name, 
-            description=object_description, 
-            save_dir=_save_dir,
-            meshy_api=_meshy_api
-        )
-    elif reference_type == "image":
-        cropped_bbox = _image_cropper.crop_image_by_text(object_name=object_name)
-        cropped_bbox = cropped_bbox['data'][0][0]['bounding_box']
-        cropped_image = PIL.Image.open(_image_cropper.target_image_path).crop(cropped_bbox)
-        save_path = os.path.join(_save_dir, f"cropped_{object_name}.png")
-        os.makedirs(_save_dir, exist_ok=True)
-        cropped_image.save(save_path)
-        generate_result = download_meshy_asset_from_image(
-            image_path=save_path, 
-            object_name=object_name, 
-            save_dir=_save_dir,
-            meshy_api=_meshy_api
-        )
-    
-    return generate_result
-
-def _check_local_asset(object_name: str) -> str:
-    """Check if a local .glb asset exists for the given object name."""
-    if not hasattr(_check_local_asset, '_task_assets_dir'):
-        # Try to determine task assets directory from current context
-        # This will be set during initialization
-        return None
-    
-    assets_dir = _check_local_asset._task_assets_dir
-    if not assets_dir or not os.path.exists(assets_dir):
-        return None
-    
-    # Look for exact match first
-    exact_path = os.path.join(assets_dir, f"{object_name}.glb")
-    if os.path.exists(exact_path):
-        return exact_path
-    
-    # Look for fuzzy match (case-insensitive, space-removed)
-    object_name_clean = object_name.replace(" ", "").lower()
-    for asset_file in os.listdir(assets_dir):
-        if asset_file.endswith('.glb'):
-            asset_name_clean = os.path.splitext(asset_file)[0].replace(" ", "").lower()
-            if object_name_clean in asset_name_clean or asset_name_clean in object_name_clean:
-                return os.path.join(assets_dir, asset_file)
-    
-    return None
-    
-@mcp.tool()
 def initialize_executor(args: dict) -> dict:
     """
     初始化 Blender 执行器，设置所有必要的参数。
@@ -213,15 +138,6 @@ def initialize_executor(args: dict) -> dict:
         )
         _save_dir = os.path.dirname(args.get("script_save")) + '/assets'
         
-        # Set up task assets directory for local asset checking
-        task_assets_dir = args.get("task_assets_dir")
-        if task_assets_dir:
-            _check_local_asset._task_assets_dir = task_assets_dir
-        
-        if args.get("meshy_api_key"):
-            _meshy_api = MeshyAPI(args.get("meshy_api_key"))
-        if args.get("va_api_key") and args.get("target_image_path"):
-            _image_cropper = ImageCropper(args.get("va_api_key"), args.get("target_image_path"))
         return {"status": "success", "message": "Executor initialized successfully"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -247,50 +163,7 @@ def main():
     # 如果直接运行此脚本，执行测试
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        # 测试：先初始化执行器，再调用生成与导入资产接口
-        meshy_api_key = os.getenv("MESHY_API_KEY")
-        va_api_key = os.getenv("VA_API_KEY")
-        if not meshy_api_key or not va_api_key:
-            print("[TEST] Missing MESHY_API_KEY or VA_API_KEY in environment. Skipping online API test.")
-            print("Set both environment variables to run this test.")
-            sys.exit(0)
-
-        blender_command = "utils/blender/infinigen/blender/blender"
-        blender_file = "data/blendergym_hard/level4/christmas1/blender_file_empty.blend"
-        blender_script = "data/blendergym_hard/level4/christmas1/pipeline_render_script.py"
-        script_save = "output/test/christmas1/scripts"
-        render_save = "output/test/christmas1/renders"
-        target_image_path = "data/blendergym_hard/level4/christmas1/renders/goal/visprompt1.png"
-        save_dir = os.path.dirname(script_save) + '/assets'
-        os.makedirs(script_save, exist_ok=True)
-        os.makedirs(render_save, exist_ok=True)
-
-        print("[TEST] Initializing executor...")
-        init_resp = initialize_executor(
-            blender_command=blender_command,
-            blender_file=blender_file,
-            blender_script=blender_script,
-            script_save=script_save,
-            render_save=render_save,
-            meshy_api_key=meshy_api_key,
-            va_api_key=va_api_key,
-            target_image_path=target_image_path,
-        )
-        print(f"[TEST] initialize_executor response: {init_resp}")
-        if init_resp.get("status") != "success":
-            print("[TEST] initialize_executor failed. Abort.")
-            sys.exit(1)
-
-        print("[TEST] Calling generate_and_download_3d_asset (text reference)...")
-        # 使用文本参考分支
-        gen_resp = generate_and_download_3d_asset(
-            object_name="snowman",
-            reference_type="text",
-            object_description="A white snowman with a black hat and a red scarf.",
-            save_dir=_save_dir
-        )
-        print(f"[TEST] generate_and_download_3d_asset response: {gen_resp}")
-        sys.exit(0)
+        print("Test mode")
     else:
         # 正常运行 MCP 服务
         mcp.run(transport="stdio")

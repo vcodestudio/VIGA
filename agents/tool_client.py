@@ -14,7 +14,9 @@ class ExternalToolClient:
         self.connection_timeout = 30  # 30 seconds timeout
     
     async def connect_server(self, server_type: str, server_path: str, api_key: str = None):
-        """Connect to the specified MCP server with timeout in a background task."""
+        """Connect to the specified MCP server with timeout in a background task.
+        Multiple servers can be connected; indexed by server_type key.
+        """
         if server_type in self.mcp_sessions:
             return  # Already connected
             
