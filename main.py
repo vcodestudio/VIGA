@@ -136,51 +136,27 @@ async def main():
             
             print("Step 1: Generator generating code...")
             gen_result = await generator.call(no_memory=False)
+            print("gen_result: ", gen_result)
+            
             if gen_result.get("status") == "max_rounds_reached":
                 print("Max rounds reached. Stopping.")
                 break
             if gen_result.get("status") == "error":
                 print(f"Generator error: {gen_result['error']}")
                 break
-            
-            print("gen_result: ", gen_result)
-            
-            # Check if automatic execution happened
-            if gen_result.get("execution_result"):
-                exec_result = gen_result["execution_result"]
-                if exec_result.get("status") == "success":
-                    print("✅ Automatic execution completed!")
-                    result = exec_result.get("result", {})
-                    if result.get("status") == "success":
-                        print("   - Generation successful")
-                    else:
-                        print(f"   - Generation failed: {result.get('output', 'Unknown error')}")
-                        await generator.add_feedback(f"Execution error: {result.get('output')}")
-                        continue
-                else:
-                    print(f"   - Execution failed: {exec_result.get('error', 'Unknown error')}")
-                    await generator.add_feedback(f"Execution error: {exec_result.get('error')}")
-                    continue
-            else:
-                # No execution result - this should not happen with new tool calling enforcement
-                await generator.add_feedback("No execution result available. Please ensure you're calling the execute_and_evaluate tool.")
-                continue
-            
-            # Add render results to generator as feedback
-            await generator.add_feedback(result["output"])
-            
+
             # Check if verifier should be called based on generator's flag
             call_verifier = gen_result.get("call_verifier", False)
             
-            if call_verifier and gen_result.get("code"):
+            if call_verifier:
                 print("Step 2: Verifier analyzing scene...")
                 verify_result = await verifier.call(
                     code=gen_result["code"],
-                    render_path=result["output"],
+                    render_path=gen_result.get("execution_result", {}).get("result", {}).get("output"),
                     round_num=round_num,
                 )
-                
                 print(f"Verifier result: {verify_result.get('status')}")
+                
                 if verify_result.get("status") == "end":
                     print("Verifier: OK! Task complete.")
                     break
@@ -192,11 +168,8 @@ async def main():
                     print(f"Verifier error: {verify_result.get('error')}")
                     break
             else:
-                # Verifier not called or no code - add generic feedback
-                if not call_verifier:
-                    await generator.add_feedback("Code executed successfully. Continue with your modifications.")
-                else:
-                    await generator.add_feedback("No code execution, the state is the same as before.")
+                # Verifier not called or no code - generator already handled feedback internally
+                pass
             
             print("Step 3: Saving thought processes...")
             await generator.save_thought_process()

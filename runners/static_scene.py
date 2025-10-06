@@ -14,7 +14,7 @@ import signal
 from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from _api_keys import OPENAI_API_KEY
+from _api_keys import OPENAI_API_KEY, MESHY_API_KEY, VA_API_KEY, OPENAI_BASE_URL
 import threading
 
 
@@ -145,7 +145,7 @@ def run_static_scene_task(task_config: Dict, args) -> tuple:
         cmd.extend(["--target-description", task_config["target_description"]])
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hour timeout
+        result = subprocess.run(cmd, check=False)  # 1 hour timeout
         
         if result.returncode == 0:
             print(f"✅ Static scene task {task_name} completed successfully")
@@ -213,7 +213,7 @@ def main():
     # Main.py parameters
     parser.add_argument("--max-rounds", type=int, default=10, help="Maximum number of interaction rounds")
     parser.add_argument("--vision-model", default="gpt-4o", help="OpenAI vision model to use")
-    parser.add_argument("--openai-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
+    parser.add_argument("--openai-base-url", default=OPENAI_BASE_URL, help="OpenAI-compatible API base URL")
     parser.add_argument("--api-key", default=OPENAI_API_KEY, help="OpenAI API key")
     
     # Blender parameters
@@ -229,8 +229,8 @@ def main():
     parser.add_argument("--scene-server-path", default="servers/verifier/scene.py", help="Scene server path")
     
     # API keys
-    parser.add_argument("--meshy_api_key", default=os.getenv("MESHY_API_KEY"), help="Meshy API key")
-    parser.add_argument("--va_api_key", default=os.getenv("VA_API_KEY"), help="VA API key")
+    parser.add_argument("--meshy_api_key", default=MESHY_API_KEY, help="Meshy API key")
+    parser.add_argument("--va_api_key", default=VA_API_KEY, help="VA API key")
     
     # Execution parameters
     parser.add_argument("--max-workers", type=int, default=4, help="Maximum number of parallel workers")

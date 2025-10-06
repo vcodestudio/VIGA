@@ -80,7 +80,7 @@ class GeneratorAgent:
         memory = copy.deepcopy(self.system_prompt)
         
         # Add last 6 conversation exchanges
-        for chat in self.conversation_history[-6:]:
+        for chat in self.conversation_history[-12:]:
             memory.append(chat)
         
         # Add current chat if provided
@@ -180,6 +180,22 @@ class GeneratorAgent:
                             call_verifier = True
                             execution_result = tool_response.get('execution_result')
                             full_code = tool_response.get('full_code')
+                            # Internally handle feedback and add to memory
+                            try:
+                                if execution_result:
+                                    if execution_result.get("status") == "success":
+                                        result_obj = execution_result.get("result", {})
+                                        if result_obj.get("status") == "success":
+                                            # Provide the render output (path/dir) back into memory
+                                            await self.add_feedback(result_obj.get("output"))
+                                        else:
+                                            await self.add_feedback(f"Execution error: {result_obj.get('output')}")
+                                    else:
+                                        await self.add_feedback(f"Execution error: {execution_result.get('error', 'Unknown error')}")
+                                else:
+                                    await self.add_feedback("No execution result available. Please ensure you're calling the execute_and_evaluate tool.")
+                            except Exception as e:
+                                logging.error(f"Failed to add execution feedback to memory: {e}")
                         else:
                             execution_result = {"status": "success", "result": {"status": "success", "output": tool_response['text']}}
                         
