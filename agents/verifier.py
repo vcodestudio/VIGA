@@ -55,7 +55,7 @@ class VerifierAgent:
         
         # Initialize components
         self.tool_client = ExternalToolClient()
-        self._server_connected: Dict[str, bool] = {}
+        self._server_connected = False
         
         # Determine tool servers and pick a primary server type for verification tools
         self.tool_servers = self.config_manager.get_verifier_tool_servers()
@@ -73,16 +73,7 @@ class VerifierAgent:
     async def _ensure_server_connected(self):
         if not self._server_connected:
             await self.tool_client.connect_servers(self.tool_servers, init_args=self.config)
-            self._server_connected = {stype: True for stype in (self.tool_servers or {}).keys()}
-            
-    async def setup_investigator(self, **kwargs):
-        await self._ensure_server_connected()
-        # ExternalToolClient routes by tool name; call the tool directly
-        result = await self.tool_client.call_tool(
-            tool_name="initialize_investigator",
-            tool_args={"args": kwargs}
-        )
-        return result
+            self._server_connected = True
     
     def _build_sliding_window_memory(self, current_chat_content=None):
         """Build sliding window memory: system_prompt + [last 6 chats] + current chat"""
@@ -127,10 +118,6 @@ class VerifierAgent:
         Only called when generator uses execute_and_evaluate tool.
         """
         # Setup investigator if needed
-        if self.config_manager.is_blendergym_hard_mode:
-            setup_result = await self.setup_investigator(**self.config)
-            if setup_result.get("status") != "success":
-                return {"status": "error", "error": f"Scene server setup failed: {setup_result.get('error', setup_result)}"}
         await self._ensure_server_connected()
         
         self.current_round = round_num
@@ -297,9 +284,6 @@ def main():
             agent = VerifierAgent(**args)
             agent_holder['agent'] = agent
             # Initialize server executor
-            setup_result = await agent.setup_investigator(**args)
-            if setup_result.get("status") != "success":
-                return {"status": "error", "error": f"Server setup failed: {setup_result.get('error', setup_result)}"}
             await agent._ensure_server_connected()
             return {"status": "success", "message": "Verifier Agent initialized and tool servers connected"}
         except Exception as e:

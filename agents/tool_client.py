@@ -70,7 +70,6 @@ class ExternalToolClient:
                     timeout=10
                 )
                 tools = response.tools
-                print(f"Connected to {server_type.capitalize()} server with tools: {[tool.name for tool in tools]}")
                 # Record tool -> server mapping
                 for tool in tools:
                     if tool and getattr(tool, "name", None):
@@ -126,8 +125,6 @@ class ExternalToolClient:
     async def call_tool(self, tool_name: str, tool_args: dict = None, timeout: int = 3600, **kwargs) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""
         server_type = self.tool_to_server.get(tool_name)
-        # with open('logs/tool_client.log', 'w') as f:
-        #     f.write(f"call_tool: {tool_name}, {tool_args}, {server_type}, {self.tool_to_server}\n")
         if not server_type:
             available = ", ".join(sorted(self.tool_to_server.keys()))
             raise RuntimeError(f"No server mapping for tool '{tool_name}'. Known tools: [{available}]")

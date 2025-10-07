@@ -50,7 +50,7 @@ class GeneratorAgent:
         
         # Initialize components
         self.tool_client = ExternalToolClient()
-        self._server_connected: Dict[str, bool] = {}
+        self._server_connected = False
         
         # Determine tool servers and pick a primary server type for execution tools
         self.tool_servers = self.config_manager.get_generator_tool_servers()
@@ -68,13 +68,7 @@ class GeneratorAgent:
         if not self._server_connected:
             await self.tool_client.connect_servers(self.tool_servers, init_args=self.config)
             # mark all current servers as connected
-            self._server_connected = {stype: True for stype in (self.tool_servers or {}).keys()}
-    
-    async def _setup_executor_internal(self, **kwargs):
-        """Internal method to setup executor - merged into call_tool"""
-        await self._ensure_server_connected()
-        result = await self.tool_client.call_tool("initialize_executor", tool_args={"args": kwargs})
-        return result
+            self._server_connected = True
     
     def _build_sliding_window_memory(self, current_chat_content=None):
         """Build sliding window memory: system_prompt + [last 6 chats] + current chat"""
@@ -110,8 +104,7 @@ class GeneratorAgent:
             Dict containing the generated code, metadata, and verifier flag
         """
         # Setup executor if not connected (merged setup_executor into call_tool)
-        if not self._server_connected:
-            await self._setup_executor_internal(**self.config)
+        await self._ensure_server_connected()
         
         # Build sliding window memory
         if no_memory:
@@ -288,10 +281,7 @@ def main():
         try:
             agent = GeneratorAgent(**args)
             agent_holder['agent'] = agent
-            
-            # Executor setup is now handled internally in call_tool
-            # No need for explicit setup here
-            
+            await agent._ensure_server_connected()
             return {
                 "status": "success",
                 "message": "Generator Agent initialized successfully. Executor will be setup automatically when needed."
