@@ -158,6 +158,27 @@ def exec_script(code: str, round: int) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
     
+@mcp.tool()
+def init_plan(detailed_description: str, save_dir: str = None) -> dict:
+    """
+    Store the detailed scene plan to a file and return the path.
+    """
+    try:
+        base_dir = save_dir or (str(_save_dir) if _save_dir else os.getcwd())
+        os.makedirs(base_dir, exist_ok=True)
+        out_path = os.path.join(base_dir, "scene_plan.txt")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(detailed_description)
+        return {"status": "success", "path": out_path}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+def end() -> dict:
+    """
+    No-op tool used to indicate the process should end.
+    """
+    return {"status": "success", "message": "END THE PROCESS"}
 
 def main():
     # 如果直接运行此脚本，执行测试

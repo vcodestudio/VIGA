@@ -685,6 +685,98 @@ def set_camera_starting_position(direction: str = "z", round_num: int = 0) -> di
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
+def setup_camera(view: str = "top", round_num: int = 0) -> dict:
+    """
+    Setup an observer camera to a canonical view.
+    
+    Args:
+        view: One of ["top", "front", "side", "oblique"].
+        round_num: Current round number for file organization.
+    Returns:
+        dict: status, image path, camera position
+    """
+    mapping = {
+        "top": "z",
+        "front": "y",
+        "side": "x",
+        "oblique": "bbox",
+    }
+    direction = mapping.get(view, "z")
+    return set_camera_starting_position(direction=direction, round_num=round_num)
+
+@mcp.tool()
+def investigate(operation: str, object_name: str = None, direction: str = None, round_num: int = 0) -> dict:
+    """
+    Unified investigation tool.
+    
+    Args:
+        operation: One of ["focus", "zoom", "move"].
+        object_name: Required when operation == "focus".
+        direction: Direction for zoom/move. For zoom: ["in","out"]. For move: ["up","down","left","right"].
+        round_num: Current round number for file organization.
+    """
+    if operation == "focus":
+        if not object_name:
+            return {"status": "error", "error": "object_name is required for focus"}
+        return focus(object_name=object_name, round_num=round_num)
+    elif operation == "zoom":
+        if direction not in ("in", "out"):
+            return {"status": "error", "error": "direction must be 'in' or 'out' for zoom"}
+        return zoom(direction=direction, round_num=round_num)
+    elif operation == "move":
+        if direction not in ("up", "down", "left", "right"):
+            return {"status": "error", "error": "direction must be one of up/down/left/right for move"}
+        return move(direction=direction, round_num=round_num)
+    else:
+        return {"status": "error", "error": f"Unknown operation: {operation}"}
+
+@mcp.tool()
+def set_object_visibility(show_object_list: list = None, hide_object_list: list = None, round_num: int = 0) -> dict:
+    """
+    Toggle object visibility for inspection and render a view.
+    """
+    global _investigator
+    if _investigator is None:
+        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+    try:
+        show_object_list = show_object_list or []
+        hide_object_list = hide_object_list or []
+        # Apply hide/show
+        for obj in bpy.data.objects:
+            if obj.name in hide_object_list:
+                obj.hide_viewport = True
+                obj.hide_render = True
+            if obj.name in show_object_list:
+                obj.hide_viewport = False
+                obj.hide_render = False
+        result = _investigator._render(round_num)
+        return {"status": "success", "image": result["image_path"], "camera_position": result["camera_position"]}
+    except Exception as e:
+        logging.error(f"set_object_visibility failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
+    """
+    Jump to a specific keyframe (absolute frame index) and render a view.
+    """
+    global _investigator
+    if _investigator is None:
+        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+    try:
+        bpy.context.scene.frame_set(int(target_frame))
+        result = _investigator._render(round_num)
+        return {
+            "status": "success",
+            "image": result["image_path"],
+            "camera_position": result["camera_position"],
+            "keyframe_info": {"current_frame": int(target_frame)}
+        }
+    except Exception as e:
+        logging.error(f"set_key_frame failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
 def add_keyframe(keyframe_type: str, round_num: int) -> dict:
     """
     添加关键帧：改变场景到另一个关键帧进行观察。

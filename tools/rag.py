@@ -17,7 +17,7 @@ except ImportError:
 
 
 class BlenderInfinigenRAG:
-    """RAG工具：根据指令查找bpy和Infinigen相关文档并生成代码示例"""
+    """RAG tool: Search for bpy and Infinigen related documentation and generate code examples"""
     
     def __init__(self, openai_api_key: str = None):
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -30,57 +30,56 @@ class BlenderInfinigenRAG:
             elif not self.openai_api_key:
                 logging.warning("OpenAI API key not provided. Enhanced generation disabled.")
         
-        # 预定义的文档知识库
+        # Predefined documentation knowledge base
         self.knowledge_base = self._build_knowledge_base()
         
-        # 指令模式匹配
+        # Instruction pattern matching
         self.instruction_patterns = {
             'physics_placement': [
-                r'物理.*放置|遵循物理.*放置|物理规律.*放置',
-                r'rigid.*body|刚体|物理.*模拟',
-                r'gravity|重力|碰撞|collision'
+                r'physics.*placement|rigid.*body|physics.*simulation',
+                r'gravity|collision|rigidbody|physics.*world'
             ],
             'object_creation': [
-                r'创建.*物体|添加.*物体|生成.*物体',
-                r'primitive|基础.*形状|mesh.*add'
+                r'create.*object|add.*object|generate.*object',
+                r'primitive|basic.*shape|mesh.*add|bpy\.ops\.mesh'
             ],
             'lighting': [
-                r'光照|照明|light|shadow|阴影',
-                r'材质|material|texture|贴图'
+                r'lighting|illumination|light|shadow',
+                r'material|texture|shader|node'
             ],
             'animation': [
-                r'动画|animation|keyframe|关键帧',
-                r'motion|运动|transform|变换'
+                r'animation|keyframe|motion|transform',
+                r'timeline|fcurve|driver|constraint'
             ],
             'scene_setup': [
-                r'场景.*设置|scene.*setup|环境|environment',
-                r'camera|相机|渲染|render'
+                r'scene.*setup|environment|camera|render',
+                r'world|background|composition'
             ]
         }
     
     def _build_knowledge_base(self) -> Dict:
-        """构建bpy和Infinigen的知识库"""
+        """Build knowledge base for bpy and Infinigen"""
         return {
             'bpy_physics': {
                 'title': 'Blender Python Physics API',
                 'apis': [
                     {
                         'name': 'bpy.ops.rigidbody.object_add',
-                        'description': '为对象添加刚体物理属性',
+                        'description': 'Add rigid body physics properties to object',
                         'example': 'bpy.ops.rigidbody.object_add(type=\'ACTIVE\')',
-                        'use_case': '使对象受物理规律影响'
+                        'use_case': 'Make object subject to physics laws'
                     },
                     {
                         'name': 'bpy.ops.rigidbody.world_add',
-                        'description': '添加物理世界',
+                        'description': 'Add physics world',
                         'example': 'bpy.ops.rigidbody.world_add()',
-                        'use_case': '创建物理模拟环境'
+                        'use_case': 'Create physics simulation environment'
                     },
                     {
                         'name': 'bpy.context.scene.rigidbody_world.gravity',
-                        'description': '设置重力',
+                        'description': 'Set gravity',
                         'example': 'bpy.context.scene.rigidbody_world.gravity = (0, 0, -9.81)',
-                        'use_case': '调整重力参数'
+                        'use_case': 'Adjust gravity parameters'
                     }
                 ]
             },
@@ -89,21 +88,21 @@ class BlenderInfinigenRAG:
                 'apis': [
                     {
                         'name': 'bpy.ops.mesh.primitive_cube_add',
-                        'description': '创建立方体',
+                        'description': 'Create cube',
                         'example': 'bpy.ops.mesh.primitive_cube_add(size=2, location=(0, 0, 0))',
-                        'use_case': '创建基础几何体'
+                        'use_case': 'Create basic geometry'
                     },
                     {
                         'name': 'bpy.ops.mesh.primitive_uv_sphere_add',
-                        'description': '创建球体',
+                        'description': 'Create sphere',
                         'example': 'bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location=(0, 0, 0))',
-                        'use_case': '创建球形物体'
+                        'use_case': 'Create spherical objects'
                     },
                     {
                         'name': 'bpy.ops.mesh.primitive_plane_add',
-                        'description': '创建平面',
+                        'description': 'Create plane',
                         'example': 'bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))',
-                        'use_case': '创建地面或平台'
+                        'use_case': 'Create ground or platform'
                     }
                 ]
             },
@@ -112,21 +111,21 @@ class BlenderInfinigenRAG:
                 'apis': [
                     {
                         'name': 'infinigen.core.placement.placement',
-                        'description': '智能物体放置系统',
+                        'description': 'Intelligent object placement system',
                         'example': 'placement.place_object(obj, surface, physics=True)',
-                        'use_case': '遵循物理规律的物体放置'
+                        'use_case': 'Physics-aware object placement'
                     },
                     {
                         'name': 'infinigen.core.placement.surface',
-                        'description': '表面检测和放置',
+                        'description': 'Surface detection and placement',
                         'example': 'surface.find_surface_point(location, radius)',
-                        'use_case': '在表面上放置物体'
+                        'use_case': 'Place objects on surfaces'
                     },
                     {
                         'name': 'infinigen.core.physics.rigidbody',
-                        'description': '刚体物理设置',
+                        'description': 'Rigid body physics setup',
                         'example': 'rigidbody.setup_rigidbody(obj, mass=1.0)',
-                        'use_case': '设置物体物理属性'
+                        'use_case': 'Set object physics properties'
                     }
                 ]
             },
@@ -135,25 +134,183 @@ class BlenderInfinigenRAG:
                 'apis': [
                     {
                         'name': 'infinigen.core.scene.scene',
-                        'description': '场景生成和管理',
+                        'description': 'Scene generation and management',
                         'example': 'scene.add_objects(objects, placement_strategy="physics")',
-                        'use_case': '创建物理真实的场景'
+                        'use_case': 'Create physics-realistic scenes'
                     },
                     {
                         'name': 'infinigen.core.lighting.lighting',
-                        'description': '智能光照设置',
+                        'description': 'Intelligent lighting setup',
                         'example': 'lighting.setup_natural_lighting(scene)',
-                        'use_case': '设置真实的光照效果'
+                        'use_case': 'Set realistic lighting effects'
                     }
                 ]
             }
         }
     
+    def search_blender_docs(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search Blender Python API documentation for relevant information"""
+        try:
+            # Search Blender API documentation
+            blender_search_url = f"https://docs.blender.org/api/current/search.html?q={query}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(blender_search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            results = []
+            
+            # Look for search results in the documentation
+            search_results = soup.find_all('div', class_='search-results') or soup.find_all('div', class_='result')
+            
+            for result in search_results[:max_results]:
+                title_elem = result.find('a') or result.find('h3')
+                snippet_elem = result.find('p') or result.find('div', class_='highlight')
+                
+                if title_elem:
+                    title = title_elem.get_text().strip()
+                    url = title_elem.get('href', '')
+                    if url and not url.startswith('http'):
+                        url = f"https://docs.blender.org/api/current/{url}"
+                    
+                    snippet = ""
+                    if snippet_elem:
+                        snippet = snippet_elem.get_text().strip()
+                    
+                    results.append({
+                        'title': title,
+                        'url': url,
+                        'snippet': snippet,
+                        'source': 'blender_docs'
+                    })
+            
+            # If no specific search results, try to find relevant sections
+            if not results:
+                # Look for common API sections that might be relevant
+                relevant_sections = self._find_relevant_blender_sections(query)
+                results.extend(relevant_sections[:max_results])
+            
+            return results
+            
+        except Exception as e:
+            logging.error(f"Blender docs search failed: {e}")
+            return []
+
+    def search_infinigen_docs(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search Infinigen documentation for relevant information"""
+        try:
+            # Search Infinigen GitHub docs
+            infinigen_search_url = f"https://github.com/princeton-vl/infinigen/tree/main/docs"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(infinigen_search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            results = []
+            
+            # Look for documentation files and directories
+            doc_links = soup.find_all('a', href=True)
+            
+            for link in doc_links:
+                href = link.get('href', '')
+                if '/docs/' in href and ('.md' in href or href.endswith('/')):
+                    title = link.get_text().strip()
+                    if title and title not in ['..', '.']:
+                        # Extract relevant content based on query
+                        if self._is_relevant_to_query(title, query):
+                            results.append({
+                                'title': f"Infinigen: {title}",
+                                'url': f"https://github.com{href}",
+                                'snippet': f"Documentation section: {title}",
+                                'source': 'infinigen_docs'
+                            })
+            
+            return results[:max_results]
+            
+        except Exception as e:
+            logging.error(f"Infinigen docs search failed: {e}")
+            return []
+
+    def _find_relevant_blender_sections(self, query: str) -> List[Dict]:
+        """Find relevant Blender API sections based on query keywords"""
+        query_lower = query.lower()
+        relevant_sections = []
+        
+        # Map query keywords to relevant API sections
+        section_mapping = {
+            'physics': [
+                {'title': 'Rigidbody Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.rigidbody.html', 'snippet': 'Physics simulation operators for rigid body dynamics'},
+                {'title': 'Physics World', 'url': 'https://docs.blender.org/api/current/bpy.types.RigidBodyWorld.html', 'snippet': 'Rigid body world settings and properties'}
+            ],
+            'mesh': [
+                {'title': 'Mesh Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.mesh.html', 'snippet': 'Mesh creation and manipulation operators'},
+                {'title': 'Mesh Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Mesh.html', 'snippet': 'Mesh data structure and properties'}
+            ],
+            'object': [
+                {'title': 'Object Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.object.html', 'snippet': 'Object manipulation and creation operators'},
+                {'title': 'Object Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Object.html', 'snippet': 'Object data structure and properties'}
+            ],
+            'light': [
+                {'title': 'Light Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.object.html#bpy.ops.object.light_add', 'snippet': 'Light creation and manipulation'},
+                {'title': 'Light Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Light.html', 'snippet': 'Light data structure and properties'}
+            ],
+            'material': [
+                {'title': 'Material Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.material.html', 'snippet': 'Material creation and manipulation operators'},
+                {'title': 'Material Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Material.html', 'snippet': 'Material data structure and properties'}
+            ],
+            'camera': [
+                {'title': 'Camera Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.object.html#bpy.ops.object.camera_add', 'snippet': 'Camera creation and manipulation'},
+                {'title': 'Camera Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Camera.html', 'snippet': 'Camera data structure and properties'}
+            ],
+            'scene': [
+                {'title': 'Scene Operators', 'url': 'https://docs.blender.org/api/current/bpy.ops.scene.html', 'snippet': 'Scene management operators'},
+                {'title': 'Scene Types', 'url': 'https://docs.blender.org/api/current/bpy.types.Scene.html', 'snippet': 'Scene data structure and properties'}
+            ]
+        }
+        
+        for keyword, sections in section_mapping.items():
+            if keyword in query_lower:
+                relevant_sections.extend(sections)
+        
+        return relevant_sections
+
+    def _is_relevant_to_query(self, title: str, query: str) -> bool:
+        """Check if a documentation title is relevant to the query"""
+        query_lower = query.lower()
+        title_lower = title.lower()
+        
+        # Keywords that indicate relevance
+        relevant_keywords = ['physics', 'mesh', 'object', 'light', 'material', 'camera', 'scene', 'placement', 'generation']
+        
+        for keyword in relevant_keywords:
+            if keyword in query_lower and keyword in title_lower:
+                return True
+        
+        return False
+
+    def search_documentation(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search both Blender and Infinigen documentation"""
+        results = []
+        
+        # Search Blender documentation
+        blender_results = self.search_blender_docs(query, max_results // 2)
+        results.extend(blender_results)
+        
+        # Search Infinigen documentation
+        infinigen_results = self.search_infinigen_docs(query, max_results // 2)
+        results.extend(infinigen_results)
+        
+        return results[:max_results]
+    
     def parse_instruction(self, instruction: str) -> Dict:
-        """解析用户指令，提取关键信息"""
+        """Parse user instruction and extract key information"""
         instruction_lower = instruction.lower()
         
-        # 识别指令类型
+        # Identify instruction type
         instruction_type = None
         for category, patterns in self.instruction_patterns.items():
             for pattern in patterns:
@@ -163,35 +320,35 @@ class BlenderInfinigenRAG:
             if instruction_type:
                 break
         
-        # 提取物体类型
-        object_types = ['立方体', '球体', '平面', '圆柱体', 'cube', 'sphere', 'plane', 'cylinder']
+        # Extract object types
+        object_types = ['cube', 'sphere', 'plane', 'cylinder', 'cone', 'torus', 'monkey']
         detected_objects = []
         for obj_type in object_types:
             if obj_type.lower() in instruction_lower:
                 detected_objects.append(obj_type)
         
-        # 提取位置信息
-        position_match = re.search(r'位置.*?\(([^)]+)\)|location.*?\(([^)]+)\)', instruction_lower)
+        # Extract position information
+        position_match = re.search(r'location.*?\(([^)]+)\)|position.*?\(([^)]+)\)', instruction_lower)
         position = None
         if position_match:
             pos_str = position_match.group(1) or position_match.group(2)
             try:
-                # 尝试解析坐标
+                # Try to parse coordinates
                 coords = [float(x.strip()) for x in pos_str.split(',')]
                 if len(coords) >= 3:
                     position = tuple(coords[:3])
             except:
                 position = None
         
-        # 提取物理相关参数
+        # Extract physics-related parameters
         physics_params = {}
-        if re.search(r'重力|gravity', instruction_lower):
-            gravity_match = re.search(r'重力.*?(\d+\.?\d*)', instruction_lower)
+        if re.search(r'gravity', instruction_lower):
+            gravity_match = re.search(r'gravity.*?(\d+\.?\d*)', instruction_lower)
             if gravity_match:
                 physics_params['gravity'] = float(gravity_match.group(1))
         
-        if re.search(r'质量|mass', instruction_lower):
-            mass_match = re.search(r'质量.*?(\d+\.?\d*)', instruction_lower)
+        if re.search(r'mass', instruction_lower):
+            mass_match = re.search(r'mass.*?(\d+\.?\d*)', instruction_lower)
             if mass_match:
                 physics_params['mass'] = float(mass_match.group(1))
         
@@ -204,11 +361,11 @@ class BlenderInfinigenRAG:
         }
     
     def search_knowledge_base(self, parsed_instruction: Dict) -> List[Dict]:
-        """在知识库中搜索相关信息"""
+        """Search for relevant information in knowledge base"""
         results = []
         instruction_type = parsed_instruction.get('instruction_type')
         
-        # 根据指令类型搜索相关知识
+        # Search relevant knowledge based on instruction type
         if instruction_type == 'physics_placement':
             results.extend(self.knowledge_base['bpy_physics']['apis'])
             results.extend(self.knowledge_base['infinigen_physics']['apis'])
@@ -219,7 +376,7 @@ class BlenderInfinigenRAG:
         if instruction_type == 'scene_setup':
             results.extend(self.knowledge_base['infinigen_scene']['apis'])
         
-        # 如果没有特定类型匹配，搜索所有相关API
+        # If no specific type matches, search all relevant APIs
         if not results:
             for category in self.knowledge_base.values():
                 results.extend(category['apis'])
@@ -227,7 +384,7 @@ class BlenderInfinigenRAG:
         return results
     
     def generate_code_example(self, parsed_instruction: Dict, relevant_apis: List[Dict]) -> str:
-        """生成代码示例"""
+        """Generate code example"""
         instruction_type = parsed_instruction.get('instruction_type')
         objects = parsed_instruction.get('objects', ['cube'])
         position = parsed_instruction.get('position', (0, 0, 0))
@@ -235,47 +392,47 @@ class BlenderInfinigenRAG:
         
         code_lines = ["import bpy", "import bmesh", ""]
         
-        # 根据指令类型生成相应的代码
+        # Generate corresponding code based on instruction type
         if instruction_type == 'physics_placement':
             code_lines.extend([
-                "# 设置物理世界",
+                "# Setup physics world",
                 "bpy.ops.rigidbody.world_add()",
                 ""
             ])
             
-            # 设置重力
+            # Set gravity
             gravity = physics_params.get('gravity', -9.81)
             code_lines.extend([
-                "# 设置重力",
+                "# Set gravity",
                 f"bpy.context.scene.rigidbody_world.gravity = (0, 0, {gravity})",
                 ""
             ])
             
-            # 创建物体
+            # Create objects
             for obj_name in objects:
-                if 'cube' in obj_name.lower() or '立方体' in obj_name:
+                if 'cube' in obj_name.lower():
                     code_lines.extend([
-                        "# 创建立方体",
+                        "# Create cube",
                         f"bpy.ops.mesh.primitive_cube_add(size=2, location={position})",
                         ""
                     ])
-                elif 'sphere' in obj_name.lower() or '球体' in obj_name:
+                elif 'sphere' in obj_name.lower():
                     code_lines.extend([
-                        "# 创建球体",
+                        "# Create sphere",
                         f"bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location={position})",
                         ""
                     ])
-                elif 'plane' in obj_name.lower() or '平面' in obj_name:
+                elif 'plane' in obj_name.lower():
                     code_lines.extend([
-                        "# 创建平面",
+                        "# Create plane",
                         f"bpy.ops.mesh.primitive_plane_add(size=10, location={position})",
                         ""
                     ])
             
-            # 添加刚体物理
+            # Add rigid body physics
             mass = physics_params.get('mass', 1.0)
             code_lines.extend([
-                "# 为物体添加刚体物理属性",
+                "# Add rigid body physics to object",
                 f"bpy.ops.rigidbody.object_add(type='ACTIVE')",
                 f"bpy.context.object.rigid_body.mass = {mass}",
                 ""
@@ -283,31 +440,31 @@ class BlenderInfinigenRAG:
             
         elif instruction_type == 'object_creation':
             for obj_name in objects:
-                if 'cube' in obj_name.lower() or '立方体' in obj_name:
+                if 'cube' in obj_name.lower():
                     code_lines.extend([
-                        "# 创建立方体",
+                        "# Create cube",
                         f"bpy.ops.mesh.primitive_cube_add(size=2, location={position})",
                         ""
                     ])
-                elif 'sphere' in obj_name.lower() or '球体' in obj_name:
+                elif 'sphere' in obj_name.lower():
                     code_lines.extend([
-                        "# 创建球体",
+                        "# Create sphere",
                         f"bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location={position})",
                         ""
                     ])
         
-        # 添加注释说明使用的API
+        # Add comments explaining used APIs
         if relevant_apis:
             code_lines.extend([
-                "# 相关API文档:",
+                "# Related API documentation:",
             ])
-            for api in relevant_apis[:3]:  # 只显示前3个
+            for api in relevant_apis[:3]:  # Show only first 3
                 code_lines.append(f"# {api['name']}: {api['description']}")
         
         return "\n".join(code_lines)
     
     def enhanced_generation(self, instruction: str) -> str:
-        """使用OpenAI增强代码生成（如果可用）"""
+        """Use OpenAI for enhanced code generation (if available)"""
         if not self.openai_client:
             return "OpenAI API not available for enhanced generation"
         
@@ -315,24 +472,36 @@ class BlenderInfinigenRAG:
             parsed = self.parse_instruction(instruction)
             relevant_apis = self.search_knowledge_base(parsed)
             
-            # 构建prompt
+            # Search official documentation for additional context
+            doc_results = self.search_documentation(instruction, max_results=5)
+            doc_context = ""
+            if doc_results:
+                doc_context = "\n\nOfficial Documentation References:\n"
+                for result in doc_results:
+                    doc_context += f"- {result['title']} ({result['source']}): {result['snippet']}\n"
+                    doc_context += f"  URL: {result['url']}\n"
+            
+            # Build prompt
             api_info = "\n".join([f"- {api['name']}: {api['description']}" for api in relevant_apis[:5]])
             
             prompt = f"""
-基于以下用户指令和相关API信息，生成Blender Python代码：
+Based on the following user instruction, relevant API information, and official documentation references, generate Blender Python code:
 
-用户指令: {instruction}
+User instruction: {instruction}
 
-相关API:
+Relevant APIs from knowledge base:
 {api_info}
+{doc_context}
 
-要求:
-1. 生成完整的、可执行的Blender Python代码
-2. 包含必要的导入语句
-3. 添加详细的中文注释
-4. 确保代码遵循Blender Python API最佳实践
+Requirements:
+1. Generate complete, executable Blender Python code
+2. Include necessary import statements
+3. Add detailed English comments
+4. Ensure code follows Blender Python API best practices
+5. Use the most current and accurate API methods from the official documentation
+6. Reference the official Blender Python API documentation at https://docs.blender.org/api/current/index.html
 
-请只返回代码，不要额外的解释。
+Please return only the code, no additional explanations.
 """
             
             response = self.openai_client.chat.completions.create(
@@ -348,16 +517,21 @@ class BlenderInfinigenRAG:
             logging.error(f"Enhanced generation failed: {e}")
             return f"Enhanced generation failed: {str(e)}"
     
-    def rag_query(self, instruction: str, use_enhanced: bool = False) -> Dict:
-        """主要的RAG查询函数"""
+    def rag_query(self, instruction: str, use_enhanced: bool = False, use_doc_search: bool = True) -> Dict:
+        """Main RAG query function"""
         try:
-            # 解析指令
+            # Parse instruction
             parsed_instruction = self.parse_instruction(instruction)
             
-            # 搜索相关知识
+            # Search relevant knowledge
             relevant_apis = self.search_knowledge_base(parsed_instruction)
             
-            # 生成代码示例
+            # Search official documentation if requested
+            doc_results = []
+            if use_doc_search:
+                doc_results = self.search_documentation(instruction, max_results=5)
+            
+            # Generate code example
             if use_enhanced and self.openai_client:
                 code_example = self.enhanced_generation(instruction)
             else:
@@ -368,6 +542,7 @@ class BlenderInfinigenRAG:
                 'instruction': instruction,
                 'parsed_instruction': parsed_instruction,
                 'relevant_apis': relevant_apis,
+                'doc_results': doc_results,
                 'code_example': code_example,
                 'generation_method': 'enhanced' if use_enhanced else 'template'
             }
@@ -381,54 +556,133 @@ class BlenderInfinigenRAG:
             }
 
 
-# 全局实例
+# Global instance
 _rag_tool = None
 
 
 def initialize_rag_tool(openai_api_key: str = None):
-    """初始化RAG工具"""
+    """Initialize RAG tool"""
     global _rag_tool
     _rag_tool = BlenderInfinigenRAG(openai_api_key)
     return _rag_tool
 
 
-def rag_query(instruction: str, use_enhanced: bool = False) -> Dict:
-    """RAG查询接口"""
+def rag_query(instruction: str, use_enhanced: bool = False, use_doc_search: bool = True) -> Dict:
+    """RAG query interface"""
     global _rag_tool
     if _rag_tool is None:
         _rag_tool = BlenderInfinigenRAG()
     
-    return _rag_tool.rag_query(instruction, use_enhanced)
+    return _rag_tool.rag_query(instruction, use_enhanced, use_doc_search)
 
 
-# MCP 工具接口
+# MCP tool interface
 from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("rag-tool")
 
 @mcp.tool()
-def rag_query_tool(instruction: str, use_enhanced: bool = False) -> dict:
+def rag_query_tool(instruction: str, use_enhanced: bool = False, use_doc_search: bool = True) -> dict:
     """
-    根据输入的指令查找bpy和Infinigen中相关的文档并生成代码示例
+    Search for bpy and Infinigen related documentation and generate code examples based on input instruction
     
     Args:
-        instruction: 用户指令，例如"要遵循物理规律地放置某个物体"
-        use_enhanced: 是否使用OpenAI增强生成（需要OpenAI API key）
+        instruction: User instruction, e.g., "place an object following physics laws"
+        use_enhanced: Whether to use OpenAI enhanced generation (requires OpenAI API key)
+        use_doc_search: Whether to search official Blender and Infinigen documentation
         
     Returns:
-        dict: 包含解析结果、相关API和生成代码的字典
+        dict: Dictionary containing parsed results, relevant APIs, documentation results, and generated code
     """
-    return rag_query(instruction, use_enhanced)
+    return rag_query(instruction, use_enhanced, use_doc_search)
+
+@mcp.tool()
+def search_blender_docs_tool(query: str, max_results: int = 5) -> dict:
+    """
+    Search Blender Python API documentation for relevant information
+    
+    Args:
+        query: Search query
+        max_results: Maximum number of results to return
+        
+    Returns:
+        dict: Blender documentation search results
+    """
+    try:
+        global _rag_tool
+        if _rag_tool is None:
+            _rag_tool = BlenderInfinigenRAG()
+        
+        results = _rag_tool.search_blender_docs(query, max_results)
+        return {
+            "status": "success",
+            "query": query,
+            "results": results
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+def search_infinigen_docs_tool(query: str, max_results: int = 5) -> dict:
+    """
+    Search Infinigen documentation for relevant information
+    
+    Args:
+        query: Search query
+        max_results: Maximum number of results to return
+        
+    Returns:
+        dict: Infinigen documentation search results
+    """
+    try:
+        global _rag_tool
+        if _rag_tool is None:
+            _rag_tool = BlenderInfinigenRAG()
+        
+        results = _rag_tool.search_infinigen_docs(query, max_results)
+        return {
+            "status": "success",
+            "query": query,
+            "results": results
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+def search_documentation_tool(query: str, max_results: int = 5) -> dict:
+    """
+    Search both Blender and Infinigen documentation for relevant information
+    
+    Args:
+        query: Search query
+        max_results: Maximum number of results to return
+        
+    Returns:
+        dict: Combined documentation search results from both sources
+    """
+    try:
+        global _rag_tool
+        if _rag_tool is None:
+            _rag_tool = BlenderInfinigenRAG()
+        
+        results = _rag_tool.search_documentation(query, max_results)
+        return {
+            "status": "success",
+            "query": query,
+            "results": results
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @mcp.tool()
 def initialize_rag_tool(openai_api_key: str = None) -> dict:
     """
-    初始化RAG工具
+    Initialize RAG tool
     
     Args:
-        openai_api_key: OpenAI API密钥（可选）
+        openai_api_key: OpenAI API key (optional)
         
     Returns:
-        dict: 初始化结果
+        dict: Initialization result
     """
     try:
         global _rag_tool
@@ -438,8 +692,22 @@ def initialize_rag_tool(openai_api_key: str = None) -> dict:
         return {"status": "error", "error": str(e)}
 
 def main():
-    """运行MCP服务器"""
-    mcp.run(transport="stdio")
+    """Run MCP server or test the RAG tool when --test is provided"""
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        # Test instruction (Chinese as requested)
+        test_instruction = "将床移动到房间角落"
+        # Ensure tool is initialized
+        global _rag_tool
+        if _rag_tool is None:
+            _rag_tool = BlenderInfinigenRAG()
+        # Run query with official doc search enabled
+        result = _rag_tool.rag_query(test_instruction, use_enhanced=False, use_doc_search=True)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+        # Default: run as MCP server
+    else:
+        mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()

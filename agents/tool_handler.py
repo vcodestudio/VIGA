@@ -15,6 +15,14 @@ class ToolHandler:
         function_args = json.loads(tool_call.function.arguments)
         
         try:
+            if function_name == "init_plan":
+                result = await self.tool_client.call_tool(
+                    tool_name="init_plan",
+                    tool_args={"detailed_description": function_args.get("detailed_description", "")}
+                )
+                ok = result.get('status') == 'success'
+                return {'text': json.dumps(result, ensure_ascii=False), 'success': ok}
+
             if function_name == "generate_and_download_3d_asset":
                 result = await self.tool_client.call_tool("generate_and_download_3d_asset", {
                     "object_name": function_args.get("object_name", ""),
@@ -42,7 +50,8 @@ class ToolHandler:
                     tool_name="rag_query_tool",
                     tool_args={
                         "instruction": function_args.get("instruction", ""),
-                        "use_enhanced": function_args.get("use_enhanced", False)
+                        "use_enhanced": function_args.get("use_enhanced", False),
+                        "use_doc_search": True
                     }
                 )
                 return {
@@ -98,7 +107,8 @@ class ToolHandler:
             elif function_name == "investigate_3d":
                 op = function_args.get('operation')
                 if op == 'focus':
-                    result = await self.tool_client.call_tool("focus", {
+                    result = await self.tool_client.call_tool("investigate", {
+                        "operation": "focus",
                         "object_name": function_args.get("object_name", "")
                     })
                     if result.get("status") == "success":
@@ -112,7 +122,8 @@ class ToolHandler:
                             'success': False
                         }
                 elif op == 'zoom':
-                    result = await self.tool_client.call_tool("zoom", {
+                    result = await self.tool_client.call_tool("investigate", {
+                        "operation": "zoom",
                         "direction": function_args.get("direction", "")
                     })
                     if result.get("status") == "success":
@@ -126,7 +137,8 @@ class ToolHandler:
                             'success': False
                         }
                 elif op == 'move':
-                    result = await self.tool_client.call_tool("move", {
+                    result = await self.tool_client.call_tool("investigate", {
+                        "operation": "move",
                         "direction": function_args.get("direction", "")
                     })
                     if result.get("status") == "success":
@@ -190,40 +202,56 @@ class ToolHandler:
         function_args = json.loads(tool_call.function.arguments)
         
         try:
-            if function_name == "set_camera_starting_position":
-                output = await self.tool_client.call_tool("set_camera_starting_position", {
-                    "direction": function_args.get("direction", "z"),
+            if function_name == "setup_camera":
+                output = await self.tool_client.call_tool("setup_camera", {
+                    "view": function_args.get("view", "top"),
                     "round_num": round_num
                 })
-                return {'text': f"Camera set to {function_args.get('direction', 'z')} starting position", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
+                return {'text': f"Observer camera set to {function_args.get('view', 'top')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
             elif function_name == "investigate_3d":
                 op = function_args['operation']
                 if op == 'focus':
-                    output = await self.tool_client.call_tool("focus", {
+                    output = await self.tool_client.call_tool("investigate", {
+                        "operation": "focus",
                         "object_name": function_args.get("object_name", ""),
                         "round_num": round_num
                     })
                     return {'text': f"Focused camera on object: {function_args.get('object_name', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 elif op == 'zoom':
-                    output = await self.tool_client.call_tool("zoom", {
+                    output = await self.tool_client.call_tool("investigate", {
+                        "operation": "zoom",
                         "direction": function_args.get("direction", ""),
                         "round_num": round_num
                     })
                     return {'text': f"Zoomed {function_args.get('direction', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 elif op == 'move':
-                    output = await self.tool_client.call_tool("move", {
+                    output = await self.tool_client.call_tool("investigate", {
+                        "operation": "move",
                         "direction": function_args.get("direction", ""),
                         "round_num": round_num
                     })
                     return {'text': f"Moved camera {function_args.get('direction', '')}", 'image': output.get('image'), 'camera_position': output.get('camera_position')}
                 else:
                     return {'text': f"Unknown operation: {op}", 'image': None, 'camera_position': None}
-            elif function_name == "compare_images":
+            elif function_name == "compare_image":
                 output = await self.tool_client.call_tool("compare_images", {
                     "path1": current_image_path,
                     "path2": target_image_path
                 })
                 return {'text': output.get('description', ''), 'image': None, 'camera_position': None}
+            elif function_name == "set_object_visibility":
+                output = await self.tool_client.call_tool("set_object_visibility", {
+                    "show_object_list": function_args.get("show_object_list", []),
+                    "hide_object_list": function_args.get("hide_object_list", []),
+                    "round_num": round_num
+                })
+                return {'text': 'Updated object visibility', 'image': output.get('image'), 'camera_position': output.get('camera_position')}
+            elif function_name == "set_key_frame":
+                output = await self.tool_client.call_tool("set_key_frame", {
+                    "target_frame": function_args.get("target_frame", 0),
+                    "round_num": round_num
+                })
+                return {'text': 'Jumped to key frame', 'image': output.get('image'), 'camera_position': output.get('camera_position')}
             elif function_name == "compare_designs":
                 output = await self.tool_client.call_tool("compare_designs", {
                     "generated_path": current_image_path,

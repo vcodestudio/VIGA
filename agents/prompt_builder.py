@@ -22,7 +22,7 @@ class PromptBuilder:
         if mode == "blendergym-hard":
             level = task_name.split('-')[0] if task_name else None
         
-        # Get all prompts using the new prompt manager
+        # Get system prompt only (format/hints embedded in system)
         prompts = prompt_manager.get_all_prompts(mode, "generator", task_name, level)
         
         # Build the prompt based on mode
@@ -63,7 +63,7 @@ class PromptBuilder:
         if mode == "blendergym-hard":
             level = task_name.split('-')[0] if task_name else None
         
-        # Get all prompts using the new prompt manager
+        # Get system prompt only (format/hints embedded in system)
         prompts = prompt_manager.get_all_prompts(mode, "verifier", task_name, level)
         
         # Build the prompt based on mode
@@ -104,8 +104,8 @@ class PromptBuilder:
         if mode == "blendergym-hard":
             level = task_name.split('-')[0] if task_name else None
         
-        # Get format prompt using the new prompt manager
-        format_prompt = prompt_manager.get_format_prompt(mode, "verifier", level)
+        # No separate format prompt needed; system includes format/hints
+        format_prompt = ""
         
         if mode == "blendergym":
             return self._build_blendergym_verify_message(code, render_path, current_image_path_ref, format_prompt)
@@ -147,7 +147,8 @@ class PromptBuilder:
             ])
             
         verify_message["content"].extend(scene_content)
-        verify_message["content"].append({"type": "text", "text": format_prompt})
+        if format_prompt:
+            verify_message["content"].append({"type": "text", "text": format_prompt})
         
         return verify_message
     
@@ -160,7 +161,8 @@ class PromptBuilder:
             verify_message["content"].append({"type": "text", "text": f"Generated slide screenshot:"})
             verify_message["content"].append({"type": "image_url", "image_url": {"url": get_image_base64(render_path)}})
             
-        verify_message["content"].append({"type": "text", "text": format_prompt})
+        if format_prompt:
+            verify_message["content"].append({"type": "text", "text": format_prompt})
         
         return verify_message
     
@@ -189,7 +191,8 @@ class PromptBuilder:
             ])
             
         verify_message["content"].extend(scene_content)
-        verify_message["content"].append({"type": "text", "text": format_prompt})
+        if format_prompt:
+            verify_message["content"].append({"type": "text", "text": format_prompt})
         
         return verify_message
     
@@ -201,7 +204,8 @@ class PromptBuilder:
             verify_message["content"].append({"type": "text", "text": f"Generated webpage screenshot:"})
             verify_message["content"].append({"type": "image_url", "image_url": {"url": get_image_base64(render_path)}})
             
-        verify_message["content"].append({"type": "text", "text": format_prompt})
+        if format_prompt:
+            verify_message["content"].append({"type": "text", "text": format_prompt})
         
         return verify_message
     

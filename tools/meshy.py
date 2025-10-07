@@ -614,3 +614,24 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+@mcp.tool()
+def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, save_dir: str = "assets") -> dict:
+    """
+    Unified Meshy tool per system prompt: generate and download a 3D asset.
+    Uses text description for generation.
+
+    Args:
+        object_name: Asset/object name, e.g., 'table', 'chair'.
+        reference_type: 'text' or 'image' (image currently treated as text generation).
+        object_description: Optional detailed description; if absent, falls back to object_name.
+        save_dir: Local directory to save the generated asset.
+    """
+    try:
+        description = (object_description or object_name or "").strip()
+        if not description:
+            return {"status": "error", "error": "object_description or object_name must be provided"}
+        # For now, route both text/image to text-to-3D API (image path not provided in current interface)
+        return download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir)
+    except Exception as e:
+        return {"status": "error", "error": str(e)}

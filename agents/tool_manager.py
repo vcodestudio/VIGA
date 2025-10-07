@@ -40,6 +40,22 @@ class ToolManager:
             }
             tools: List[Dict] = [exec_evaluate_tool]
 
+            # init_plan tool
+            tools.insert(0, {
+                "type": "function",
+                "function": {
+                    "name": "init_plan",
+                    "description": "Store a detailed scene plan for subsequent actions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "detailed_description": {"type": "string", "description": "Comprehensive scene description including objects, relations, and initial layout"}
+                        },
+                        "required": ["detailed_description"]
+                    }
+                }
+            })
+
             # RAG tool (query Blender/Infinigen knowledge and examples)
             rag_tool = {
                 "type": "function",
@@ -156,66 +172,92 @@ class ToolManager:
         - Only blendergym-hard, static_scene, dynamic_scene: additionally include investigator tools
         - No other tools included
         """
-        # Base init_verify tools for ALL modes
+        # Base tools for ALL modes per prompt: compare_image, setup_camera, investigate, set_object_visibility, set_key_frame, end
         tools: List[Dict] = [
             {
                 "type": "function",
                 "function": {
-                    "name": "compare_images",
-                    "description": "Compare current and target images and describe visual differences."
+                    "name": "compare_image",
+                    "description": "Compare two images given their file paths and return a natural language description of visual differences.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path1": {"type": "string"},
+                            "path2": {"type": "string"}
+                        },
+                        "required": ["path1", "path2"]
+                    }
                 }
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "generate_initialization_suggestions",
-                    "description": "Suggest how to initialize/fix scene based on target/current images.",
+                    "name": "setup_camera",
+                    "description": "Setup an observer camera to a canonical view.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "target_path": {"type": "string", "description": "Path to target image"},
-                            "current_path": {"type": "string", "description": "Path to current image"}
+                            "view": {"type": "string", "enum": ["top","front","side","oblique"]}
                         },
-                        "required": ["target_path", "current_path"]
+                        "required": ["view"]
                     }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "investigate",
+                    "description": "Investigate scene with a unified tool: focus, zoom, move.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "operation": {"type": "string", "enum": ["focus","zoom","move"]},
+                            "object_name": {"type": "string"},
+                            "direction": {"type": "string", "enum": ["in","out","up","down","left","right"]}
+                        },
+                        "required": ["operation"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "set_object_visibility",
+                    "description": "Toggle visibility of specific scene objects to isolate elements.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "show_object_list": {"type": "array", "items": {"type": "string"}},
+                            "hide_object_list": {"type": "array", "items": {"type": "string"}}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "set_key_frame",
+                    "description": "Jump to a specific keyframe index and render a view.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_frame": {"type": "integer"}
+                        },
+                        "required": ["target_frame"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "end",
+                    "description": "End the current review round and return structured results.",
+                    "parameters": {"type": "object", "properties": {}}
                 }
             }
         ]
 
         # Investigator tools only for specified modes
-        if mode in ["blendergym-hard", "static_scene", "dynamic_scene"]:
-            tools.extend([
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "set_camera_starting_position",
-                        "description": "Set camera to fixed starting positions (-z, -x, -y directions or bbox above) for consistent 3D scene investigation.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "direction": {"type": "string", "enum": ["z", "x", "y", "bbox"], "description": "Starting camera direction"},
-                                "round_num": {"type": "integer", "description": "Current round number for file organization"}
-                            },
-                            "required": ["direction"]
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "investigate_3d",
-                        "description": "3D scene investigation: focus, zoom, move operations.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "operation": {"type": "string", "enum": ["focus", "zoom", "move"], "description": "Operation type"},
-                                "object_name": {"type": "string", "description": "Object to focus (for focus)"},
-                                "direction": {"type": "string", "enum": ["in", "out", "up", "down", "left", "right"], "description": "Direction for zoom/move"}
-                            },
-                            "required": ["operation"]
-                        }
-                    }
-                }
-            ])
+        # investigator tools already included above per new prompts
 
         return tools
