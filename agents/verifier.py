@@ -55,7 +55,7 @@ class VerifierAgent:
         
         # Initialize components
         self.tool_client = ExternalToolClient()
-        self._server_connected = False
+        self._server_connected: Dict[str, bool] = {}
         
         # Determine tool servers and pick a primary server type for verification tools
         self.tool_servers = self.config_manager.get_verifier_tool_servers()
@@ -72,8 +72,8 @@ class VerifierAgent:
         
     async def _ensure_server_connected(self):
         if not self._server_connected:
-            await self.tool_client.connect_servers(self.tool_servers, api_key=self.api_key)
-            self._server_connected = True
+            await self.tool_client.connect_servers(self.tool_servers, init_args=self.config)
+            self._server_connected = {stype: True for stype in (self.tool_servers or {}).keys()}
             
     async def setup_investigator(self, **kwargs):
         await self._ensure_server_connected()

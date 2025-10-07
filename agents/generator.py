@@ -50,7 +50,7 @@ class GeneratorAgent:
         
         # Initialize components
         self.tool_client = ExternalToolClient()
-        self._server_connected = False
+        self._server_connected: Dict[str, bool] = {}
         
         # Determine tool servers and pick a primary server type for execution tools
         self.tool_servers = self.config_manager.get_generator_tool_servers()
@@ -66,8 +66,9 @@ class GeneratorAgent:
 
     async def _ensure_server_connected(self):
         if not self._server_connected:
-            await self.tool_client.connect_servers(self.tool_servers, api_key=self.api_key)
-            self._server_connected = True
+            await self.tool_client.connect_servers(self.tool_servers, init_args=self.config)
+            # mark all current servers as connected
+            self._server_connected = {stype: True for stype in (self.tool_servers or {}).keys()}
     
     async def _setup_executor_internal(self, **kwargs):
         """Internal method to setup executor - merged into call_tool"""
@@ -139,6 +140,11 @@ class GeneratorAgent:
                         chat_args['parallel_tool_calls'] = False
                     if self.model != 'Qwen2-VL-7B-Instruct':
                         chat_args['tool_choice'] = "auto"
+                        
+                with open('logs/generator.log', 'w') as f:
+                    f.write(f"chat_args: {chat_args}\n")
+                    
+                raise Exception("stop here")
 
                 response = self.client.chat.completions.create(**chat_args)
                 message = response.choices[0].message

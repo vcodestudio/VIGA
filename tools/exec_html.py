@@ -136,7 +136,7 @@ class HTMLExecutor:
             }
 
 @mcp.tool()
-def initialize_executor(args: dict) -> dict:
+def initialize(args: dict) -> dict:
     """
     Initialize the HTML executor.
     """

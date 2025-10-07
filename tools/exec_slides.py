@@ -73,7 +73,7 @@ class SlidesExecutor:
             return {"status": "failure", "output": str(e)}
 
 @mcp.tool()
-def initialize_executor(args: dict) -> dict:
+def initialize(args: dict) -> dict:
     """
     初始化 Slides 执行器，设置所有必要的参数。
     """

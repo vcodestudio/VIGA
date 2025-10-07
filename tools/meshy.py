@@ -11,6 +11,8 @@ from mcp.server.fastmcp import FastMCP
 
 
 mcp = FastMCP("meshy-executor")
+_image_cropper = None
+_meshy_api = None
 
 class MeshyAPI:
     """Meshy API 客户端：Text-to-3D 生成 + 轮询 + 下载"""
@@ -257,7 +259,6 @@ class ImageCropper:
         return response.json()
 
 
-@mcp.tool()
 def download_meshy_asset(
     object_name: str,
     description: str,
@@ -333,7 +334,6 @@ def download_meshy_asset(
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
 def download_meshy_asset_from_image(
     object_name: str,
     image_path: str,
@@ -407,7 +407,6 @@ def download_meshy_asset_from_image(
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
 def create_rigged_character(
     model_url: str,
     save_dir: str = "assets",
@@ -475,7 +474,6 @@ def create_rigged_character(
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
 def create_animated_character(
     rig_task_id: str,
     action_id: int = 92,
@@ -608,30 +606,80 @@ def create_rigged_and_animated_character(
     except Exception as e:
         logging.error(f"Failed to create rigged and animated character: {e}")
         return {"status": "error", "error": str(e)}
+    
+@mcp.tool()
+def initialize(args: dict) -> dict:
+    """
+    Initialize Meshy server context.
+    
+    Args:
+        args:
+          - va_api_key: VA API key for ImageCropper (optional)
+          - target_image_path: path to the target image for cropping (optional)
+    """
+    global _image_cropper
+    try:
+        va_api_key = args.get("va_api_key")
+        target_image_path = args.get("target_image_path")
+        meshy_api_key = args.get("meshy_api_key") or os.getenv("MESHY_API_KEY")
+        if va_api_key and target_image_path:
+            _image_cropper = ImageCropper(va_api_key, target_image_path)
+        # Initialize global MeshyAPI if key available
+        if meshy_api_key:
+            global _meshy_api
+            _meshy_api = MeshyAPI(meshy_api_key)
+        return {"status": "success", "message": "Meshy initialize completed"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, image_path: str = None, save_dir: str = "assets") -> dict:
+    """
+    Unified Meshy tool per system prompt: generate and download a 3D asset.
+    Uses text description or an image (cropped if not provided) for generation.
+
+    Args:
+        object_name: Asset/object name, e.g., 'table', 'chair'.
+        reference_type: 'text' or 'image'.
+        object_description: Optional detailed description; if absent, falls back to object_name.
+        image_path: Optional path to a reference image; if not provided and reference_type=='image', will crop from target image using ImageCropper.
+        save_dir: Local directory to save the generated asset.
+    """
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        if reference_type == "text":
+            description = (object_description or object_name or "").strip()
+            if not description:
+                return {"status": "error", "error": "object_description or object_name must be provided"}
+            return download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir, meshy_api=_meshy_api)
+        elif reference_type == "image":
+            # Use given image_path if provided; otherwise crop from target image via ImageCropper
+            local_image_path = image_path
+            if not local_image_path:
+                if _image_cropper is None:
+                    return {"status": "error", "error": "ImageCropper not initialized. Call initialize with va_api_key and target_image_path."}
+                crop_resp = _image_cropper.crop_image_by_text(object_name=object_name)
+                # Expecting {'data': [[{'bounding_box': [x1,y1,x2,y2], ...}]]}
+                try:
+                    bbox = crop_resp['data'][0][0]['bounding_box']
+                    from PIL import Image as _PILImage
+                    img = _PILImage.open(_image_cropper.target_image_path)
+                    x1, y1, x2, y2 = map(int, bbox)
+                    cropped = img.crop((x1, y1, x2, y2))
+                    local_image_path = os.path.join(save_dir, f"cropped_{object_name}.png")
+                    cropped.save(local_image_path)
+                except Exception as e:
+                    return {"status": "error", "error": f"Cropping failed: {e}"}
+            if not os.path.exists(local_image_path):
+                return {"status": "error", "error": f"Image file not found: {local_image_path}"}
+            return download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path, save_dir=save_dir, prompt=object_description, meshy_api=_meshy_api)
+        else:
+            return {"status": "error", "error": f"Unsupported reference_type: {reference_type}"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 def main():
     mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()
-
-@mcp.tool()
-def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, save_dir: str = "assets") -> dict:
-    """
-    Unified Meshy tool per system prompt: generate and download a 3D asset.
-    Uses text description for generation.
-
-    Args:
-        object_name: Asset/object name, e.g., 'table', 'chair'.
-        reference_type: 'text' or 'image' (image currently treated as text generation).
-        object_description: Optional detailed description; if absent, falls back to object_name.
-        save_dir: Local directory to save the generated asset.
-    """
-    try:
-        description = (object_description or object_name or "").strip()
-        if not description:
-            return {"status": "error", "error": "object_description or object_name must be provided"}
-        # For now, route both text/image to text-to-3D API (image path not provided in current interface)
-        return download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir)
-    except Exception as e:
-        return {"status": "error", "error": str(e)}

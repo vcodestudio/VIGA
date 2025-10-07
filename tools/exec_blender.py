@@ -105,7 +105,7 @@ class Executor:
 
 
 @mcp.tool()
-def initialize_executor(args: dict) -> dict:
+def initialize(args: dict) -> dict:
     """
     初始化 Blender 执行器，设置所有必要的参数。
     
@@ -169,7 +169,7 @@ def init_plan(detailed_description: str, save_dir: str = None) -> dict:
         out_path = os.path.join(base_dir, "scene_plan.txt")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(detailed_description)
-        return {"status": "success", "path": out_path}
+        return {"status": "success", "path": out_path, "content": detailed_description}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

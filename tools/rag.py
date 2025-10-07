@@ -1093,7 +1093,7 @@ def search_documentation_tool(query: str, max_results: int = 5) -> dict:
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def initialize_rag_tool(openai_api_key: str = None) -> dict:
+def initialize(args: dict) -> dict:
     """
     Initialize RAG tool
     
@@ -1105,7 +1105,7 @@ def initialize_rag_tool(openai_api_key: str = None) -> dict:
     """
     try:
         global _rag_tool
-        _rag_tool = BlenderInfinigenRAG(openai_api_key)
+        _rag_tool = BlenderInfinigenRAG(args.get("api_key"))
         return {"status": "success", "message": "RAG tool initialized successfully"}
     except Exception as e:
         return {"status": "error", "error": str(e)}

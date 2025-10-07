@@ -449,7 +449,6 @@ class Investigator3D:
 # MCP 工具
 # ======================
 
-@mcp.tool()
 def get_scene_info(blender_path: str) -> dict:
     """
     获取 Blender 场景信息，包括对象、材质、灯光、相机和渲染设置。
@@ -462,7 +461,7 @@ def get_scene_info(blender_path: str) -> dict:
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def initialize_investigator(args: dict) -> dict:
+def initialize(args: dict) -> dict:
     """
     初始化 3D 场景调查工具。
     """
@@ -755,26 +754,26 @@ def set_object_visibility(show_object_list: list = None, hide_object_list: list 
         logging.error(f"set_object_visibility failed: {e}")
         return {"status": "error", "error": str(e)}
 
-@mcp.tool()
-def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
-    """
-    Jump to a specific keyframe (absolute frame index) and render a view.
-    """
-    global _investigator
-    if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
-    try:
-        bpy.context.scene.frame_set(int(target_frame))
-        result = _investigator._render(round_num)
-        return {
-            "status": "success",
-            "image": result["image_path"],
-            "camera_position": result["camera_position"],
-            "keyframe_info": {"current_frame": int(target_frame)}
-        }
-    except Exception as e:
-        logging.error(f"set_key_frame failed: {e}")
-        return {"status": "error", "error": str(e)}
+# @mcp.tool()
+# def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
+#     """
+#     Jump to a specific keyframe (absolute frame index) and render a view.
+#     """
+#     global _investigator
+#     if _investigator is None:
+#         return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+#     try:
+#         bpy.context.scene.frame_set(int(target_frame))
+#         result = _investigator._render(round_num)
+#         return {
+#             "status": "success",
+#             "image": result["image_path"],
+#             "camera_position": result["camera_position"],
+#             "keyframe_info": {"current_frame": int(target_frame)}
+#         }
+#     except Exception as e:
+#         logging.error(f"set_key_frame failed: {e}")
+#         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
 def add_keyframe(keyframe_type: str, round_num: int) -> dict:
@@ -866,7 +865,7 @@ def test_tools():
     print("\n2. Testing initialize_investigator...")
     try:
         args = {"thought_save": test_save_dir, "blender_file": blender_file}
-        result = initialize_investigator(args)
+        result = initialize(args)
         if result.get("status") == "success":
             print("✓ initialize_investigator passed")
         else:

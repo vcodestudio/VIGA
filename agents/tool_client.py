@@ -13,8 +13,9 @@ class ExternalToolClient:
         self.mcp_sessions = {}  # server_type -> McpSession
         self.connection_timeout = 30  # 30 seconds timeout
         self.tool_to_server: Dict[str, str] = {}
+        self._server_connected: Dict[str, bool] = {}
     
-    async def connect_server(self, server_type: str, server_path: str, api_key: str = None):
+    async def connect_server(self, server_type: str, server_path: str, init_args: Optional[Dict[str, dict]] = None):
         """Connect to the specified MCP server with timeout in a background task.
         Multiple servers can be connected; indexed by server_type key.
         """
@@ -25,12 +26,7 @@ class ExternalToolClient:
         
         async def mcp_session_runner() -> None:
             try:
-                env = {"OPENAI_API_KEY": api_key} if api_key else None
-                server_params = StdioServerParameters(
-                    command="python",
-                    args=[server_path],
-                    env = env
-                )
+                server_params = StdioServerParameters(command="python", args=[server_path])
                 
                 exit_stack = AsyncExitStack()
                 stdio_transport = await asyncio.wait_for(
@@ -79,6 +75,20 @@ class ExternalToolClient:
                 for tool in tools:
                     if tool and getattr(tool, "name", None):
                         self.tool_to_server[tool.name] = server_type
+
+                # Auto-initialize once per server if an 'initialize' tool exists
+                if not self._server_connected.get(server_type, False):
+                    try:
+                        tool_names = {t.name for t in tools if getattr(t, "name", None)}
+                        if "initialize" in tool_names:
+                            args = (init_args or {}).get(server_type) or {}
+                            await asyncio.wait_for(
+                                session.call_tool("initialize", {"args": args} if isinstance(args, dict) else args),
+                                timeout=30
+                            )
+                        self._server_connected[server_type] = True
+                    except Exception as e:
+                        print(f"Warning: initialize failed for {server_type}: {e}")
                 
                 # Wait for the stop event
                 await stop_event.wait()
@@ -103,19 +113,21 @@ class ExternalToolClient:
         await ready_event.wait()
         print(f"{server_type} MCP connection is ready")
 
-    async def connect_servers(self, tool_servers: Dict[str, str], api_key: Optional[str] = None) -> None:
+    async def connect_servers(self, tool_servers: Dict[str, str], init_args: Optional[Dict[str, dict]] = None) -> None:
         """Connect to multiple MCP servers given a server_type->script map."""
         if not tool_servers:
             return
         # Launch connections concurrently
         await asyncio.gather(*[
-            self.connect_server(server_type=stype, server_path=spath, api_key=api_key)
+            self.connect_server(server_type=stype, server_path=spath, init_args=init_args)
             for stype, spath in tool_servers.items()
         ])
     
     async def call_tool(self, tool_name: str, tool_args: dict = None, timeout: int = 3600, **kwargs) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""
         server_type = self.tool_to_server.get(tool_name)
+        # with open('logs/tool_client.log', 'w') as f:
+        #     f.write(f"call_tool: {tool_name}, {tool_args}, {server_type}, {self.tool_to_server}\n")
         if not server_type:
             available = ", ".join(sorted(self.tool_to_server.keys()))
             raise RuntimeError(f"No server mapping for tool '{tool_name}'. Known tools: [{available}]")
