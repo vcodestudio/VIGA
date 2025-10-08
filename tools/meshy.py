@@ -326,7 +326,8 @@ def download_meshy_asset(
             'message': f'Meshy Text-to-3D asset downloaded to {local_path}',
             'object_name': object_name,
             'local_path': local_path,
-            'save_dir': save_dir
+            'save_dir': save_dir,
+            'model_url': file_url
         }
 
     except Exception as e:
@@ -399,7 +400,8 @@ def download_meshy_asset_from_image(
             'message': f'Meshy Image-to-3D asset downloaded to {local_path}',
             'object_name': object_name,
             'local_path': local_path,
-            'save_dir': save_dir
+            'save_dir': save_dir,
+            'model_url': file_url
         }
         
     except Exception as e:
@@ -539,7 +541,6 @@ def create_animated_character(
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
 def create_rigged_and_animated_character(
     model_url: str,
     action_id: int = 92,
@@ -633,7 +634,7 @@ def initialize(args: dict) -> dict:
         return {"status": "error", "error": str(e)}
 
 @mcp.tool()
-def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, image_path: str = None, save_dir: str = "assets") -> dict:
+def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, image_path: str = None, save_dir: str = "assets", rig_and_animate: bool = False, action_id: int = 92) -> dict:
     """
     Unified Meshy tool per system prompt: generate and download a 3D asset.
     Uses text description or an image (cropped if not provided) for generation.
@@ -651,7 +652,19 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
             description = (object_description or object_name or "").strip()
             if not description:
                 return {"status": "error", "error": "object_description or object_name must be provided"}
-            return download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir, meshy_api=_meshy_api)
+            base_result = download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir, meshy_api=_meshy_api)
+            if base_result.get('status') != 'success' or not rig_and_animate:
+                return base_result
+            # Rig + animate using model_url if provided
+            model_url = base_result.get('model_url')
+            if not model_url:
+                return base_result
+            rigged = create_rigged_and_animated_character(model_url=model_url, action_id=action_id, save_dir=save_dir, meshy_api=_meshy_api)
+            if rigged.get('status') == 'success':
+                base_result['rig_task_id'] = rigged.get('rig_task_id')
+                base_result['anim_task_id'] = rigged.get('anim_task_id')
+                base_result['animated_model_path'] = rigged.get('animated_model_path')
+            return base_result
         elif reference_type == "image":
             # Use given image_path if provided; otherwise crop from target image via ImageCropper
             local_image_path = image_path
@@ -672,7 +685,18 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
                     return {"status": "error", "error": f"Cropping failed: {e}"}
             if not os.path.exists(local_image_path):
                 return {"status": "error", "error": f"Image file not found: {local_image_path}"}
-            return download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path, save_dir=save_dir, prompt=object_description, meshy_api=_meshy_api)
+            base_result = download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path, save_dir=save_dir, prompt=object_description, meshy_api=_meshy_api)
+            if base_result.get('status') != 'success' or not rig_and_animate:
+                return base_result
+            model_url = base_result.get('model_url')
+            if not model_url:
+                return base_result
+            rigged = create_rigged_and_animated_character(model_url=model_url, action_id=action_id, save_dir=save_dir, meshy_api=_meshy_api)
+            if rigged.get('status') == 'success':
+                base_result['rig_task_id'] = rigged.get('rig_task_id')
+                base_result['anim_task_id'] = rigged.get('anim_task_id')
+                base_result['animated_model_path'] = rigged.get('animated_model_path')
+            return base_result
         else:
             return {"status": "error", "error": f"Unsupported reference_type: {reference_type}"}
     except Exception as e:
