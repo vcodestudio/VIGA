@@ -31,20 +31,6 @@ tool_configs = [
                 "required": ["thought", "code_edition", "full_code"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "init_plan",
-            "description": "Store the detailed scene plan to a file and return the path.",
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "end",
-            "description": "No-op tool used to indicate the process should end.",
-        }
     }
 ]
 

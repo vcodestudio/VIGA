@@ -37,20 +37,6 @@ tool_configs = [
                 "required": ["thought", "code_edition", "full_code"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "init_plan",
-            "description": "Store the detailed scene plan to a file and return the path.",
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "end",
-            "description": "No-op tool used to indicate the process should end.",
-        }
     }
 ]
 
@@ -100,11 +86,6 @@ class Executor:
             proc = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True, env=env)
             out = proc.stdout
             err = proc.stderr
-            # We do not consider intermediate errors that do not affect the result.
-            # if 'Error:' in out:
-            #     logging.error(f"Error in Blender stdout: {out}")
-            #     return False, err, out
-            # find rendered image(s)
             if os.path.isdir(render_path):
                 imgs = sorted([str(p) for p in Path(render_path).glob("*") if p.suffix in ['.png','.jpg']])
                 if not imgs:
@@ -124,6 +105,8 @@ class Executor:
     def execute(self, code: str, round: int) -> Dict:
         script_file = self.script_path / f"{round}.py"
         render_file = self.render_path / f"{round}"
+        for img in os.listdir(render_file):
+            os.remove(os.path.join(render_file, img))
         with open(script_file, "w") as f:
             f.write(code)
         success, stdout, stderr = self._execute_blender(str(script_file), str(render_file))
@@ -207,16 +190,39 @@ def main():
         init_res = initialize(args)
         print("[test:init]", json.dumps(init_res, ensure_ascii=False))
 
-        # exec_script: minimal code; actual execution requires Blender + driver script to read script file; create a camera, setup its position and render it
-        sample_code = (
-            "import bpy\n"
-            "bpy.ops.object.select_all(action='SELECT')\n"
-            "bpy.ops.object.delete(use_global=False)\n"
-            "bpy.ops.mesh.primitive_plane_add(size=4, location=(0,0,0))\n"
-            "bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,1))\n"
-            "scene = bpy.context.scene\n"
-            "scene.render.image_settings.file_format='PNG'\n"
-        )
+        # exec_script: minimal code; actual execution requires Blender + driver script to read script file; create a NEW camera, setup its position and render it
+        sample_code = """import bpy
+import math
+
+# 清空
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+# 场景物体
+bpy.ops.mesh.primitive_plane_add(size=4, location=(0,0,0))
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,1))
+
+# 相机
+bpy.ops.object.camera_add()
+camera = bpy.context.active_object
+camera.location = (3, 3, 3)
+camera.rotation_mode = 'XYZ'
+camera.rotation_euler = (0.9553166, 0.0, -2.3561945)  # 指向(0,0,0)
+camera.data.clip_start = 0.01
+camera.data.clip_end = 1000
+
+# **关键：把它设为场景的渲染相机**
+bpy.context.scene.camera = camera
+
+# **加一盏灯**（否则很黑）
+bpy.ops.object.light_add(type='SUN', location=(5,5,10))
+sun = bpy.context.active_object
+sun.data.energy = 3.0
+
+# 也可以加一点环境光（可选）
+bpy.context.scene.world.use_nodes = True
+bg = bpy.context.scene.world.node_tree.nodes['Background']
+bg.inputs[1].default_value = 1.0   # 强度"""
         exec_res = exec_script(sample_code, round=1)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
     else:
