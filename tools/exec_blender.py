@@ -10,16 +10,49 @@ import logging
 from typing import Tuple, Dict
 from mcp.server.fastmcp import FastMCP
 import json
-import requests
-import tempfile
-import zipfile
-import shutil
-import math
-import cv2
-import numpy as np
-import time
-from openai import OpenAI
-import re
+
+# tool config for agent
+tool_configs = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_and_evaluate",
+            "description": "Execute code modifications and trigger verifier evaluation. This tool combines code execution with automatic verification. Always use this tool when you want to execute your code changes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thought": {
+                        "type": "string",
+                        "description": "Analyze the current state and provide a clear plan for the required changes. Consider scene representation consistency and infinigen optimization opportunities."
+                    },
+                    "code_edition": {
+                        "type": "string", 
+                        "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]\nFocus on scene consistency and use infinigen functions when appropriate."
+                    },
+                    "full_code": {
+                        "type": "string",
+                        "description": "Merge your code changes into the full code with proper formatting. Ensure consistent scene representation."
+                    }
+                },
+                "required": ["thought", "code_edition", "full_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "init_plan",
+            "description": "Store the detailed scene plan to a file and return the path.",
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "end",
+            "description": "No-op tool used to indicate the process should end.",
+        }
+    }
+]
 
 mcp = FastMCP("blender-executor")
 
@@ -96,7 +129,7 @@ class Executor:
         success, stdout, stderr = self._execute_blender(str(script_file), str(render_file))
         if not success or not os.path.exists(render_file):
             return {"status": "failure", "output": stderr or stdout}
-        return {"status": "success", "output": str(render_file), "stdout": stdout, "stderr": stderr}
+        return {"status": "success", "output": stdout}
 
 
 
@@ -132,9 +165,9 @@ def initialize(args: dict) -> dict:
             gpu_devices=args.get("gpu_devices")
         )
         
-        return {"status": "success", "message": "Executor initialized successfully"}
+        return {"status": "success", "output": "Executor initialized successfully"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 @mcp.tool()
 def exec_script(code: str, round: int) -> dict:
@@ -144,40 +177,13 @@ def exec_script(code: str, round: int) -> dict:
     """
     global _executor
     if _executor is None:
-        return {"status": "error", "error": "Executor not initialized. Call initialize_executor first."}
-    
+        return {"status": "error", "output": "Executor not initialized. Call initialize_executor first."}
     try:
         result = _executor.execute(code, round)
-        status = "success" if result.get("status") == "success" else "error"
-        image_paths = result.get("stdout", None)
-        err_message = result.get("output", None)
-        return {"status": status, "image": image_paths, "error": err_message}
+        return result
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
     
-@mcp.tool()
-def init_plan(detailed_description: str) -> dict:
-    """
-    Store the detailed scene plan to a file and return the path.
-    """
-    try:
-        global _executor
-        base_dir = os.path.dirname(_executor.render_path) + '/plans'
-        os.makedirs(base_dir, exist_ok=True)
-        out_path = os.path.join(base_dir, "scene_plan.txt")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(detailed_description)
-        return {"status": "success", "path": out_path, "content": detailed_description}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-@mcp.tool()
-def end() -> dict:
-    """
-    No-op tool used to indicate the process should end.
-    """
-    return {"status": "success", "message": "END THE PROCESS"}
-
 def main():
     # 如果直接运行此脚本，执行测试
     import sys
@@ -201,10 +207,6 @@ def main():
         init_res = initialize(args)
         print("[test:init]", json.dumps(init_res, ensure_ascii=False))
 
-        # init_plan
-        plan_res = init_plan("Create a simple scene with a plane and a cube; render from default camera.")
-        print("[test:init_plan]", json.dumps(plan_res, ensure_ascii=False))
-
         # exec_script: minimal code; actual execution requires Blender + driver script to read script file; create a camera, setup its position and render it
         sample_code = (
             "import bpy\n"
@@ -217,9 +219,6 @@ def main():
         )
         exec_res = exec_script(sample_code, round=1)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
-
-        end_res = end()
-        print("[test:end]", json.dumps(end_res, ensure_ascii=False))
     else:
         # 正常运行 MCP 服务
         mcp.run(transport="stdio")

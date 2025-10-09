@@ -14,6 +14,49 @@ from PIL import Image
 import logging
 from mcp.server.fastmcp import FastMCP
 
+# tool config for agent
+tool_configs = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_and_evaluate",
+            "description": "Execute code modifications and trigger verifier evaluation. This tool combines code execution with automatic verification. Always use this tool when you want to execute your code changes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thought": {
+                        "type": "string",
+                        "description": "Analyze the current state and provide a clear plan for the required changes. Consider scene representation consistency and infinigen optimization opportunities."
+                    },
+                    "code_edition": {
+                        "type": "string", 
+                        "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]\nFocus on scene consistency and use infinigen functions when appropriate."
+                    },
+                    "full_code": {
+                        "type": "string",
+                        "description": "Merge your code changes into the full code with proper formatting. Ensure consistent scene representation."
+                    }
+                },
+                "required": ["thought", "code_edition", "full_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "init_plan",
+            "description": "Store the detailed scene plan to a file and return the path.",
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "end",
+            "description": "No-op tool used to indicate the process should end.",
+        }
+    }
+]
+
 # Create MCP instance
 mcp = FastMCP("html-executor")
 
@@ -112,28 +155,16 @@ class HTMLExecutor:
             success, message = self._take_screenshot(html_path, str(output_path))
             
             if not success:
-                return {
-                    "status": "error",
-                    "error": message,
-                    "html_path": html_path
-                }
+                return {"status": "error", "output": message}
             
             # Optimize image
             optimized_path = self._optimize_image(str(output_path))
             
-            return {
-                "status": "success",
-                "output": optimized_path,
-                "html_path": html_path,
-                "message": message
-            }
+            return {"status": "success", "output": [optimized_path]}
             
         except Exception as e:
             logging.error(f"HTML execution failed: {e}")
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            return {"status": "error", "output": str(e)}
 
 @mcp.tool()
 def initialize(args: dict) -> dict:
@@ -145,13 +176,13 @@ def initialize(args: dict) -> dict:
         _executor = HTMLExecutor(args.get("output_dir"), args.get("browser_command", "google-chrome"))
         return {
             "status": "success", 
-            "message": f"HTML executor initialized with output directory: {args.get('output_dir')}"
+            "output": f"HTML executor initialized with output directory: {args.get('output_dir')}"
         }
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 @mcp.tool()
-def exec_html(code: str, round: int) -> dict:
+def exec_script(code: str, round: int) -> dict:
     """
     Execute HTML code and generate screenshot.
     
@@ -163,25 +194,25 @@ def exec_html(code: str, round: int) -> dict:
     if _executor is None:
         return {
             "status": "error", 
-            "error": "HTML executor not initialized. Call initialize_executor first."
+            "output": "HTML executor not initialized. Call initialize_executor first."
         }
     
     try:
         result = _executor.execute(code, round)
-        return {"status": "success", "result": result}
+        return result
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
-@mcp.tool()
-def cleanup_executor() -> dict:
-    """Clean up the HTML executor and temporary files."""
-    global _executor
-    try:
-        if _executor:
-            _executor = None
-        return {"status": "success", "message": "HTML executor cleaned up"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+# @mcp.tool()
+# def cleanup_executor() -> dict:
+#     """Clean up the HTML executor and temporary files."""
+#     global _executor
+#     try:
+#         if _executor:
+#             _executor = None
+#         return {"status": "success", "output": "HTML executor cleaned up"}
+#     except Exception as e:
+#         return {"status": "error", "output": str(e)}
     
 def test_execute_test_html(test_html_path: Optional[str] = None,
                            output_dir: Optional[str] = None,
@@ -210,7 +241,7 @@ def test_execute_test_html(test_html_path: Optional[str] = None,
         if not os.path.exists(test_html_path):
             return {
                 "status": "error",
-                "error": f"Test HTML not found: {test_html_path}"
+                "output": f"Test HTML not found: {test_html_path}"
             }
 
         # Read HTML
@@ -231,14 +262,14 @@ def test_execute_test_html(test_html_path: Optional[str] = None,
 
         # Log a concise message
         if output["status"] == "success":
-            logging.info(f"Test succeeded. Screenshot: {result.get('output')}")
+            logging.info(f"Test succeeded. Screenshot: {result.get('output')[0]}")
         else:
-            logging.error(f"Test failed: {result.get('error')}")
+            logging.error(f"Test failed: {result.get('output')}")
 
         return output
     except Exception as e:
         logging.exception("Unexpected error running HTML executor test")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 def main():
     import sys

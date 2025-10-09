@@ -8,6 +8,68 @@ from pathlib import Path
 import logging
 from mcp.server.fastmcp import FastMCP
 
+# tool config for agent (only the function w/ @mcp.tools)
+tool_configs = [
+    {
+        "type": "function",
+        "function": {
+            "name": "add_viewpoint",
+            "description": "Add a viewpoint to the scene",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "object_names": {"type": "array", "description": "The names of the objects to add viewpoints to"}
+                },
+                "required": ["object_names"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "investigate",
+            "description": "Investigate the scene",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {"type": "string", "description": "The operation to perform"},
+                    "object_name": {"type": "string", "description": "The name of the object to investigate"},
+                    "direction": {"type": "string", "description": "The direction to investigate"}
+                },
+                "required": ["operation"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_object_visibility",
+            "description": "Set the visibility of the objects in the scene",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "show_object_list": {"type": "array", "description": "The names of the objects to show"},
+                    "hide_object_list": {"type": "array", "description": "The names of the objects to hide"}
+                },
+                "required": ["show_object_list"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_keyframe",
+            "description": "Add a keyframe to the scene",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyframe_type": {"type": "string", "description": "The type of keyframe to add"}
+                }
+            }
+        }
+    }
+]
+
 # 创建全局 MCP 实例
 mcp = FastMCP("scene-server")
 
@@ -82,12 +144,6 @@ class GetSceneInfo:
         except Exception as e:
             logging.error(f"scene info error: {e}")
             return {}
-
-
-# ======================
-# 相机探查器（修复：先保存路径再加载）
-# ======================
-
 
 # ======================
 # 相机探查器（修复：先保存路径再加载）
@@ -449,17 +505,6 @@ class Investigator3D:
 # MCP 工具
 # ======================
 
-def get_scene_info(blender_path: str) -> dict:
-    """
-    获取 Blender 场景信息，包括对象、材质、灯光、相机和渲染设置。
-    """
-    try:
-        info = GetSceneInfo(blender_path).get_info()
-        return {"status": "success", "info": info}
-    except Exception as e:
-        logging.error(f"Failed to get scene info: {e}")
-        return {"status": "error", "error": str(e)}
-
 @mcp.tool()
 def initialize(args: dict) -> dict:
     """
@@ -468,11 +513,10 @@ def initialize(args: dict) -> dict:
     global _investigator
     try:
         _investigator = Investigator3D(args.get("thought_save"), str(args.get("blender_file")))
-        return {"status": "success", "message": "Investigator3D initialized successfully"}
+        return {"status": "success", "output": "Investigator3D initialized successfully"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
-@mcp.tool()
 def focus(object_name: str, round_num: int) -> dict:
     """
     Focus the camera on a specific object in the 3D scene.
@@ -508,7 +552,7 @@ def focus(object_name: str, round_num: int) -> dict:
         # 检查目标对象是否存在
         obj = bpy.data.objects.get(object_name)
         if not obj:
-            return {"status": "error", "error": f"Object '{object_name}' not found in scene"}
+            return {"status": "error", "output": f"Object '{object_name}' not found in scene"}
 
         result = _investigator.focus_on_object(object_name, round_num)
         return {
@@ -518,9 +562,8 @@ def focus(object_name: str, round_num: int) -> dict:
         }
     except Exception as e:
         logging.error(f"Focus failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
-@mcp.tool()
 def zoom(direction: str, round_num: int) -> dict:
     """
     Zoom the camera in or out from the current target object.
@@ -550,24 +593,22 @@ def zoom(direction: str, round_num: int) -> dict:
     """
     global _investigator
     if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+        return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
 
     try:
         # 检查是否有目标对象
         if _investigator.target is None:
-            return {"status": "error", "error": "No target object set. Call focus first."}
+            return {"status": "error", "output": "No target object set. Call focus first."}
 
         result = _investigator.zoom(direction, round_num)
         return {
             "status": "success", 
-            "image": result["image_path"],
-            "camera_position": result["camera_position"]
+            "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
         }
     except Exception as e:
         logging.error(f"Zoom failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
-@mcp.tool()
 def move(direction: str, round_num: int) -> dict:
     """
     Move the camera around the current target object in spherical coordinates.
@@ -603,22 +644,32 @@ def move(direction: str, round_num: int) -> dict:
     """
     global _investigator
     if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+        return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
 
     try:
         # 检查是否有目标对象
         if _investigator.target is None:
-            return {"status": "error", "error": "No target object set. Call focus first."}
+            return {"status": "error", "output": "No target object set. Call focus first."}
 
         result = _investigator.move_camera(direction, round_num)
         return {
             "status": "success", 
-            "image": result["image_path"],
-            "camera_position": result["camera_position"]
+            "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
         }
     except Exception as e:
         logging.error(f"Move failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
+
+def get_scene_info(blender_path: str) -> dict:
+    """
+    获取 Blender 场景信息，包括对象、材质、灯光、相机和渲染设置。
+    """
+    try:
+        info = GetSceneInfo(blender_path).get_info()
+        return {"status": "success", "output": info}
+    except Exception as e:
+        logging.error(f"Failed to get scene info: {e}")
+        return {"status": "error", "output": str(e)}
 
 @mcp.tool()
 def add_viewpoint(object_names: list, round_num: int) -> dict:
@@ -634,74 +685,72 @@ def add_viewpoint(object_names: list, round_num: int) -> dict:
     """
     global _investigator
     if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+        return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
 
     try:
         result = _investigator.add_viewpoint(object_names, round_num)
         return result
     except Exception as e:
         logging.error(f"Add viewpoint failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
-@mcp.tool()
-def set_camera_starting_position(direction: str = "z", round_num: int = 0) -> dict:
-    """
-    Set the camera to a fixed starting position for 3D scene investigation.
-    
-    Args:
-        direction: Starting camera direction - "z" (from above), "x" (from side), "y" (from front), or "bbox" (above bounding box)
-        round_num: Current round number for file organization
-        
-    Returns:
-        dict: Status and camera position information
-        
-    Example:
-        set_camera_starting_position(direction="z", round_num=1)
-        # Sets camera to look down from above the scene
-        
-    Detailed Description:
-        This tool sets the camera to predefined starting positions to ensure consistent 
-        scene investigation. The available directions are:
-        - "z": Camera positioned at (0,0,5) looking down at 60 degrees
-        - "x": Camera positioned at (-5,0,2) looking from the side
-        - "y": Camera positioned at (0,-5,2) looking from the front  
-        - "bbox": Camera positioned at (0,0,10) looking down from above bounding box
-    """
-    global _investigator
-    if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
-    
-    try:
-        _investigator._set_camera_to_position(_investigator.cam, direction)
-        result = _investigator._render(round_num)
-        return {
-            "status": "success",
-            "message": f"Camera set to {direction} starting position",
-            "image": result["image_path"],
-            "camera_position": result["camera_position"]
-        }
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
 
-@mcp.tool()
-def setup_camera(view: str = "top", round_num: int = 0) -> dict:
-    """
-    Setup an observer camera to a canonical view.
+# def set_camera_starting_position(direction: str = "z", round_num: int = 0) -> dict:
+#     """
+#     Set the camera to a fixed starting position for 3D scene investigation.
     
-    Args:
-        view: One of ["top", "front", "side", "oblique"].
-        round_num: Current round number for file organization.
-    Returns:
-        dict: status, image path, camera position
-    """
-    mapping = {
-        "top": "z",
-        "front": "y",
-        "side": "x",
-        "oblique": "bbox",
-    }
-    direction = mapping.get(view, "z")
-    return set_camera_starting_position(direction=direction, round_num=round_num)
+#     Args:
+#         direction: Starting camera direction - "z" (from above), "x" (from side), "y" (from front), or "bbox" (above bounding box)
+#         round_num: Current round number for file organization
+        
+#     Returns:
+#         dict: Status and camera position information
+        
+#     Example:
+#         set_camera_starting_position(direction="z", round_num=1)
+#         # Sets camera to look down from above the scene
+        
+#     Detailed Description:
+#         This tool sets the camera to predefined starting positions to ensure consistent 
+#         scene investigation. The available directions are:
+#         - "z": Camera positioned at (0,0,5) looking down at 60 degrees
+#         - "x": Camera positioned at (-5,0,2) looking from the side
+#         - "y": Camera positioned at (0,-5,2) looking from the front  
+#         - "bbox": Camera positioned at (0,0,10) looking down from above bounding box
+#     """
+#     global _investigator
+#     if _investigator is None:
+#         return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
+    
+#     try:
+#         _investigator._set_camera_to_position(_investigator.cam, direction)
+#         result = _investigator._render(round_num)
+#         return {
+#             "status": "success",
+#             "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
+#         }
+#     except Exception as e:
+#         return {"status": "error", "output": str(e)}
+
+# @mcp.tool()
+# def setup_camera(view: str = "top", round_num: int = 0) -> dict:
+#     """
+#     Setup an observer camera to a canonical view.
+    
+#     Args:
+#         view: One of ["top", "front", "side", "oblique"].
+#         round_num: Current round number for file organization.
+#     Returns:
+#         dict: status, image path, camera position
+#     """
+#     mapping = {
+#         "top": "z",
+#         "front": "y",
+#         "side": "x",
+#         "oblique": "bbox",
+#     }
+#     direction = mapping.get(view, "z")
+#     return set_camera_starting_position(direction=direction, round_num=round_num)
 
 @mcp.tool()
 def investigate(operation: str, object_name: str = None, direction: str = None, round_num: int = 0) -> dict:
@@ -716,18 +765,18 @@ def investigate(operation: str, object_name: str = None, direction: str = None, 
     """
     if operation == "focus":
         if not object_name:
-            return {"status": "error", "error": "object_name is required for focus"}
+            return {"status": "error", "output": "object_name is required for focus"}
         return focus(object_name=object_name, round_num=round_num)
     elif operation == "zoom":
         if direction not in ("in", "out"):
-            return {"status": "error", "error": "direction must be 'in' or 'out' for zoom"}
+            return {"status": "error", "output": "direction must be 'in' or 'out' for zoom"}
         return zoom(direction=direction, round_num=round_num)
     elif operation == "move":
         if direction not in ("up", "down", "left", "right"):
-            return {"status": "error", "error": "direction must be one of up/down/left/right for move"}
+            return {"status": "error", "output": "direction must be one of up/down/left/right for move"}
         return move(direction=direction, round_num=round_num)
     else:
-        return {"status": "error", "error": f"Unknown operation: {operation}"}
+        return {"status": "error", "output": f"Unknown operation: {operation}"}
 
 @mcp.tool()
 def set_object_visibility(show_object_list: list = None, hide_object_list: list = None, round_num: int = 0) -> dict:
@@ -736,7 +785,7 @@ def set_object_visibility(show_object_list: list = None, hide_object_list: list 
     """
     global _investigator
     if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+        return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
     try:
         show_object_list = show_object_list or []
         hide_object_list = hide_object_list or []
@@ -749,10 +798,10 @@ def set_object_visibility(show_object_list: list = None, hide_object_list: list 
                 obj.hide_viewport = False
                 obj.hide_render = False
         result = _investigator._render(round_num)
-        return {"status": "success", "image": result["image_path"], "camera_position": result["camera_position"]}
+        return {"status": "success", "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}}
     except Exception as e:
         logging.error(f"set_object_visibility failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 # @mcp.tool()
 # def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
@@ -789,14 +838,14 @@ def add_keyframe(keyframe_type: str, round_num: int) -> dict:
     """
     global _investigator
     if _investigator is None:
-        return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+        return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
 
     try:
         result = _investigator.add_keyframe(keyframe_type, round_num)
         return result
     except Exception as e:
         logging.error(f"Add keyframe failed: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 
 
@@ -839,7 +888,7 @@ def test_tools():
         print(f"Result: {result}")
         if result.get("status") == "success":
             print("✓ get_scene_info passed")
-            info = result.get("info", {})
+            info = result.get("output", {})
             # print(f"  - Objects: {len(info.get('objects', []))}")
             # print(f"  - Materials: {len(info.get('materials', []))}")
             # print(f"  - Lights: {len(info.get('lights', []))}")
@@ -882,7 +931,7 @@ def test_tools():
             if result.get("status") == "success":
                 print("✓ focus passed")
                 print(f"  - Focused on: {first_object}")
-                print(f"  - Image saved: {result.get('image', 'N/A')}")
+                print(f"  - Image saved: {result.get('output', 'N/A')}")
             else:
                 print("✗ focus failed")
         except Exception as e:
@@ -895,7 +944,7 @@ def test_tools():
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ zoom passed")
-                print(f"  - Image saved: {result.get('image', 'N/A')}")
+                print(f"  - Image saved: {result.get('output', 'N/A')}")
             else:
                 print("✗ zoom failed")
         except Exception as e:
@@ -908,7 +957,7 @@ def test_tools():
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ move passed")
-                print(f"  - Image saved: {result.get('image', 'N/A')}")
+                print(f"  - Image saved: {result.get('output', 'N/A')}")
             else:
                 print("✗ move failed")
         except Exception as e:
@@ -923,7 +972,7 @@ def test_tools():
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ add_viewpoint passed")
-                print(f"  - Image saved: {result.get('image', 'N/A')}")
+                print(f"  - Image saved: {result.get('output', 'N/A')}")
                 print(f"  - Best viewpoint: {result.get('best_viewpoint', {}).get('view_index', 'N/A')}")
                 print(f"  - Score: {result.get('best_viewpoint', {}).get('score', 'N/A')}")
             else:
@@ -938,14 +987,12 @@ def test_tools():
             print(f"Result: {result}")
             if result.get("status") == "success":
                 print("✓ add_keyframe passed")
-                print(f"  - Image saved: {result.get('image', 'N/A')}")
+                print(f"  - Image saved: {result.get('output', 'N/A')}")
                 print(f"  - Frame changed from {result.get('keyframe_info', {}).get('previous_frame', 'N/A')} to {result.get('keyframe_info', {}).get('current_frame', 'N/A')}")
             else:
                 print("✗ add_keyframe failed")
         except Exception as e:
             print(f"✗ add_keyframe failed with exception: {e}")
-
-
 
     print("\n" + "=" * 50)
     print("Test completed!")

@@ -11,7 +11,7 @@ from agents.prompt_builder import PromptBuilder
 from agents.tool_manager import ToolManager
 from agents.tool_handler import ToolHandler
 from agents.config_manager import ConfigManager
-from agents.utils import save_thought_process, get_scene_info, get_image_base64
+from utils.common import save_thought_process, get_scene_info, get_image_base64
 
 class GeneratorAgent:
     """

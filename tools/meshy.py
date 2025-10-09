@@ -10,6 +10,29 @@ import PIL
 from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
+# tool_configs for agent (only the function w/ @mcp.tools)
+tool_configs = [
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_and_download_3d_asset",
+            "description": "Generate and download a 3D asset",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "object_name": {"type": "string", "description": "The name of the object to generate"},
+                    "reference_type": {"type": "string", "description": "The type of reference to use"},
+                    "object_description": {"type": "string", "description": "The description of the object to generate"},
+                    "save_dir": {"type": "string", "description": "The directory to save the generated asset"},
+                    "rig_and_animate": {"type": "boolean", "description": "Whether to rig and animate the generated asset"},
+                    "action_id": {"type": "integer", "description": "The ID of the action to apply to the generated asset"}
+                },
+                "required": ["object_name", "reference_type", "save_dir"]
+            }
+        }
+    }
+]
+
 
 mcp = FastMCP("meshy-executor")
 _image_cropper = None
@@ -289,7 +312,7 @@ def download_meshy_asset(
         # 2) 轮询 preview
         preview_task = meshy_api.poll_text_to_3d(preview_id, interval_sec=5, timeout_sec=900)
         if preview_task.get("status") != "SUCCEEDED":
-            return {"status": "error", "error": f"Preview failed: {preview_task.get('status')}"}
+            return {"status": "error", "output": f"Preview failed: {preview_task.get('status')}"}
         final_task = preview_task
 
         # 3) 可选 refine（贴图）
@@ -298,7 +321,7 @@ def download_meshy_asset(
             refine_id = meshy_api.create_text_to_3d_refine(preview_id)
             refine_task = meshy_api.poll_text_to_3d(refine_id, interval_sec=5, timeout_sec=1800)
             if refine_task.get("status") != "SUCCEEDED":
-                return {"status": "error", "error": f"Refine failed: {refine_task.get('status')}"}
+                return {"status": "error", "output": f"Refine failed: {refine_task.get('status')}"}
             final_task = refine_task
 
         # 4) 从 model_urls 取下载链接
@@ -310,7 +333,7 @@ def download_meshy_asset(
                 file_url = model_urls[k]
                 break
         if not file_url:
-            return {"status": "error", "error": "No downloadable model_urls found"}
+            return {"status": "error", "output": "No downloadable model_urls found"}
         
         # 5) 下载模型到本地持久目录
         os.makedirs(save_dir, exist_ok=True)
@@ -324,16 +347,12 @@ def download_meshy_asset(
         
         return {
             'status': 'success',
-            'message': f'Meshy Text-to-3D asset downloaded to {local_path}',
-            'object_name': object_name,
-            'local_path': local_path,
-            'save_dir': save_dir,
-            'model_url': file_url
+            'output': {'object_name': object_name,'local_path': local_path,'save_dir': save_dir,'model_url': file_url}
         }
 
     except Exception as e:
         logging.error(f"Failed to download Meshy asset: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 
 def download_meshy_asset_from_image(
@@ -356,7 +375,7 @@ def download_meshy_asset_from_image(
     try:
         # 检查图片文件是否存在
         if not os.path.exists(image_path):
-            return {"status": "error", "error": f"Image file not found: {image_path}"}
+            return {"status": "error", "output": f"Image file not found: {image_path}"}
 
         # 初始化 Meshy API
         if meshy_api is None:
@@ -372,7 +391,7 @@ def download_meshy_asset_from_image(
         # 2) 轮询 preview
         preview_task = meshy_api.poll_image_to_3d(preview_id, interval_sec=5, timeout_sec=900)
         if preview_task.get("status") != "SUCCEEDED":
-            return {"status": "error", "error": f"Image-to-3D preview failed: {preview_task.get('status')}"}
+            return {"status": "error", "output": f"Image-to-3D preview failed: {preview_task.get('status')}"}
         final_task = preview_task
 
         # 3) 从 model_urls 取下载链接
@@ -384,7 +403,7 @@ def download_meshy_asset_from_image(
                 file_url = model_urls[k]
                 break
         if not file_url:
-            return {"status": "error", "error": "No downloadable model_urls found"}
+            return {"status": "error", "output": "No downloadable model_urls found"}
 
         # 4) 下载模型到本地持久目录
         os.makedirs(save_dir, exist_ok=True)
@@ -398,16 +417,12 @@ def download_meshy_asset_from_image(
 
         return {
             'status': 'success',
-            'message': f'Meshy Image-to-3D asset downloaded to {local_path}',
-            'object_name': object_name,
-            'local_path': local_path,
-            'save_dir': save_dir,
-            'model_url': file_url
+            'output': {'object_name': object_name,'local_path': local_path,'save_dir': save_dir,'model_url': file_url}
         }
         
     except Exception as e:
         logging.error(f"Failed to download Meshy asset from image: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 
 def create_rigged_character(
@@ -449,13 +464,13 @@ def create_rigged_character(
         # 2) 轮询绑定任务
         rig_task = meshy_api.poll_rigging_task(rig_task_id, interval_sec=5, timeout_sec=1800)
         if rig_task.get("status") != "SUCCEEDED":
-            return {"status": "error", "error": f"Rigging failed: {rig_task.get('status')}"}
+            return {"status": "error", "output": f"Rigging failed: {rig_task.get('status')}"}
 
         # 3) 从结果中获取绑定的模型下载链接
         result = rig_task.get("result", {})
         rigged_model_url = result.get("rigged_character_fbx_url")
         if not rigged_model_url:
-            return {"status": "error", "error": "No rigged model URL found in result"}
+            return {"status": "error", "output": "No rigged model URL found in result"}
 
         # 4) 下载绑定的模型到本地
         os.makedirs(save_dir, exist_ok=True)
@@ -465,16 +480,12 @@ def create_rigged_character(
 
         return {
             'status': 'success',
-            'message': f'Rigged character downloaded to {local_path}',
-            'rig_task_id': rig_task_id,
-            'local_path': local_path,
-            'save_dir': save_dir,
-            'rigged_model_url': rigged_model_url
+            'output': {'rig_task_id': rig_task_id,'local_path': local_path,'save_dir': save_dir,'rigged_model_url': rigged_model_url}
         }
 
     except Exception as e:
         logging.error(f"Failed to create rigged character: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 
 def create_animated_character(
@@ -513,13 +524,13 @@ def create_animated_character(
         # 2) 轮询动画任务
         anim_task = meshy_api.poll_animation_task(anim_task_id, interval_sec=5, timeout_sec=1800)
         if anim_task.get("status") != "SUCCEEDED":
-            return {"status": "error", "error": f"Animation failed: {anim_task.get('status')}"}
+            return {"status": "error", "output": f"Animation failed: {anim_task.get('status')}"}
 
         # 3) 从结果中获取动画文件下载链接
         result = anim_task.get("result", {})
         animated_model_url = result.get("animated_model_url")
         if not animated_model_url:
-            return {"status": "error", "error": "No animated model URL found in result"}
+            return {"status": "error", "output": "No animated model URL found in result"}
 
         # 4) 下载动画模型到本地
         os.makedirs(save_dir, exist_ok=True)
@@ -529,17 +540,12 @@ def create_animated_character(
 
         return {
             'status': 'success',
-            'message': f'Animated character downloaded to {local_path}',
-            'anim_task_id': anim_task_id,
-            'rig_task_id': rig_task_id,
-            'local_path': local_path,
-            'save_dir': save_dir,
-            'animated_model_url': animated_model_url
+            'output': {'anim_task_id': anim_task_id,'rig_task_id': rig_task_id,'local_path': local_path,'save_dir': save_dir,'animated_model_url': animated_model_url}
         }
 
     except Exception as e:
         logging.error(f"Failed to create animated character: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 
 def create_rigged_and_animated_character(
@@ -597,17 +603,12 @@ def create_rigged_and_animated_character(
 
         return {
             'status': 'success',
-            'message': 'Rigged and animated character created successfully',
-            'rig_task_id': rig_task_id,
-            'anim_task_id': animation_result["anim_task_id"],
-            'rigged_model_path': rigging_result["local_path"],
-            'animated_model_path': animation_result["local_path"],
-            'save_dir': save_dir
+            'output': {'rig_task_id': rig_task_id,'anim_task_id': animation_result["anim_task_id"],'rigged_model_path': rigging_result["local_path"],'animated_model_path': animation_result["local_path"],'save_dir': save_dir}
         }
 
     except Exception as e:
         logging.error(f"Failed to create rigged and animated character: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
     
 @mcp.tool()
 def initialize(args: dict) -> dict:
@@ -630,9 +631,9 @@ def initialize(args: dict) -> dict:
         if meshy_api_key:
             global _meshy_api
             _meshy_api = MeshyAPI(meshy_api_key)
-        return {"status": "success", "message": "Meshy initialize completed"}
+        return {"status": "success", "output": "Meshy initialize completed"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 @mcp.tool()
 def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, save_dir: str = "assets", rig_and_animate: bool = False, action_id: int = 92) -> dict:
@@ -652,7 +653,7 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
         if reference_type == "text":
             description = (object_description or object_name or "").strip()
             if not description:
-                return {"status": "error", "error": "object_description or object_name must be provided"}
+                return {"status": "error", "output": "object_description or object_name must be provided"}
             base_result = download_meshy_asset(object_name=object_name, description=description, save_dir=save_dir, meshy_api=_meshy_api)
             if base_result.get('status') != 'success' or not rig_and_animate:
                 return base_result
@@ -669,7 +670,7 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
         elif reference_type == "image":
             # crop from target image via ImageCropper
             if _image_cropper is None:
-                return {"status": "error", "error": "ImageCropper not initialized. Call initialize with va_api_key and target_image_path."}
+                return {"status": "error", "output": "ImageCropper not initialized. Call initialize with va_api_key and target_image_path."}
             crop_resp = _image_cropper.crop_image_by_text(object_name=object_name)
             # Expecting {'data': [[{'bounding_box': [x1,y1,x2,y2], ...}]]}
             try:
@@ -681,9 +682,9 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
                 local_image_path = os.path.join(save_dir, f"cropped_{object_name}.png")
                 cropped.save(local_image_path)
             except Exception as e:
-                return {"status": "error", "error": f"Cropping failed: {e}"}
+                return {"status": "error", "output": f"Cropping failed: {e}"}
             if not os.path.exists(local_image_path):
-                return {"status": "error", "error": f"Image file not found: {local_image_path}"}
+                return {"status": "error", "output": f"Image file not found: {local_image_path}"}
             base_result = download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path, save_dir=save_dir, prompt=object_description, meshy_api=_meshy_api)
             if base_result.get('status') != 'success' or not rig_and_animate:
                 return base_result
@@ -697,9 +698,9 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
                 base_result['animated_model_path'] = rigged.get('animated_model_path')
             return base_result
         else:
-            return {"status": "error", "error": f"Unsupported reference_type: {reference_type}"}
+            return {"status": "error", "output": f"Unsupported reference_type: {reference_type}"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 def main():
     # Test entry similar to investigator.py

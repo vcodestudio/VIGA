@@ -12,7 +12,7 @@ from agents.prompt_builder import PromptBuilder
 from agents.tool_manager import ToolManager
 from agents.tool_handler import ToolHandler
 from agents.config_manager import ConfigManager
-from agents.utils import get_scene_info, save_thought_process, get_image_base64
+from utils.common import get_scene_info, save_thought_process, get_image_base64
 
 class VerifierAgent:
     def __init__(self, **kwargs):

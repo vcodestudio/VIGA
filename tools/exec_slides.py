@@ -1,13 +1,52 @@
 import os
 import subprocess
-import base64
-import io
 import re
 from pathlib import Path
-from PIL import Image
-from typing import Optional
 import logging
 from mcp.server.fastmcp import FastMCP
+
+# tool config for agent
+tool_configs = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_and_evaluate",
+            "description": "Execute code modifications and trigger verifier evaluation. This tool combines code execution with automatic verification. Always use this tool when you want to execute your code changes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thought": {
+                        "type": "string",
+                        "description": "Analyze the current state and provide a clear plan for the required changes. Consider scene representation consistency and infinigen optimization opportunities."
+                    },
+                    "code_edition": {
+                        "type": "string", 
+                        "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]\nFocus on scene consistency and use infinigen functions when appropriate."
+                    },
+                    "full_code": {
+                        "type": "string",
+                        "description": "Merge your code changes into the full code with proper formatting. Ensure consistent scene representation."
+                    }
+                },
+                "required": ["thought", "code_edition", "full_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "init_plan",
+            "description": "Store the detailed scene plan to a file and return the path.",
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "end",
+            "description": "No-op tool used to indicate the process should end.",
+        }
+    }
+]
 
 mcp = FastMCP("slides-executor")
 
@@ -31,12 +70,6 @@ class SlidesExecutor:
         except subprocess.CalledProcessError as e:
             logging.error(f"PPTX compilation failed: {e.stderr}")
             return f"Error: {e.stderr}"
-
-    def _encode_image(self, image_path: str) -> str:
-        image = Image.open(image_path)
-        img_byte_array = io.BytesIO()
-        image.save(img_byte_array, format='PNG')
-        return base64.b64encode(img_byte_array.getvalue()).decode()
 
     def execute(self, code: str, round: int) -> dict:
         try:
@@ -65,8 +98,7 @@ class SlidesExecutor:
             result = self._execute_slide_code(str(runned_code_path))
 
             if result == "Success" and image_path.exists():
-                encoded_image = self._encode_image(str(image_path))
-                return {"status": "success", "output": str(image_path)}
+                return {"status": "success", "output": [str(image_path)]}
             else:
                 return {"status": "failure", "output": result}
         except Exception as e:
@@ -80,12 +112,12 @@ def initialize(args: dict) -> dict:
     global _executor
     try:
         _executor = SlidesExecutor(args.get("task_dir"), args.get("output_dir"))
-        return {"status": "success", "message": "Slides executor initialized successfully"}
+        return {"status": "success", "output": "Slides executor initialized successfully"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 @mcp.tool()
-def exec_pptx(code: str, round: int) -> dict:
+def exec_script(code: str, round: int) -> dict:
     """
     Compile and render PPTX from Python code.
     Args:
@@ -94,12 +126,12 @@ def exec_pptx(code: str, round: int) -> dict:
     """
     global _executor
     if _executor is None:
-        return {"status": "error", "error": "Executor not initialized. Call initialize_executor first."}
+        return {"status": "error", "output": "Executor not initialized. Call initialize_executor first."}
     try:
         result = _executor.execute(code, round)
-        return {"status": "success", "result": result}
+        return result
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "output": str(e)}
 
 def test_specific_file():
     """
@@ -143,7 +175,7 @@ def test_specific_file():
         
         if result["status"] == "success":
             print("✅ 代码执行成功!")
-            print(f"   生成的图片路径: {result.get('image_path', 'N/A')}")
+            print(f"   生成的图片路径: {result.get('output', 'N/A')}")
             print(f"   图片base64长度: {len(result.get('image_base64', ''))} 字符")
             
             return True
