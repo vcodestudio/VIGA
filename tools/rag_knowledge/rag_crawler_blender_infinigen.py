@@ -357,7 +357,9 @@ def crawl(seeds, out_path, delay=1.0, max_pages=50, max_bytes=2_000_000, enable_
                 raw_url = to_raw_github(url)
                 try:
                     raw_resp = safe_fetch(raw_url, max_bytes=max_bytes)
-                    raw_text = getattr(raw_resp, "_text", raw_resp.text)
+                    raw_text = getattr(raw_resp, "_text", None)
+                    if raw_text is None:
+                        raw_text = ""
                 except Exception:
                     raw_text = text
                 out.extend(parse_github_markdown(url, raw_text))

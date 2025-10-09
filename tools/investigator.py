@@ -808,21 +808,21 @@ def add_keyframe(keyframe_type: str, round_num: int) -> dict:
 def main():
     # 检查是否直接运行此脚本（用于测试）
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        print("Running blender_server.py tools test...")
+        print("Running investigator tools test...")
         test_tools()
     else:
         # 正常运行 MCP 服务器
         mcp.run(transport="stdio")
 
 def test_tools():
-    """测试所有工具函数（包含 Meshy 生成→导入 流程）"""
+    """测试所有 investigator 工具函数（读环境变量配置）"""
     print("=" * 50)
     print("Testing Scene Tools")
     print("=" * 50)
 
-    # 设置测试路径
-    blender_file = "output/demo/blendergym_hard/20250924_132209/blender_file.blend"
-    test_save_dir = "output/test/scene_test"
+    # 设置测试路径（从环境变量读取）
+    blender_file = os.getenv("BLENDER_FILE", "")
+    test_save_dir = os.getenv("THOUGHT_SAVE", "output/test/scene_test")
 
     # 检查 blender 文件是否存在
     if not os.path.exists(blender_file):
@@ -951,10 +951,10 @@ def test_tools():
     print("Test completed!")
     print("=" * 50)
     print(f"\nTest files saved to: {test_save_dir}")
-    print("\nTo run the MCP server normally, use:")
-    print("python blender_server.py")
-    print("\nTo run tests, use:")
-    print("python blender_server.py --test")
+    print("\nTo run the MCP server normally:")
+    print("python tools/investigator.py")
+    print("\nTo run tests:")
+    print("BLENDER_FILE=/path/to.blend THOUGHT_SAVE=output/test/scene_test python tools/investigator.py --test")
 
 
 if __name__ == "__main__":

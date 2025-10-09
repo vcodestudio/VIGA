@@ -1,5 +1,6 @@
 # meshy.py
 import os
+import sys
 import base64
 import json
 import requests
@@ -701,7 +702,56 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
         return {"status": "error", "error": str(e)}
 
 def main():
-    mcp.run(transport="stdio")
+    # Test entry similar to investigator.py
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        print("Running Meshy tools test (rig_and_animate)...")
+        # Read basic args from env for simplicity
+        meshy_api_key = os.getenv("MESHY_API_KEY")
+        va_api_key = os.getenv("VA_API_KEY")
+        target_image_path = os.getenv("TARGET_IMAGE_PATH")
+        save_dir = os.getenv("MESHY_TEST_SAVE_DIR", "assets")
+
+        init_payload = {
+            "meshy_api_key": meshy_api_key,
+            "va_api_key": va_api_key,
+            "target_image_path": target_image_path,
+        }
+        print("[test] initialize(...) with:", init_payload)
+        init_res = initialize(init_payload)
+        print("[test:init]", json.dumps(init_res, ensure_ascii=False))
+        if init_res.get("status") != "success":
+            print("Initialization failed; aborting test.")
+            return
+
+        # Text reference test
+        print("\n[test] Text reference: humanoid, rig_and_animate=True")
+        text_res = generate_and_download_3d_asset(
+            object_name="humanoid",
+            reference_type="text",
+            object_description="stylized humanoid character",
+            save_dir=save_dir,
+            rig_and_animate=True,
+            action_id=92,
+        )
+        print(json.dumps(text_res, ensure_ascii=False, indent=2))
+
+        # Image reference test if target image available
+        if target_image_path and os.path.exists(target_image_path):
+            print("\n[test] Image reference via crop (object_name='chair'), rig_and_animate=True")
+            img_res = generate_and_download_3d_asset(
+                object_name="chair",
+                reference_type="image",
+                object_description="a wooden chair",
+                save_dir=save_dir,
+                rig_and_animate=True,
+                action_id=92,
+            )
+            print(json.dumps(img_res, ensure_ascii=False, indent=2))
+        else:
+            print("\n[test] Skipping image reference test: TARGET_IMAGE_PATH not set or not found.")
+    else:
+        # Normal MCP server mode
+        mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()

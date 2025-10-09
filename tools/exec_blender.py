@@ -26,9 +26,6 @@ mcp = FastMCP("blender-executor")
 # Global executor instance
 _executor = None
 
-# Global save_dir for executor outputs
-_save_dir = None
-
 class Executor:
     def __init__(self,
                  blender_command: str,
@@ -79,8 +76,7 @@ class Executor:
                 imgs = sorted([str(p) for p in Path(render_path).glob("*") if p.suffix in ['.png','.jpg']])
                 if not imgs:
                     return False, "No images", out
-                paths = imgs[:2]
-                return True, "PATH:" + ",".join(paths), out
+                return True, imgs, out
             return True, out, err
         except subprocess.CalledProcessError as e:
             logging.error(f"Blender failed: {e}")
@@ -125,7 +121,6 @@ def initialize(args: dict) -> dict:
     global _executor
     global _meshy_api
     global _image_cropper
-    global _save_dir
     try:
         _executor = Executor(
             blender_command=args.get("blender_command"),
@@ -136,7 +131,6 @@ def initialize(args: dict) -> dict:
             blender_save=args.get("blender_save"),
             gpu_devices=args.get("gpu_devices")
         )
-        _save_dir = os.path.dirname(args.get("script_save")) + '/assets'
         
         return {"status": "success", "message": "Executor initialized successfully"}
     except Exception as e:
@@ -154,17 +148,21 @@ def exec_script(code: str, round: int) -> dict:
     
     try:
         result = _executor.execute(code, round)
-        return {"status": "success", "result": result}
+        status = "success" if result.get("status") == "success" else "error"
+        image_paths = result.get("stdout", None)
+        err_message = result.get("output", None)
+        return {"status": status, "image": image_paths, "error": err_message}
     except Exception as e:
         return {"status": "error", "error": str(e)}
     
 @mcp.tool()
-def init_plan(detailed_description: str, save_dir: str = None) -> dict:
+def init_plan(detailed_description: str) -> dict:
     """
     Store the detailed scene plan to a file and return the path.
     """
     try:
-        base_dir = save_dir or (str(_save_dir) if _save_dir else os.getcwd())
+        global _executor
+        base_dir = os.path.dirname(_executor.render_path) + '/plans'
         os.makedirs(base_dir, exist_ok=True)
         out_path = os.path.join(base_dir, "scene_plan.txt")
         with open(out_path, "w", encoding="utf-8") as f:
@@ -184,7 +182,44 @@ def main():
     # 如果直接运行此脚本，执行测试
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        print("Test mode")
+        print("Running blender-executor tools test...")
+        # Read args from environment for convenience
+        args = {
+            "blender_command": os.getenv("BLENDER_COMMAND", "utils/blender/infinigen/blender/blender"),
+            "blender_file": os.getenv("BLENDER_FILE", "output/test/test.blend"),
+            "blender_script": os.getenv("BLENDER_SCRIPT", "data/static_scene/pipeline_render_script.py"),
+            "script_save": os.getenv("SCRIPT_SAVE", "output/test/scripts"),
+            "render_save": os.getenv("RENDER_SAVE", "output/test/renders"),
+            "blender_save": os.getenv("BLENDER_SAVE", None),
+            "gpu_devices": os.getenv("GPU_DEVICES", None),
+        }
+        if not os.path.exists(args["blender_file"]):
+            import bpy
+            bpy.ops.wm.save_as_mainfile(filepath=args["blender_file"])
+            print(f"Created blender file: {args['blender_file']}")
+        print("[test] initialize(...) with:", json.dumps({k:v for k,v in args.items() if k!="gpu_devices"}, ensure_ascii=False))
+        init_res = initialize(args)
+        print("[test:init]", json.dumps(init_res, ensure_ascii=False))
+
+        # init_plan
+        plan_res = init_plan("Create a simple scene with a plane and a cube; render from default camera.")
+        print("[test:init_plan]", json.dumps(plan_res, ensure_ascii=False))
+
+        # exec_script: minimal code; actual execution requires Blender + driver script to read script file; create a camera, setup its position and render it
+        sample_code = (
+            "import bpy\n"
+            "bpy.ops.object.select_all(action='SELECT')\n"
+            "bpy.ops.object.delete(use_global=False)\n"
+            "bpy.ops.mesh.primitive_plane_add(size=4, location=(0,0,0))\n"
+            "bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,1))\n"
+            "scene = bpy.context.scene\n"
+            "scene.render.image_settings.file_format='PNG'\n"
+        )
+        exec_res = exec_script(sample_code, round=1)
+        print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
+
+        end_res = end()
+        print("[test:end]", json.dumps(end_res, ensure_ascii=False))
     else:
         # 正常运行 MCP 服务
         mcp.run(transport="stdio")

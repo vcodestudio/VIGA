@@ -751,7 +751,7 @@ class BlenderInfinigenRAG:
         if not results:
             for category in self.knowledge_base.values():
                 results.extend(category['apis'])
-
+        
         # Rank and filter top-5 most relevant to the original instruction
         try:
             instruction = (parsed_instruction.get('original_instruction') or '').lower()
@@ -1114,18 +1114,30 @@ def main():
     """Run MCP server or test the RAG tool when --test is provided"""
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        # Test instruction (Chinese as requested)
-        test_instruction = "Move the bed to the corner of the room"
-        # Ensure tool is initialized
+        # Ensure tool is initialized (optionally with OPENAI_API_KEY env)
         global _rag_tool
         if _rag_tool is None:
-            _rag_tool = BlenderInfinigenRAG()
-        # Run query with official doc search enabled
-        result = _rag_tool.rag_query(test_instruction, use_enhanced=False, use_doc_search=True)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+            _rag_tool = BlenderInfinigenRAG(os.getenv("OPENAI_API_KEY"))
+
+        # Test 1: rag_query_tool
+        test_instruction = os.getenv("RAG_TEST_INSTRUCTION", "Place a cube on a plane and set physics")
+        res = _rag_tool.rag_query(test_instruction, use_enhanced=False, use_doc_search=True)
+        print("[test:rag_query]", json.dumps(res, ensure_ascii=False, indent=2))
+
+        # Test 2: search_blender_docs_tool
+        sb = _rag_tool.search_blender_docs("bpy.ops.mesh.primitive_cube_add", max_results=3)
+        print("[test:search_blender_docs]", json.dumps(sb, ensure_ascii=False, indent=2))
+
+        # Test 3: search_infinigen_docs_tool
+        si = _rag_tool.search_infinigen_docs("placement physics", max_results=3)
+        print("[test:search_infinigen_docs]", json.dumps(si, ensure_ascii=False, indent=2))
+
+        # Test 4: search_documentation_tool
+        sd = _rag_tool.search_documentation("rigid body", max_results=5)
+        print("[test:search_documentation]", json.dumps(sd, ensure_ascii=False, indent=2))
         return
-        # Default: run as MCP server
     else:
+        # Default: run as MCP server
         mcp.run(transport="stdio")
 
 if __name__ == "__main__":
