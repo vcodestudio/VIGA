@@ -47,11 +47,10 @@ if __name__ == "__main__":
 
     # render from all the camera, save the rendering to the rendering_dir
     for camera in bpy.data.objects:
-        print("object name: ", camera.name)
         if camera.type == 'CAMERA':
             bpy.context.scene.camera = camera
             bpy.context.scene.render.image_settings.file_format = 'PNG'
-            bpy.context.scene.render.filepath = os.path.join(rendering_dir, f'render_{camera.name}.png')
+            bpy.context.scene.render.filepath = os.path.join(rendering_dir, f'{camera.name}.png')
             bpy.ops.render.render(write_still=True)
 
     # Save the blend file

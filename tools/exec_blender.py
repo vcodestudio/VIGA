@@ -182,37 +182,22 @@ def main():
             "blender_save": os.getenv("BLENDER_SAVE", None),
             "gpu_devices": os.getenv("GPU_DEVICES", None),
         }
-        if not os.path.exists(args["blender_file"]):
-            import bpy
-            bpy.ops.wm.save_as_mainfile(filepath=args["blender_file"])
-            print(f"Created blender file: {args['blender_file']}")
+        
+        import bpy
+        bpy.ops.wm.save_as_mainfile(filepath=args["blender_file"])
+        print(f"Created blender file: {args['blender_file']}")
+        
         print("[test] initialize(...) with:", json.dumps({k:v for k,v in args.items() if k!="gpu_devices"}, ensure_ascii=False))
         init_res = initialize(args)
         print("[test:init]", json.dumps(init_res, ensure_ascii=False))
 
-        # exec_script: minimal code; actual execution requires Blender + driver script to read script file; create a NEW camera, setup its position and render it
+        # 注意：新的blender文件中默认是有一个Camera的，位置在(7,-6,4)左右，方向对着（0，0，0）
         sample_code = """import bpy
 import math
-
-# 清空
-bpy.ops.object.select_all(action='SELECT')
-bpy.ops.object.delete(use_global=False)
 
 # 场景物体
 bpy.ops.mesh.primitive_plane_add(size=4, location=(0,0,0))
 bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,1))
-
-# 相机
-bpy.ops.object.camera_add()
-camera = bpy.context.active_object
-camera.location = (3, 3, 3)
-camera.rotation_mode = 'XYZ'
-camera.rotation_euler = (0.9553166, 0.0, -2.3561945)  # 指向(0,0,0)
-camera.data.clip_start = 0.01
-camera.data.clip_end = 1000
-
-# **关键：把它设为场景的渲染相机**
-bpy.context.scene.camera = camera
 
 # **加一盏灯**（否则很黑）
 bpy.ops.object.light_add(type='SUN', location=(5,5,10))
@@ -225,6 +210,7 @@ bg = bpy.context.scene.world.node_tree.nodes['Background']
 bg.inputs[1].default_value = 1.0   # 强度"""
         exec_res = exec_script(sample_code, round=1)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
+        
     else:
         # 正常运行 MCP 服务
         mcp.run(transport="stdio")
