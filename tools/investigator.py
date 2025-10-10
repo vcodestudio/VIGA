@@ -502,11 +502,6 @@ class Investigator3D:
             logging.error(f"add_keyframe failed: {e}")
             raise e
 
-
-# ======================
-# MCP 工具
-# ======================
-
 @mcp.tool()
 def initialize(args: dict) -> dict:
     """
@@ -696,64 +691,6 @@ def add_viewpoint(object_names: list, round_num: int) -> dict:
         logging.error(f"Add viewpoint failed: {e}")
         return {"status": "error", "output": str(e)}
 
-
-# def set_camera_starting_position(direction: str = "z", round_num: int = 0) -> dict:
-#     """
-#     Set the camera to a fixed starting position for 3D scene investigation.
-    
-#     Args:
-#         direction: Starting camera direction - "z" (from above), "x" (from side), "y" (from front), or "bbox" (above bounding box)
-#         round_num: Current round number for file organization
-        
-#     Returns:
-#         dict: Status and camera position information
-        
-#     Example:
-#         set_camera_starting_position(direction="z", round_num=1)
-#         # Sets camera to look down from above the scene
-        
-#     Detailed Description:
-#         This tool sets the camera to predefined starting positions to ensure consistent 
-#         scene investigation. The available directions are:
-#         - "z": Camera positioned at (0,0,5) looking down at 60 degrees
-#         - "x": Camera positioned at (-5,0,2) looking from the side
-#         - "y": Camera positioned at (0,-5,2) looking from the front  
-#         - "bbox": Camera positioned at (0,0,10) looking down from above bounding box
-#     """
-#     global _investigator
-#     if _investigator is None:
-#         return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
-    
-#     try:
-#         _investigator._set_camera_to_position(_investigator.cam, direction)
-#         result = _investigator._render(round_num)
-#         return {
-#             "status": "success",
-#             "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
-#         }
-#     except Exception as e:
-#         return {"status": "error", "output": str(e)}
-
-# @mcp.tool()
-# def setup_camera(view: str = "top", round_num: int = 0) -> dict:
-#     """
-#     Setup an observer camera to a canonical view.
-    
-#     Args:
-#         view: One of ["top", "front", "side", "oblique"].
-#         round_num: Current round number for file organization.
-#     Returns:
-#         dict: status, image path, camera position
-#     """
-#     mapping = {
-#         "top": "z",
-#         "front": "y",
-#         "side": "x",
-#         "oblique": "bbox",
-#     }
-#     direction = mapping.get(view, "z")
-#     return set_camera_starting_position(direction=direction, round_num=round_num)
-
 @mcp.tool()
 def investigate(operation: str, object_name: str = None, direction: str = None, round_num: int = 0) -> dict:
     """
@@ -805,27 +742,6 @@ def set_object_visibility(show_object_list: list = None, hide_object_list: list 
         logging.error(f"set_object_visibility failed: {e}")
         return {"status": "error", "output": str(e)}
 
-# @mcp.tool()
-# def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
-#     """
-#     Jump to a specific keyframe (absolute frame index) and render a view.
-#     """
-#     global _investigator
-#     if _investigator is None:
-#         return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
-#     try:
-#         bpy.context.scene.frame_set(int(target_frame))
-#         result = _investigator._render(round_num)
-#         return {
-#             "status": "success",
-#             "image": result["image_path"],
-#             "camera_position": result["camera_position"],
-#             "keyframe_info": {"current_frame": int(target_frame)}
-#         }
-#     except Exception as e:
-#         logging.error(f"set_key_frame failed: {e}")
-#         return {"status": "error", "error": str(e)}
-
 @mcp.tool()
 def add_keyframe(keyframe_type: str, round_num: int) -> dict:
     """
@@ -848,8 +764,6 @@ def add_keyframe(keyframe_type: str, round_num: int) -> dict:
     except Exception as e:
         logging.error(f"Add keyframe failed: {e}")
         return {"status": "error", "output": str(e)}
-
-
 
 
 # ======================
@@ -1007,3 +921,91 @@ def test_tools():
 
 if __name__ == "__main__":
     main()
+    
+    
+
+
+# ======================
+# MCP 工具
+# ======================
+
+
+# @mcp.tool()
+# def set_key_frame(target_frame: int, round_num: int = 0) -> dict:
+#     """
+#     Jump to a specific keyframe (absolute frame index) and render a view.
+#     """
+#     global _investigator
+#     if _investigator is None:
+#         return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
+#     try:
+#         bpy.context.scene.frame_set(int(target_frame))
+#         result = _investigator._render(round_num)
+#         return {
+#             "status": "success",
+#             "image": result["image_path"],
+#             "camera_position": result["camera_position"],
+#             "keyframe_info": {"current_frame": int(target_frame)}
+#         }
+#     except Exception as e:
+#         logging.error(f"set_key_frame failed: {e}")
+#         return {"status": "error", "error": str(e)}
+
+
+
+# def set_camera_starting_position(direction: str = "z", round_num: int = 0) -> dict:
+#     """
+#     Set the camera to a fixed starting position for 3D scene investigation.
+    
+#     Args:
+#         direction: Starting camera direction - "z" (from above), "x" (from side), "y" (from front), or "bbox" (above bounding box)
+#         round_num: Current round number for file organization
+        
+#     Returns:
+#         dict: Status and camera position information
+        
+#     Example:
+#         set_camera_starting_position(direction="z", round_num=1)
+#         # Sets camera to look down from above the scene
+        
+#     Detailed Description:
+#         This tool sets the camera to predefined starting positions to ensure consistent 
+#         scene investigation. The available directions are:
+#         - "z": Camera positioned at (0,0,5) looking down at 60 degrees
+#         - "x": Camera positioned at (-5,0,2) looking from the side
+#         - "y": Camera positioned at (0,-5,2) looking from the front  
+#         - "bbox": Camera positioned at (0,0,10) looking down from above bounding box
+#     """
+#     global _investigator
+#     if _investigator is None:
+#         return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
+    
+#     try:
+#         _investigator._set_camera_to_position(_investigator.cam, direction)
+#         result = _investigator._render(round_num)
+#         return {
+#             "status": "success",
+#             "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
+#         }
+#     except Exception as e:
+#         return {"status": "error", "output": str(e)}
+
+# @mcp.tool()
+# def setup_camera(view: str = "top", round_num: int = 0) -> dict:
+#     """
+#     Setup an observer camera to a canonical view.
+    
+#     Args:
+#         view: One of ["top", "front", "side", "oblique"].
+#         round_num: Current round number for file organization.
+#     Returns:
+#         dict: status, image path, camera position
+#     """
+#     mapping = {
+#         "top": "z",
+#         "front": "y",
+#         "side": "x",
+#         "oblique": "bbox",
+#     }
+#     direction = mapping.get(view, "z")
+#     return set_camera_starting_position(direction=direction, round_num=round_num)

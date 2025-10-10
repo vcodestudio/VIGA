@@ -7,7 +7,8 @@ import requests
 import time
 import logging
 import PIL
-from typing import Optional
+import re
+from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
 
 # tool_configs for agent (only the function w/ @mcp.tools)
@@ -39,7 +40,7 @@ _meshy_api = None
 
 class MeshyAPI:
     """Meshy API 客户端：Text-to-3D 生成 + 轮询 + 下载"""
-    def __init__(self, api_key: str = None, save_dir: str = "assets"):
+    def __init__(self, api_key: str = None, save_dir: str = "assets", previous_assets_dir: str = None):
         self.api_key = api_key or os.getenv("MESHY_API_KEY")
         if not self.api_key:
             raise ValueError("Meshy API key is required. Set MESHY_API_KEY environment variable or pass api_key parameter.")
@@ -48,7 +49,124 @@ class MeshyAPI:
             "Authorization": f"Bearer {self.api_key}",
         }
         self.save_dir = save_dir
+        self.previous_assets_dir = previous_assets_dir
         os.makedirs(self.save_dir, exist_ok=True)
+        if self.previous_assets_dir:
+            os.makedirs(self.previous_assets_dir, exist_ok=True)
+
+    def normalize_name(self, name: str) -> str:
+        """
+        标准化名称用于模糊匹配：去除大小写、空格、下划线、单复数差异
+        """
+        if not name:
+            return ""
+        
+        # 转换为小写
+        normalized = name.lower()
+        
+        # 去除空格和下划线
+        normalized = re.sub(r'[\s_]+', '', normalized)
+        
+        # 处理单复数差异
+        # 移除常见的复数后缀
+        plural_endings = ['s', 'es', 'ies', 'ves']
+        for ending in plural_endings:
+            if normalized.endswith(ending) and len(normalized) > len(ending) + 1:
+                # 特殊情况：以y结尾的复数形式
+                if ending == 'ies' and normalized.endswith('ies'):
+                    normalized = normalized[:-3] + 'y'
+                # 特殊情况：以f/fe结尾的复数形式
+                elif ending == 'ves' and (normalized.endswith('ves') and 
+                                         (normalized[-4] == 'f' or normalized[-4] == 'e')):
+                    normalized = normalized[:-3] + 'f'
+                else:
+                    normalized = normalized[:-len(ending)]
+                break
+        
+        return normalized
+
+    def find_matching_files(self, target_name: str, extensions: List[str], prefix: str = "") -> List[str]:
+        """
+        在previous_assets目录中查找匹配的文件
+        
+        Args:
+            target_name: 目标对象名称
+            extensions: 文件扩展名列表
+            prefix: 文件名前缀（如"animated_", "rigged_"）
+            
+        Returns:
+            List[str]: 匹配的文件路径列表
+        """
+        if not self.previous_assets_dir or not os.path.exists(self.previous_assets_dir):
+            return []
+        
+        target_normalized = self.normalize_name(target_name)
+        matching_files = []
+        
+        try:
+            for filename in os.listdir(self.previous_assets_dir):
+                # 检查文件扩展名
+                if not any(filename.lower().endswith(ext.lower()) for ext in extensions):
+                    continue
+                
+                # 移除扩展名和前缀
+                base_name = filename
+                for ext in extensions:
+                    if base_name.lower().endswith(ext.lower()):
+                        base_name = base_name[:-len(ext)]
+                        break
+                
+                # 移除前缀
+                if prefix and base_name.lower().startswith(prefix.lower()):
+                    base_name = base_name[len(prefix):]
+                
+                # 标准化并比较
+                base_normalized = self.normalize_name(base_name)
+                if base_normalized == target_normalized:
+                    matching_files.append(os.path.join(self.previous_assets_dir, filename))
+                    
+        except OSError as e:
+            logging.warning(f"Error reading previous_assets directory: {e}")
+            
+        return matching_files
+
+    def check_previous_asset(self, object_name: str, is_animated: bool = False, is_rigged: bool = False) -> Optional[str]:
+        """
+        检查previous_assets目录中是否存在对应的资产文件（支持模糊匹配）
+        
+        Args:
+            object_name: 对象名称
+            is_animated: 是否为动画文件
+            is_rigged: 是否为绑定文件
+            
+        Returns:
+            str: 如果找到文件，返回文件路径；否则返回None
+        """
+        if not self.previous_assets_dir:
+            return None
+            
+        # 根据设置确定搜索参数
+        if is_animated:
+            extensions = [".glb"]
+            prefix = "animated_"
+        elif is_rigged:
+            extensions = [".fbx"]
+            prefix = "rigged_"
+        else:
+            # 静态文件，尝试常见的扩展名
+            extensions = [".glb", ".gltf", ".fbx", ".obj", ".zip"]
+            prefix = ""
+        
+        # 使用模糊匹配查找文件
+        matching_files = self.find_matching_files(object_name, extensions, prefix)
+        
+        if matching_files:
+            # 返回第一个匹配的文件
+            matched_file = matching_files[0]
+            logging.info(f"Found previous asset (fuzzy match): {matched_file}")
+            return matched_file
+        
+        return None
 
     def create_text_to_3d_preview(self, prompt: str, **kwargs) -> str:
         """
@@ -291,6 +409,12 @@ def download_meshy_asset(object_name: str, description: str) -> dict:
         if _meshy_api is None:
             return {"status": "error", "output": "Meshy API not initialized"}
 
+        # 检查previous_assets目录中是否已存在静态文件
+        previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=False, is_rigged=False)
+        if previous_asset:
+            print(f"[Meshy] Using previous static asset: {previous_asset}")
+            return {'status': 'success', 'output': {'path': previous_asset, 'model_url': None, 'from_cache': True}}
+
         # 1) 创建 preview 任务
         print(f"[Meshy] Creating preview task for: {description}")
         preview_id = _meshy_api.create_text_to_3d_preview(description)
@@ -352,6 +476,12 @@ def download_meshy_asset_from_image(object_name: str, image_path: str, prompt: s
         if _meshy_api is None:
             return {"status": "error", "output": "Meshy API not initialized"}
 
+        # 检查previous_assets目录中是否已存在静态文件
+        previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=False, is_rigged=False)
+        if previous_asset:
+            print(f"[Meshy] Using previous static asset from image: {previous_asset}")
+            return {'status': 'success', 'output': {'path': previous_asset, 'model_url': None, 'from_cache': True}}
+
         # 1) 创建 Image-to-3D preview 任务
         print(f"[Meshy] Creating Image-to-3D preview task for: {image_path}")
         if prompt:
@@ -406,6 +536,15 @@ def create_rigged_character(model_url: str, object_name: str) -> dict:
         if _meshy_api is None:
             return {"status": "error", "output": "Meshy API not initialized"}
 
+        # 检查previous_assets目录中是否已存在绑定文件
+        previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=False, is_rigged=True)
+        if previous_asset:
+            print(f"[Meshy] Using previous rigged asset: {previous_asset}")
+            return {
+                'status': 'success',
+                'output': {'task_id': 'cached', 'path': previous_asset, 'model_url': None, 'from_cache': True}
+            }
+
         # 1) 创建绑定任务
         print(f"[Meshy] Creating rigging task for: {model_url}")
         rig_task_id = _meshy_api.create_rigging_task(model_url=model_url)
@@ -450,6 +589,15 @@ def create_animated_character(rig_task_id: str, action_description: str, object_
         global _meshy_api
         if _meshy_api is None:
             return {"status": "error", "output": "Meshy API not initialized"}
+
+        # 检查previous_assets目录中是否已存在动画文件
+        previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=True, is_rigged=False)
+        if previous_asset:
+            print(f"[Meshy] Using previous animated asset: {previous_asset}")
+            return {
+                'status': 'success',
+                'output': {'task_id': 'cached', 'path': previous_asset, 'model_url': None, 'from_cache': True}
+            }
 
         # 1) 创建动画任务
         print(f"[Meshy] Creating animation task for rig_task_id: {rig_task_id}")
@@ -503,6 +651,21 @@ def create_rigged_and_animated_character(model_url: str, action_description: str
 
         # 2) 然后创建动画
         rig_task_id = rigging_result["output"]["task_id"]
+        # 如果绑定结果来自缓存，我们需要检查是否已经有完整的动画缓存
+        if rigging_result["output"].get("from_cache"):
+            # 检查是否已有动画缓存
+            animation_result = create_animated_character(rig_task_id="cached", action_description=action_description, object_name=object_name)
+            if animation_result["output"].get("from_cache"):
+                return animation_result
+            # 如果没有动画缓存，需要重新生成绑定（因为我们需要真实的rig_task_id）
+            if not model_url:
+                return {"status": "error", "output": "Cannot create animation without model_url when rigging is cached"}
+            # 重新创建绑定以获得真实的task_id
+            rigging_result = create_rigged_character(model_url=model_url, object_name=object_name)
+            if rigging_result.get("status") != "success":
+                return rigging_result
+            rig_task_id = rigging_result["output"]["task_id"]
+        
         animation_result = create_animated_character(rig_task_id=rig_task_id, action_description=action_description, object_name=object_name)
 
         if animation_result.get("status") != "success":
@@ -524,6 +687,7 @@ def initialize(args: dict) -> dict:
           - va_api_key: VA API key for ImageCropper (optional)
           - target_image_path: path to the target image for cropping (optional)
           - save_dir: path to the directory to save the generated asset
+          - previous_assets_dir: path to the directory containing previous assets (optional)
     """
     global _image_cropper
     try:
@@ -531,12 +695,19 @@ def initialize(args: dict) -> dict:
         target_image_path = args.get("target_image_path")
         meshy_api_key = args.get("meshy_api_key") or os.getenv("MESHY_API_KEY")
         save_dir = args.get("save_dir")
+        previous_assets_dir = args.get("previous_assets_dir")
+        
+        # 如果没有指定previous_assets_dir，默认使用target_image_path同目录下的assets文件夹
+        if not previous_assets_dir and target_image_path:
+            target_dir = os.path.dirname(target_image_path)
+            previous_assets_dir = os.path.join(target_dir, "assets")
+        
         if va_api_key and target_image_path:
-            _image_cropper = ImageCropper(va_api_key, target_image_path, save_dir)
+            _image_cropper = ImageCropper(va_api_key, target_image_path)
         # Initialize global MeshyAPI if key available
         if meshy_api_key:
             global _meshy_api
-            _meshy_api = MeshyAPI(meshy_api_key, save_dir)
+            _meshy_api = MeshyAPI(meshy_api_key, save_dir, previous_assets_dir)
         return {"status": "success", "output": "Meshy initialize completed"}
     except Exception as e:
         return {"status": "error", "output": str(e)}
@@ -603,11 +774,13 @@ def main():
         meshy_api_key = os.getenv("MESHY_API_KEY")
         va_api_key = os.getenv("VA_API_KEY")
         save_dir = "test/meshy/assets"
+        previous_assets_dir = "data/static_scene/christmas1/assets"
 
         init_payload = {
             "meshy_api_key": meshy_api_key,
             "va_api_key": va_api_key,
             "save_dir": save_dir,
+            "previous_assets_dir": previous_assets_dir,
         }
         print("[test] initialize(...) with:", init_payload)
         init_res = initialize(init_payload)
@@ -619,10 +792,10 @@ def main():
         # Text reference test
         print("\n[test] Text reference: humanoid, rig_and_animate=True")
         text_res = generate_and_download_3d_asset(
-            object_name="humanoid",
+            object_name="Snow man",
             reference_type="text",
             object_description="stylized humanoid character",
-            rig_and_animate=True,
+            rig_and_animate=False,
             action_description="walk",
         )
         print(json.dumps(text_res, ensure_ascii=False, indent=2))
