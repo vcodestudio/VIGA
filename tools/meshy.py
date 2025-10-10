@@ -216,7 +216,7 @@ class MeshyAPI:
             
         Returns: task_id (str)
         """
-        from knowledgebase.meshy_builder import search
+        from knowledge_base.meshy_builder import search
         action = search(action_description)
         if not action:
             return {"status": "error", "output": "No action found"}
