@@ -25,7 +25,7 @@ class GeneratorAgent:
             self.init_chat_args['tool_choice'] = "auto"
             
         # Initialize tool client
-        self.tool_client = ExternalToolClient(self.config.get("tool_servers"), self.config)
+        self.tool_client = ExternalToolClient(self.config.get("generator_tools"), self.config)
         
         # Initialize OpenAI client
         client_kwargs = {"api_key": self.config.get("api_key"), 'base_url': self.config.get("api_base_url") or os.getenv("OPENAI_BASE_URL") or 'https://api.openai.com/v1'}

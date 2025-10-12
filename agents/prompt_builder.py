@@ -31,8 +31,8 @@ class PromptBuilder:
         """Build generator prompt for static_scene mode using prompt manager."""
         content = [
             {"type": "text", "text": prompts.get('system', '')},
-            {"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("target_image"))}},
-            {"type": "text", "text": f"Target image loaded from local path: {self.config.get('target_image')}"}
+            {"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("target_image_path"))}},
+            {"type": "text", "text": f"Target image loaded from local path: {self.config.get('target_image_path')}"}
         ]
         return [{"role": "system", "content": content}]
     

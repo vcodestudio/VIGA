@@ -51,3 +51,9 @@ def end() -> dict:
     No-op tool used to indicate the process should end.
     """
     return {"status": "success", "output": {"text": ["END THE PROCESS"]}}
+
+def main():
+    mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()

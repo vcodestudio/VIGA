@@ -6,7 +6,6 @@ Uses MCP stdio connections instead of HTTP servers.
 """
 import argparse
 import os
-import shutil
 import asyncio
 from agents.generator import GeneratorAgent
 from agents.verifier import VerifierAgent
@@ -15,53 +14,46 @@ from agents.verifier import VerifierAgent
 
 async def main():
     parser = argparse.ArgumentParser(description="Dual-agent interactive framework")
-    parser.add_argument("--mode", choices=["blendergym", "autopresent", "blendergym-hard", "demo", "design2code", "static_scene", "dynamic_scene"], default="blendergym", help="Choose 3D (Blender), 2D (PPTX), Design2Code, Static Scene, or Dynamic Scene mode")
-    parser.add_argument("--vision-model", default="gpt-4o", help="OpenAI vision model")
+    parser.add_argument("--mode", choices=["blendergym", "autopresent", "blendergym-hard", "demo", "design2code", "static_scene", "dynamic_scene"], required=True, help="Choose 3D (Blender), 2D (PPTX), Design2Code, Static Scene, or Dynamic Scene mode")
+    parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key")
-    parser.add_argument("--openai-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
+    parser.add_argument("--api-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
     parser.add_argument("--max-rounds", type=int, default=10, help="Max interaction rounds")
     parser.add_argument("--memory-length", type=int, default=12, help="Memory length")
-    parser.add_argument("--init-code-path", default="data/blendergym/blendshape1/start.py", help="Path to initial code file")
-    parser.add_argument("--init-image-path", default="data/blendergym/blendshape1/renders/start", help="Path to initial images")
-    parser.add_argument("--target-image-path", default="data/blendergym/blendshape1/renders/goal", help="Path to target images")
+    parser.add_argument("--init-code-path", default=None, help="Path to initial code file")
+    parser.add_argument("--init-image-path", default=None, help="Path to initial images")
+    parser.add_argument("--target-image-path", default=None, help="Path to target images")
     parser.add_argument("--target-description", default=None, help="Target description for 2D mode")
-    parser.add_argument("--output-dir", default="output", help="Output directory")
-    parser.add_argument("--task-name", default="blendshape", help="Task name for hints extraction")
+    parser.add_argument("--output-dir", default=None, help="Output directory")
+    parser.add_argument("--task-name", default=None, help="Task name for hints extraction")
     parser.add_argument("--assets-dir", default=None, help="Assets directory path for static_scene and dynamic_scene modes")
     parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     
-    # Agent server paths 
-    parser.add_argument("--generator-script", default="agents/generator.py", help="Generator MCP script path")
-    parser.add_argument("--verifier-script", default="agents/verifier.py", help="Verifier MCP script path")
-    
     # Execution parameters
     parser.add_argument("--blender-command", default="utils/blender/infinigen/blender/blender", help="Blender command path")
-    parser.add_argument("--blender-file", default="data/blendergym/blendshape1/blender_file.blend", help="Blender template file")
+    parser.add_argument("--blender-file", default=None, help="Blender template file")
     parser.add_argument("--blender-script", default="data/blendergym/pipeline_render_script.py", help="Blender execution script")
-    parser.add_argument("--blender-save", default="output/test/static_scene/blender_file.blend", help="Save blender file")
+    parser.add_argument("--blender-save", default=None, help="Save blender file")
     parser.add_argument("--meshy_api_key", default=os.getenv("MESHY_API_KEY"), help="Meshy API key")
     parser.add_argument("--va_api_key", default=os.getenv("VA_API_KEY"), help="VA API key")
     parser.add_argument("--browser-command", default="google-chrome", help="Browser command for HTML screenshots")
     
-    # Generator/Verifier tool servers (comma-separated list of script paths)
-    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/meshy.py,tools/exec_html.py,tools/exec_slides.py,tools/rag.py", help="Comma-separated list of generator tool server scripts")
-    
-    # Verifier tool servers (comma-separated list of script paths)
-    parser.add_argument("--verifier-tools", default="tools/init_verify.py,tools/investigator.py", help="Comma-separated list of verifier tool server scripts")
+    # Tool servers
+    parser.add_argument("--generator-tools", default="tools/generator_base.py", help="Comma-separated list of generator tool server scripts")
+    parser.add_argument("--verifier-tools", default="tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
     
     args = parser.parse_args()
-
-    # Prepare output dirs
-    os.makedirs(args.output_dir, exist_ok=True)
     
     # Prepare target description
-    if os.path.exists(args.target_description):
+    if args.target_description and os.path.exists(args.target_description):
         with open(args.target_description, 'r') as f:
             args.target_description = f.read().strip()
-    else:
-        args.target_description = args.target_description 
+            
+    # turn args into dictionary
+    args = vars(args)
 
     # Init agents
+    print("\n=== Initializing agents ===\n")
     generator = GeneratorAgent(args)
     verifier = VerifierAgent(args)
     await generator.tool_client.connect_servers()
@@ -82,4 +74,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print(f"Error: {e}\n\n")

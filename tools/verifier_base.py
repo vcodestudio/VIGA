@@ -38,3 +38,9 @@ def initialize(args: dict) -> dict:
     Initialize the verifier base.
     """
     return {"status": "success", "output": {"text": ["Verifier base initialized successfully"], "tool_configs": tool_configs}}
+
+def main():
+    mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()

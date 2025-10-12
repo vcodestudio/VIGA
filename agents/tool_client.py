@@ -24,18 +24,19 @@ class McpSession:
 
 class ExternalToolClient:
     """Client for connecting to external MCP tool servers (blender/slides/image/scene)."""
-    def __init__(self, tool_servers: Dict[str, str], init_args: Optional[Dict[str, dict]] = None):
+    def __init__(self, tool_servers: Dict[str, str], args: Optional[Dict[str, dict]] = None):
         self.mcp_sessions = {}  # server_name -> McpSession
         self.connection_timeout = 30  # 30 seconds timeout
         self.tool_to_server: Dict[str, str] = {}
         self.tool_configs = []
-        self.tool_servers = tool_servers
-        self.init_args = init_args
+        self.tool_servers = tool_servers.split(",")
+        self.args = args
     
-    async def connect_server(self, server_name: str, server_path: str):
+    async def connect_server(self, server_path: str):
         """Connect to the specified MCP server with timeout in a background task.
         Multiple servers can be connected; indexed by server_name key.
         """
+        server_name = server_path.split("/")[-1].split(".")[0]
         print(f"Connecting to {server_name} server at {server_path}")
         ready_event = asyncio.Event()
         
@@ -75,7 +76,7 @@ class ExternalToolClient:
                 try:
                     tool_names = {t.name for t in tools if getattr(t, "name", None)}
                     if "initialize" in tool_names:
-                        args = (self.init_args or {}).get(server_name) or {}
+                        args = (self.args or {}).get(server_name) or {}
                         tool_configs = await asyncio.wait_for(session.call_tool("initialize", {"args": args} if isinstance(args, dict) else args), timeout=30)
                     self.tool_configs.extend(tool_configs)
                 except Exception as e:
@@ -104,10 +105,7 @@ class ExternalToolClient:
         if not self.tool_servers:
             return
         # Launch connections concurrently
-        await asyncio.gather(*[
-            self.connect_server(server_name=stype, server_path=spath)
-            for stype, spath in self.tool_servers.items()
-        ])
+        await asyncio.gather(*[self.connect_server(server_path=path) for path in self.tool_servers])
     
     async def call_tool(self, tool_name: str, tool_args: dict = None, timeout: int = 3600, **kwargs) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""

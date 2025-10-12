@@ -380,7 +380,7 @@ def focus(object_name: str) -> dict:
         result = _investigator.focus_on_object(object_name)
         return {
             "status": "success", 
-            "output": {"image": [result["image_path"]], "text": [f"Camera parameters: {result["camera_parameters"]}"]}
+            "output": {"image": [result["image_path"]], "text": [f"Camera parameters: {result['camera_parameters']}"]}
         }
     except Exception as e:
         logging.error(f"Focus failed: {e}")
@@ -399,7 +399,7 @@ def zoom(direction: str) -> dict:
         result = _investigator.zoom(direction)
         return {
             "status": "success", 
-            "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result["camera_parameters"]}"]}
+            "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result['camera_parameters']}"]}
         }
     except Exception as e:
         logging.error(f"Zoom failed: {e}")
@@ -418,7 +418,7 @@ def move(direction: str) -> dict:
         result = _investigator.move_camera(direction)
         return {
             "status": "success", 
-            "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result["camera_parameters"]}"]}
+            "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result['camera_parameters']}"]}
         }
     except Exception as e:
         logging.error(f"Move failed: {e}")
@@ -482,7 +482,7 @@ def set_object_visibility(show_object_list: list = None, hide_object_list: list 
                 obj.hide_viewport = False
                 obj.hide_render = False
         result = _investigator._render()
-        return {"status": "success", "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result["camera_parameters"]}"]}}
+        return {"status": "success", "output": {'image': [result["image_path"]], 'text': [f"Camera parameters: {result['camera_parameters']}"]}}
     except Exception as e:
         logging.error(f"set_object_visibility failed: {e}")
         return {"status": "error", "output": {"text": [str(e)]}}
@@ -495,9 +495,9 @@ def set_keyframe(frame_number: int) -> dict:
     try:
         result = _investigator.set_keyframe(frame_number)
         if result.get("status") == "success":
-            return {"status": "success", "output": {"text": ["Successfully set the keyframe"], "image": [result.get("output", {}).get("image", [])], "text": [f"Camera parameters: {result.get("output", {}).get("camera_parameters", {})}"]}}
+            return {"status": "success", "output": {"text": ["Successfully set the keyframe"], "image": [result.get("output", {}).get("image", [])], "text": [f"Camera parameters: {result.get('output', {}).get('camera_parameters', {})}"]}}
         else:
-            return {"status": "error", "output": {"text": [result.get("output", {}).get("text", ["Failed to set the keyframe"])]}}
+            return {"status": "error", "output": {"text": [result.get('output', {}).get('text', ["Failed to set the keyframe"])]}}
     except Exception as e:
         logging.error(f"Set keyframe failed: {e}")
         return {"status": "error", "output": {"text": [str(e)]}}
