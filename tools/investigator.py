@@ -111,28 +111,24 @@ class GetSceneInfo:
 
     def get_info(self) -> dict:
         try:
-            scene_info = {"objects": [], "materials": [], "lights": [], "cameras": [], "render_settings": {}}
+            scene_info = {"objects": [], "materials": [], "lights": [], "cameras": []}
             for obj in bpy.data.objects:
                 if obj.type == 'CAMERA' or obj.type == 'LIGHT':
                     continue
-                obj_info = {"name": obj.name, "type": obj.type,
-                            "location": list(obj.matrix_world.translation),
-                            "rotation": list(obj.rotation_euler),
-                            "scale": list(obj.scale),
-                            "visible": not (obj.hide_viewport or obj.hide_render)}
-                if obj.type == 'MESH':
-                    obj_info["vertices"] = len(obj.data.vertices)
-                    obj_info["faces"] = len(obj.data.polygons)
-                    obj_info["materials"] = [mat.name for mat in obj.material_slots if mat.material]
-                scene_info["objects"].append(obj_info)
+                scene_info["objects"].append({
+                    "name": obj.name, 
+                    "type": obj.type,
+                    "location": list(obj.matrix_world.translation),
+                    "rotation": list(obj.rotation_euler),
+                    "scale": list(obj.scale),
+                    "visible": not (obj.hide_viewport or obj.hide_render)
+                })
 
             for mat in bpy.data.materials:
                 scene_info["materials"].append({
                     "name": mat.name,
                     "use_nodes": mat.use_nodes,
                     "diffuse_color": list(mat.diffuse_color),
-                    "metallic": getattr(mat, 'metallic', None),
-                    "roughness": getattr(mat, 'roughness', None)
                 })
 
             for light in [o for o in bpy.data.objects if o.type == 'LIGHT']:
@@ -153,8 +149,6 @@ class GetSceneInfo:
                     "location": list(cam.matrix_world.translation),
                     "rotation": list(cam.rotation_euler),
                     "is_active": cam == scene.camera,
-                    "dof_distance": cam.data.dof_distance if cam.data.dof.use_dof else None,
-                    "dof_aperture_fstop": cam.data.dof.aperture_fstop if cam.data.dof.use_dof else None
                 })
 
             return scene_info
@@ -313,7 +307,7 @@ class Investigator3D:
                 (center_x + margin, center_y + margin, center_z + margin)
             ]
 
-            viewpoints = []
+            viewpoints = {'image': [], 'text': []}
             previous_cam_info = {'location': self.cam.location, 'rotation': self.cam.rotation_euler}
             
             for i, pos in enumerate(camera_positions):
@@ -324,14 +318,10 @@ class Investigator3D:
                 self.cam.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
                 render_result = self._render()
                 
-                viewpoint_data = {
-                    'view_index': i,
-                    'position': list(self.cam.location),
-                    'rotation': list(self.cam.rotation_euler),
-                    'image': render_result['image_path'],
-                    'camera_position': render_result['camera_position']
-                }
-                viewpoints.append(viewpoint_data)
+                camera_parameters = str({"position": list(self.cam.location), "rotation": list(self.cam.rotation_euler)})
+                
+                viewpoints['image'].append(render_result['image_path'])
+                viewpoints['text'].append(f"[Viewpoint {i+1}] Camera parameters: {camera_parameters}")
                 
                 logging.info(f"Viewpoint {i+1}: position={self.cam.location}, rotation={self.cam.rotation_euler}")
                 
@@ -339,21 +329,10 @@ class Investigator3D:
             self.cam.location = previous_cam_info['location']
             self.cam.rotation_euler = previous_cam_info['rotation']
             
-            return {
-                'status': 'success',
-                'output': {
-                    'viewpoints': viewpoints,
-                    'bounding_box': {
-                        'center': [center_x, center_y, center_z],
-                        'size': [size_x, size_y, size_z],
-                        'min': [min_x, min_y, min_z],
-                        'max': [max_x, max_y, max_z]
-                    }
-                }
-            }
+            return {'status': 'success', 'output': viewpoints}
                 
         except Exception as e:
-            return {'status': 'error', 'output': str(e)}
+            return {'status': 'error', 'output': {'text': [str(e)]}}
 
     def set_keyframe(self, frame_number: int) -> dict:
         try:
@@ -368,19 +347,11 @@ class Investigator3D:
             
             return {
                 'status': 'success',
-                'output': {
-                    'image': render_result['image_path'],
-                    'camera_parameters': render_result['camera_parameters'],
-                    'frame_info': {
-                        'previous_frame': current_frame,
-                        'current_frame': target_frame,
-                        'requested_frame': frame_number
-                    }
-                }
+                'output': {'image': [render_result['image_path']], 'text': [f"Camera parameters: {render_result['camera_parameters']}"]}
             }
             
         except Exception as e:
-            return {'status': 'error', 'output': str(e)}
+            return {'status': 'error', 'output': {'text': [str(e)]}}
 
 @mcp.tool()
 def initialize(args: dict) -> dict:

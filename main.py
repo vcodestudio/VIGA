@@ -72,7 +72,7 @@ async def main():
         await verifier.create_session(**args)
         
         # Main loop
-        await generator.run()
+        await generator.run(verifier=verifier)
             
     except Exception as e:
         print(f"Error in main loop: {e}")
