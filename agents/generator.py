@@ -59,11 +59,6 @@ class GeneratorAgent:
                     chat_args['parallel_tool_calls'] = False
                 if self.model != 'Qwen2-VL-7B-Instruct':
                     chat_args['tool_choice'] = "auto"
-                    
-            with open('logs/generator.log', 'w') as f:
-                f.write(f"chat_args: {chat_args}\n")
-                
-            raise Exception("stop here")
 
             response = self.client.chat.completions.create(**chat_args)
             message = response.choices[0].message
