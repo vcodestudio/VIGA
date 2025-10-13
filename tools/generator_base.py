@@ -7,7 +7,7 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "init_plan",
+            "name": "initialize_plan",
             "description": "From the given inputs, imagine and articulate the scene in detail. This tool does not return new information. It stores your detailed description as your own plan to guide subsequent actions. You MUST call this tool first.",
             "parameters": {
                 "type": "object",
@@ -38,7 +38,7 @@ def initialize(args: dict) -> dict:
     return {"status": "success", "output": {"text": ["Generator base initialized successfully"], "tool_configs": tool_configs}}
 
 @mcp.tool()
-def init_plan(overall_description: str, object_list: list, object_relations: list, initial_layout: list) -> dict:
+def initialize_plan(overall_description: str, object_list: list, object_relations: list, initial_layout: list) -> dict:
     """
     Store the detailed scene plan to a file and return the path.
     """

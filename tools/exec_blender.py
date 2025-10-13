@@ -146,18 +146,16 @@ def initialize(args: dict) -> dict:
             - target_image_path: Target image path (optional)
     """
     global _executor
-    global tool_configs
     try:
         _executor = Executor(
             blender_command=args.get("blender_command"),
             blender_file=args.get("blender_file"),
             blender_script=args.get("blender_script"),
-            script_save=args.get("script_save"),
-            render_save=args.get("render_save"),
+            script_save=args.get("output_dir") + "/scripts",
+            render_save=args.get("output_dir") + "/renders",
             blender_save=args.get("blender_save"),
             gpu_devices=args.get("gpu_devices")
         )
-        
         return {"status": "success", "output": {"text": ["Executor initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}

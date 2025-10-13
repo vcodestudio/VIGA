@@ -360,7 +360,7 @@ def initialize(args: dict) -> dict:
     """
     global _investigator
     try:
-        save_dir = args.get("thought_save") + "/investigator/" + str(args.get("round"))
+        save_dir = args.get("output_dir") + "/investigator/" + str(args.get("round"))
         _investigator = Investigator3D(save_dir, str(args.get("blender_file")))
         return {"status": "success", "output": {"text": ["Investigator3D initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
@@ -577,7 +577,7 @@ def test_tools():
     # Test 2: Initialize investigation tool
     print("\n2. Testing initialize_investigator...")
     try:
-        args = {"thought_save": test_save_dir, "blender_file": blender_file, "round": 0}
+        args = {"output_dir": test_save_dir, "blender_file": blender_file, "round": 0}
         result = initialize(args)
         if result.get("status") == "success":
             print("✓ initialize_investigator passed")

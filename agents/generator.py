@@ -47,18 +47,31 @@ class GeneratorAgent:
         Returns:
             Dict containing the generated code, metadata, and verifier flag
         """
+        print("\n=== Running generator agent ===\n")
         for i in range(self.config.get("max_rounds")):
             # Prepare chat args
             memory = ([self.memory[0]] + self.memory[-self.config.get("memory_length")+1:]) if len(self.memory) > self.config.get("memory_length") else self.memory
-            tools = self.tool_client.tool_configs
-            chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tools, **self.init_chat_args}
+            
+            tool_configs = self.tool_client.tool_configs
+            tool_configs = [x for v in tool_configs.values() for x in v]
+                
+            chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, **self.init_chat_args}
+            
+            with open('logs/generator.json', 'w') as f:
+                json.dump(chat_args, f, indent=4, ensure_ascii=False)
             
             # Generate response
             response = self.client.chat.completions.create(**chat_args)
+            
+            with open('logs/generator.log', 'w') as f:
+                f.write(str(response))
+            
             message = response.choices[0].message
             if not message.tool_calls:
                 continue
             tool_call = message.tool_calls[0]
+            
+            raise NotImplementedError("Not implemented")
             
             # If the tool is execute_and_evaluate, run the verifier
             if tool_call.function.name == "execute_and_evaluate":

@@ -28,7 +28,7 @@ class ExternalToolClient:
         self.mcp_sessions = {}  # server_name -> McpSession
         self.connection_timeout = 30  # 30 seconds timeout
         self.tool_to_server: Dict[str, str] = {}
-        self.tool_configs = []
+        self.tool_configs = {}
         self.tool_servers = tool_servers.split(",")
         self.args = args
     
@@ -76,9 +76,11 @@ class ExternalToolClient:
                 try:
                     tool_names = {t.name for t in tools if getattr(t, "name", None)}
                     if "initialize" in tool_names:
-                        args = (self.args or {}).get(server_name) or {}
-                        tool_configs = await asyncio.wait_for(session.call_tool("initialize", {"args": args} if isinstance(args, dict) else args), timeout=30)
-                    self.tool_configs.extend(tool_configs)
+                        initialize_result = await asyncio.wait_for(session.call_tool("initialize", {"args": self.args}), timeout=30)
+                        initialize_result = json.loads(initialize_result.content[0].text)
+                        tool_configs = initialize_result['output']['tool_configs']
+                        self.tool_configs[server_name] = tool_configs
+                        
                 except Exception as e:
                     print(f"Warning: initialize failed for {server_name}: {e}")
                 

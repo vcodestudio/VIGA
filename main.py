@@ -15,7 +15,7 @@ from agents.verifier import VerifierAgent
 async def main():
     parser = argparse.ArgumentParser(description="Dual-agent interactive framework")
     parser.add_argument("--mode", choices=["blendergym", "autopresent", "blendergym-hard", "demo", "design2code", "static_scene", "dynamic_scene"], required=True, help="Choose 3D (Blender), 2D (PPTX), Design2Code, Static Scene, or Dynamic Scene mode")
-    parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model")
+    parser.add_argument("--model", default="gpt-5", help="OpenAI vision model")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key")
     parser.add_argument("--api-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
     parser.add_argument("--max-rounds", type=int, default=10, help="Max interaction rounds")
@@ -51,7 +51,7 @@ async def main():
             
     # turn args into dictionary
     args = vars(args)
-
+    
     # Init agents
     print("\n=== Initializing agents ===\n")
     generator = GeneratorAgent(args)
@@ -59,16 +59,19 @@ async def main():
     await generator.tool_client.connect_servers()
     await verifier.tool_client.connect_servers()
 
-    # Main loop
-    print("=== Starting dual-agent interaction ===")
-    await generator.run(verifier=verifier)
-    print("=== Dual-agent interaction finished ===")
-    
-    # Cleanup
-    print("=== Cleaning up ===")
-    await generator.cleanup()
-    await verifier.cleanup()
-    print("=== Cleanup finished ===")
+    try:
+        # Main loop
+        print("=== Starting dual-agent interaction ===")
+        await generator.run(verifier=verifier)
+        print("=== Dual-agent interaction finished ===")
+    except Exception as e:
+        print(f"Error: {e}\n\n")
+    finally:
+        # Cleanup
+        print("=== Cleaning up ===")
+        await generator.cleanup()
+        await verifier.cleanup()
+        print("=== Cleanup finished ===")
 
 if __name__ == "__main__":
     try:

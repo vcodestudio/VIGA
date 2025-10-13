@@ -40,14 +40,16 @@ class VerifierAgent:
         Verify the generated scene using CoT reasoning and fixed camera positions.
         Only called when generator uses execute_and_evaluate tool.
         """
+        print("\n=== Running verifier agent ===\n")
         self.tool_client.connect_servers()
         user_message = self.prompt_builder.build_prompt("verifier", "user")
         self.memory.append(user_message)
         for i in range(self.config.get("max_rounds")):
             # Prepare chat args
             memory = ([self.memory[0]] + self.memory[-self.config.get("memory_length")+1:]) if len(self.memory) > self.config.get("memory_length") else self.memory
-            tools = self.tool_client.tool_configs
-            chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tools, **self.init_chat_args}
+            tool_configs = self.tool_client.tool_configs
+            tool_configs = [x for v in tool_configs.values() for x in v]
+            chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, **self.init_chat_args}
             
             # Generate response
             response = self.client.chat.completions.create(**chat_args)

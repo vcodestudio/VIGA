@@ -40,7 +40,7 @@ _meshy_api = None
 
 class MeshyAPI:
     """Meshy API client: Text-to-3D generation + polling + download"""
-    def __init__(self, api_key: str = None, save_dir: str = "assets", previous_assets_dir: str = None):
+    def __init__(self, api_key: str = None, save_dir: str = None, previous_assets_dir: str = None):
         self.api_key = api_key or os.getenv("MESHY_API_KEY")
         if not self.api_key:
             raise ValueError("Meshy API key is required. Set MESHY_API_KEY environment variable or pass api_key parameter.")
@@ -53,8 +53,8 @@ class MeshyAPI:
         os.makedirs(self.save_dir, exist_ok=True)
         if self.previous_assets_dir:
             os.makedirs(self.previous_assets_dir, exist_ok=True)
-        with open('logs/meshy.log', 'w') as f:
-            f.write(f"MeshyAPI initialized with save_dir: {self.save_dir} and previous_assets_dir: {self.previous_assets_dir}\n")
+        # with open('logs/meshy.log', 'w') as f:
+        #     f.write(f"MeshyAPI initialized with save_dir: {self.save_dir} and previous_assets_dir: {self.previous_assets_dir}\n")
 
     def normalize_name(self, name: str) -> str:
         """
@@ -232,8 +232,8 @@ class MeshyAPI:
             for chunk in r.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-        with open('logs/meshy.log', 'a') as f:
-            f.write(f"Downloaded {filename} from {file_url} to {output_path}\n")
+        # with open('logs/meshy.log', 'a') as f:
+        #     f.write(f"Downloaded {filename} from {file_url} to {output_path}\n")
         return output_path
 
     def create_image_to_3d_preview(self, image_path: str, prompt: str = None, **kwargs) -> str:
@@ -677,14 +677,13 @@ def create_rigged_and_animated_character(model_url: str, action_description: str
     
 @mcp.tool()
 def initialize(args: dict) -> dict:
-
     global _image_cropper
     try:
         va_api_key = args.get("va_api_key")
         target_image_path = args.get("target_image_path")
         meshy_api_key = args.get("meshy_api_key") or os.getenv("MESHY_API_KEY")
-        save_dir = args.get("save_dir")
-        previous_assets_dir = args.get("previous_assets_dir")
+        save_dir = args.get("output_dir") + "/assets"
+        previous_assets_dir = args.get("assets_dir")
         
         # If previous_assets_dir is not specified, default to assets folder in same directory as target_image_path
         if not previous_assets_dir and target_image_path:
@@ -693,11 +692,11 @@ def initialize(args: dict) -> dict:
         
         if va_api_key and target_image_path:
             _image_cropper = ImageCropper(va_api_key, target_image_path)
-        # Initialize global MeshyAPI if key available
         if meshy_api_key:
             global _meshy_api
             _meshy_api = MeshyAPI(meshy_api_key, save_dir, previous_assets_dir)
         return {"status": "success", "output": {"text": ["Meshy initialize completed"], "tool_configs": tool_configs}}
+    
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
 
