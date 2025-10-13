@@ -62,16 +62,15 @@ class GeneratorAgent:
             message = response.choices[0].message
             if not message.tool_calls:
                 continue
+            
             tool_call = message.tool_calls[0]
+            tool_arguments = json.loads(tool_call.function.arguments)
+            tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_arguments)
             
             # If the tool is execute_and_evaluate, run the verifier
             if tool_call.function.name == "execute_and_evaluate":
-                tool_arguments = {'round': i, **json.loads(tool_call.function.arguments)}
-                tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_arguments)
                 verifier_result = await verifier.run({"argument": tool_arguments, "execution": tool_response, "init_plan": self.init_plan})
                 tool_response['verifier_result'] = verifier_result
-            else:
-                tool_response = await self.tool_client.call_tool(tool_call.function.name, json.loads(tool_call.function.arguments))
                 
             # Update and save memory
             self._update_memory({"assistant": message, "user": tool_response})

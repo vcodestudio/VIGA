@@ -54,22 +54,23 @@ async def main():
     
     # Init agents
     print("\n=== Initializing agents ===\n")
-    generator = GeneratorAgent(args)
+    # generator = GeneratorAgent(args)
     verifier = VerifierAgent(args)
-    await generator.tool_client.connect_servers()
+    # await generator.tool_client.connect_servers()
     await verifier.tool_client.connect_servers()
 
     try:
         # Main loop
         print("=== Starting dual-agent interaction ===")
-        await generator.run(verifier=verifier)
+        await verifier.run({"argument": {"thought": "I need to verify the generated scene", "code_edition": "I need to verify the generated scene", "full_code": "I need to verify the generated scene"}, "execution": {"text": ["I need to verify the generated scene"], "image": ["output/static_scene/20251013_082853/christmas1/assets/cropped_Christmas tree.png"]}, "init_plan": "I need to verify the generated scene"})
+        # await generator.run(verifier=verifier)
         print("=== Dual-agent interaction finished ===")
     except Exception as e:
         print(f"Error: {e}\n\n")
     finally:
         # Cleanup
         print("=== Cleaning up ===")
-        await generator.cleanup()
+        # await generator.cleanup()
         await verifier.cleanup()
         print("=== Cleanup finished ===")
 

@@ -727,7 +727,7 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
                 return {"status": "error", "output": f"Cropping failed: {e}"}
             if not os.path.exists(local_image_path):
                 return {"status": "error", "output": f"Image file not found: {local_image_path}"}
-            staticmethod_result = download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path)
+            static_result = download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path)
         
         if static_result.get('status') != 'success':
             return {"status": "error", "output": {"text": [static_result.get('output', {}).get('text', ['Failed to generate static asset'])]}}

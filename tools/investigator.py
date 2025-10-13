@@ -8,7 +8,6 @@ from pathlib import Path
 import logging
 from mcp.server.fastmcp import FastMCP
 import json
-import copy
 
 # tool config for agent (only the function w/ @mcp.tools)
 tool_configs = [
@@ -100,6 +99,7 @@ mcp = FastMCP("scene-server")
 
 # Global tool instance
 _investigator = None
+_scene_info = None
 
 # ======================
 # Built-in tools
@@ -359,9 +359,11 @@ def initialize(args: dict) -> dict:
     Initialize 3D scene investigation tool.
     """
     global _investigator
+    global _scene_info
     try:
-        save_dir = args.get("output_dir") + "/investigator/" + str(args.get("round"))
+        save_dir = args.get("output_dir") + "/investigator/"
         _investigator = Investigator3D(save_dir, str(args.get("blender_file")))
+        _scene_info = GetSceneInfo(str(args.get("blender_file")))
         return {"status": "success", "output": {"text": ["Investigator3D initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
@@ -427,10 +429,10 @@ def move(direction: str) -> dict:
 @mcp.tool()
 def get_scene_info() -> dict:
     try:
-        global _investigator
-        if _investigator is None:
-            return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-        info = GetSceneInfo(_investigator.blender_path).get_info()
+        global _scene_info
+        if _scene_info is None:
+            return {"status": "error", "output": {"text": ["SceneInfo not initialized. Call initialize first."]}}
+        info = _scene_info.get_info()
         return {"status": "success", "output": {"text": [str(info)]}}
     except Exception as e:
         logging.error(f"Failed to get scene info: {e}")
@@ -577,7 +579,7 @@ def test_tools():
     # Test 2: Initialize investigation tool
     print("\n2. Testing initialize_investigator...")
     try:
-        args = {"output_dir": test_save_dir, "blender_file": blender_file, "round": 0}
+        args = {"output_dir": test_save_dir, "blender_file": blender_file}
         result = initialize(args)
         if result.get("status") == "success":
             print("✓ initialize_investigator passed")

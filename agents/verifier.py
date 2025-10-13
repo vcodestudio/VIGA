@@ -35,15 +35,18 @@ class VerifierAgent:
         self.system_prompt = self.prompt_builder.build_prompt("verifier", "system")
         self.memory.extend(self.system_prompt)
         
-    async def run(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, user_message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Verify the generated scene using CoT reasoning and fixed camera positions.
         Only called when generator uses execute_and_evaluate tool.
         """
         print("\n=== Running verifier agent ===\n")
-        self.tool_client.connect_servers()
-        user_message = self.prompt_builder.build_prompt("verifier", "user")
-        self.memory.append(user_message)
+        await self.tool_client.connect_servers()
+        
+        user_message = self.prompt_builder.build_prompt("verifier", "user", user_message)
+        self.memory.extend(user_message)
+        self._save_memory()
+        
         for i in range(self.config.get("max_rounds")):
             # Prepare chat args
             memory = ([self.memory[0]] + self.memory[-self.config.get("memory_length")+1:]) if len(self.memory) > self.config.get("memory_length") else self.memory

@@ -452,11 +452,11 @@ class BlenderInfinigenRAG:
         try:
             parsed_instruction = self.parse_instruction(instruction)
             relevant_apis = self.search_knowledge_base(parsed_instruction)
-            return {'status': 'success', 'output': relevant_apis}
+            return {'status': 'success', 'output': {'text': [str(relevant_apis)]}}
             
         except Exception as e:
             logging.error(f"RAG query failed: {e}")
-            return {'status': 'error', 'output': str(e)}
+            return {'status': 'error', 'output': {'text': [str(e)]}}
 
 # Global instance
 _rag_tool = None
@@ -466,13 +466,13 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("rag-tool")
 
 @mcp.tool()
-def rag_query(instruction: str) -> Dict:
+def rag_query(query: str) -> Dict:
     """RAG query interface"""
     global _rag_tool
     if _rag_tool is None:
         _rag_tool = BlenderInfinigenRAG()
     
-    return _rag_tool.rag_query(instruction)
+    return _rag_tool.rag_query(query)
 
 @mcp.tool()
 def initialize(args: dict) -> dict:
@@ -494,7 +494,7 @@ def initialize(args: dict) -> dict:
         )
         return {"status": "success", "output": {"text": ["RAG tool initialized successfully with vector database"], "tool_configs": tool_configs}}
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 
 def main():

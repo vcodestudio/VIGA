@@ -14,10 +14,11 @@ class PromptBuilder:
         self.client = client
         self.config = config
     
-    def build_prompt(self, agent_type: str, prompt_type: str) -> List[Dict]:
+    def build_prompt(self, agent_type: str, prompt_type: str, prompts: dict = None) -> List[Dict]:
         """Generic method to build generator prompts based on mode and config."""
         # Get system prompt only (format/hints embedded in system)
-        prompts = prompt_manager.get_all_prompts(self.config.get("mode"), agent_type, self.config.get("task_name"), self.config.get("level"))
+        if not prompts:
+            prompts = prompt_manager.get_all_prompts(self.config.get("mode"), agent_type, self.config.get("task_name"), self.config.get("level"))
         
         # Build the prompt based on mode
         if prompt_type == "system":
@@ -37,7 +38,7 @@ class PromptBuilder:
     
     def _build_user_prompt(self, prompts: Dict) -> List[Dict]:
         content = [
-            {"type": "text", "text": f"Initial plan: {prompts.get('initial_plan', '')}"},
+            {"type": "text", "text": f"Initial plan: {prompts.get('init_plan', '')}"},
             {"type": "text", "text": f"Thought: {prompts['argument'].get('thought', '')}"},
             {"type": "text", "text": f"Code edition: {prompts['argument'].get('code_edition', '')}"},
             {"type": "text", "text": f"Full code: {prompts['argument'].get('full_code', '')}"},
