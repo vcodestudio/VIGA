@@ -51,8 +51,6 @@ class GeneratorAgent:
             
             tool_configs = self.tool_client.tool_configs
             tool_configs = [x for v in tool_configs.values() for x in v]
-            
-            print(f"Tool configs: {tool_configs}")
                 
             chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, **self.init_chat_args}
             
