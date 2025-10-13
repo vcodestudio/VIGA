@@ -1,6 +1,12 @@
 data/*/*/
-references
-_*
+_reference
+_reference*
+_not_used
+__pycache__
+__MACOSX
+_test
+_examples
+_api_keys.py
 *.json
 *.jsonl
 output

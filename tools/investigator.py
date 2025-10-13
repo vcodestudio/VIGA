@@ -212,14 +212,13 @@ class Investigator3D:
         # current_file = bpy.data.filepath
         # if current_file != self.blender_path:
         bpy.ops.wm.open_mainfile(filepath=str(self.blender_path))
-        self.bpy = bpy
         self.cam = self._get_or_create_cam()
 
     def _get_or_create_cam(self):
         # Use existing camera if available, otherwise create with fixed starting positions
         # Add a new camera in the scene
         bpy.ops.object.camera_add()
-        cam = self.bpy.context.active_object
+        cam = bpy.context.active_object
         cam.name = "InvestigatorCamera"
         cam.location = (0, 0, 5)
         cam.rotation_euler = (math.radians(60), 0, 0)
@@ -352,7 +351,10 @@ class Investigator3D:
                 
                 direction = center - self.cam.location
                 self.cam.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+                logging.info(f"Viewpoint {i+1}: location={self.cam.location}, rotation={self.cam.rotation_euler}")
+                
                 render_result = self._render()
+                logging.info(f"Render result: {render_result}")
                 
                 camera_parameters = str({"position": list(self.cam.location), "rotation": list(self.cam.rotation_euler)})
                 

@@ -1,12 +1,7 @@
 import os
 import json
-import asyncio
-import copy
-from typing import Dict, List, Optional, Any
-import logging
+from typing import Dict, Any
 from openai import OpenAI
-from mcp.server.fastmcp import FastMCP
-from prompts import prompt_manager
 from agents.tool_client import ExternalToolClient
 from agents.prompt_builder import PromptBuilder
 from utils.common import get_image_base64
