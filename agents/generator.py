@@ -54,9 +54,6 @@ class GeneratorAgent:
                 
             chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, **self.init_chat_args}
             
-            with open('logs/generator_memory.json', 'w') as f:
-                json.dump(chat_args, f, indent=4, ensure_ascii=False)
-            
             # Generate response
             response = self.client.chat.completions.create(**chat_args)
             message = response.choices[0].message

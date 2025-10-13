@@ -122,7 +122,7 @@ class Executor:
             os.remove(os.path.join(render_file, img))
             
         # Execute Blender
-        success, stdout, stderr = self._execute_blender(code, str(render_file))
+        success, stdout, stderr = self._execute_blender(str(code_file), str(render_file))
         if not success or not os.path.exists(render_file):
             return {"status": "error", "output": {"text": [stderr or stdout]}}
         return {"status": "success", "output": {"image": [stdout], "text": ["Rendering successful"]}}
