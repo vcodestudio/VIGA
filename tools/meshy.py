@@ -707,7 +707,7 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
         previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=rig_and_animate, is_rigged=rig_and_animate)
         if previous_asset:
             print(f"[Meshy] Using previous static asset from image: {previous_asset}")
-            return {'status': 'success', 'output': {'path': previous_asset, 'model_url': None, 'from_cache': True}}
+            return {'status': 'success', 'output': {'text': [f"Successfully generated static asset, downloaded to: {previous_asset}"]}}
         
         if reference_type == "text":
             description = (object_description or object_name or "").strip()
@@ -718,7 +718,7 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
         elif reference_type == "image":
             # crop from target image via ImageCropper
             if _image_cropper is None:
-                return {"status": "error", "output": "ImageCropper not initialized. Call initialize with va_api_key and target_image_path."}
+                return {"status": "error", "output": {"text": ["ImageCropper not initialized. Call initialize with va_api_key and target_image_path."]}}
             crop_resp = _image_cropper.crop_image_by_text(object_name=object_name)
             # Expecting {'data': [[{'bounding_box': [x1,y1,x2,y2], ...}]]}
             try:
@@ -730,9 +730,9 @@ def generate_and_download_3d_asset(object_name: str, reference_type: str, object
                 local_image_path = os.path.join(_meshy_api.save_dir, f"cropped_{object_name}.png")
                 cropped.save(local_image_path)
             except Exception as e:
-                return {"status": "error", "output": f"Cropping failed: {e}"}
+                return {"status": "error", "output": {"text": [f"Cropping failed: {e}"]}}
             if not os.path.exists(local_image_path):
-                return {"status": "error", "output": f"Image file not found: {local_image_path}"}
+                return {"status": "error", "output": {"text": [f"Image file not found: {local_image_path}"]}}
             static_result = download_meshy_asset_from_image(object_name=object_name, image_path=local_image_path)
         
         if static_result.get('status') != 'success':
