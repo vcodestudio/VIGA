@@ -58,10 +58,6 @@ class BlenderInfinigenRAG:
             self.openai_client = OpenAI(api_key=self.openai_api_key)
         else:
             self.openai_client = None
-            if not OPENAI_AVAILABLE:
-                logging.warning("OpenAI library not available. Enhanced generation disabled.")
-            elif not self.openai_api_key:
-                logging.warning("OpenAI API key not provided. Enhanced generation disabled.")
         
         # Initialize vector database
         self.vector_db = None

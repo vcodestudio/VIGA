@@ -33,7 +33,7 @@ class VerifierAgent:
         # Initialize system prompt
         self.prompt_builder = PromptBuilder(self.client, self.config)
         self.system_prompt = self.prompt_builder.build_prompt("verifier", "system")
-        self.memory.append(self.system_prompt)
+        self.memory.extend(self.system_prompt)
         
     async def run(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -58,7 +58,7 @@ class VerifierAgent:
                 continue
             
             tool_call = message.tool_calls[0]
-            tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_call.function.arguments)
+            tool_response = await self.tool_client.call_tool(tool_call.function.name, json.loads(tool_call.function.arguments))
                 
             # Update and save memory
             self._update_memory({"assistant": message, "user": tool_response})

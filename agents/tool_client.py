@@ -109,7 +109,7 @@ class ExternalToolClient:
         # Launch connections concurrently
         await asyncio.gather(*[self.connect_server(server_path=path) for path in self.tool_servers])
     
-    async def call_tool(self, tool_name: str, tool_args: dict = None, timeout: int = 3600, **kwargs) -> Any:
+    async def call_tool(self, tool_name: str, tool_args: dict = None, timeout: int = 3600) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""
         server_name = self.tool_to_server.get(tool_name)
         if not server_name:
@@ -118,10 +118,10 @@ class ExternalToolClient:
         session = self.mcp_sessions.get(server_name)
         if not session:
             raise RuntimeError(f"Server '{server_name}' for tool '{tool_name}' not connected")
-        
         try:
-            result = await asyncio.wait_for(session.client.call_tool(tool_name, tool_args or {}), timeout=timeout)
-            return result
+            call_tool_result = await asyncio.wait_for(session.client.call_tool(tool_name, tool_args), timeout=timeout)
+            result = json.loads(call_tool_result.content[0].text)
+            return result['output']
         except asyncio.TimeoutError:
             raise RuntimeError(f"Tool '{tool_name}' call timeout after {timeout}s")
         except Exception as e:

@@ -30,11 +30,10 @@ class PromptBuilder:
     def _build_system_prompt(self, prompts: Dict) -> List[Dict]:
         """Build generator prompt for static_scene mode using prompt manager."""
         content = [
-            {"type": "text", "text": prompts.get('system', '')},
             {"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("target_image_path"))}},
             {"type": "text", "text": f"Target image loaded from local path: {self.config.get('target_image_path')}"}
         ]
-        return {"role": "system", "content": content}
+        return [{"role": "system", "content": prompts.get('system', '')}, {"role": "user", "content": content}]
     
     def _build_user_prompt(self, prompts: Dict) -> List[Dict]:
         content = [
@@ -51,4 +50,4 @@ class PromptBuilder:
         else:
             for text in prompts['execution']['text']:
                 content.append({"type": "text", "text": text})
-        return {"role": "user", "content": content}
+        return [{"role": "user", "content": content}]

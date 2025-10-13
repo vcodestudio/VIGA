@@ -38,12 +38,12 @@ def initialize(args: dict) -> dict:
     return {"status": "success", "output": {"text": ["Generator base initialized successfully"], "tool_configs": tool_configs}}
 
 @mcp.tool()
-def initialize_plan(overall_description: str, object_list: list, object_relations: list, initial_layout: list) -> dict:
+def initialize_plan(overall_description: str, object_list: str, object_relations: str, initial_layout: str) -> dict:
     """
     Store the detailed scene plan to a file and return the path.
     """
     output_text = f"Overall Description: {overall_description}\nObject List: {object_list}\nObject Relations: {object_relations}\nInitial Layout: {initial_layout}"
-    return {"status": "success", "output": {"text": [output_text]}}
+    return {"status": "success", "output": {"plan": [output_text], "text": ["Plan initialized successfully"]}}
 
 @mcp.tool()
 def end() -> dict:

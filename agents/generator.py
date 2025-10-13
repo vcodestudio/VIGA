@@ -34,7 +34,7 @@ class GeneratorAgent:
         # Initialize system prompt
         self.prompt_builder = PromptBuilder(self.client, self.config)
         self.system_prompt = self.prompt_builder.build_prompt("generator", "system")
-        self.memory.append(self.system_prompt)
+        self.memory.extend(self.system_prompt)
 
     async def run(self, verifier: VerifierAgent) -> Dict[str, Any]:
         """
@@ -57,30 +57,21 @@ class GeneratorAgent:
                 
             chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, **self.init_chat_args}
             
-            with open('logs/generator.json', 'w') as f:
-                json.dump(chat_args, f, indent=4, ensure_ascii=False)
-            
             # Generate response
             response = self.client.chat.completions.create(**chat_args)
-            
-            with open('logs/generator.log', 'w') as f:
-                f.write(str(response))
-            
             message = response.choices[0].message
             if not message.tool_calls:
                 continue
             tool_call = message.tool_calls[0]
             
-            raise NotImplementedError("Not implemented")
-            
             # If the tool is execute_and_evaluate, run the verifier
             if tool_call.function.name == "execute_and_evaluate":
-                tool_arguments = {'round': i, **tool_call.function.arguments}
+                tool_arguments = {'round': i, **json.loads(tool_call.function.arguments)}
                 tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_arguments)
                 verifier_result = await verifier.run({"argument": tool_arguments, "execution": tool_response, "init_plan": self.init_plan})
                 tool_response['verifier_result'] = verifier_result
             else:
-                tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_call.function.arguments)
+                tool_response = await self.tool_client.call_tool(tool_call.function.name, json.loads(tool_call.function.arguments))
                 
             # Update and save memory
             self._update_memory({"assistant": message, "user": tool_response})
@@ -93,12 +84,12 @@ class GeneratorAgent:
         """Update the memory with the new message"""
         # Add tool calling
         assistant_content = message['assistant'].content
-        assistant_tool_calls = message['assistant'].tool_calls[0]
+        assistant_tool_calls = message['assistant'].tool_calls[0].model_dump()
         self.memory.append({"role": "assistant", "content": assistant_content, "tool_calls": [assistant_tool_calls]})
         
         # Add tool response
-        tool_call_id = message['assistant'].tool_calls[0]['id']
-        tool_call_name = message['assistant'].tool_calls[0]['function']['name']
+        tool_call_id = message['assistant'].tool_calls[0].id
+        tool_call_name = message['assistant'].tool_calls[0].function.name
         tool_response = []
         if 'image' in message['user']:
             for text, image in zip(message['user']['text'], message['user']['image']):
@@ -114,8 +105,8 @@ class GeneratorAgent:
         self.memory.append({"role": "tool", "content": tool_response, "name": tool_call_name, "tool_call_id": tool_call_id})
         
         # Add initial plan
-        if tool_call_name == "init_plan":
-            self.init_plan = "\n".join(message['user']['text'])
+        if tool_call_name == "initialize_plan":
+            self.init_plan = "\n".join(message['user']['plan'])
     
     def _save_memory(self):
         """Save the memory to the file"""
