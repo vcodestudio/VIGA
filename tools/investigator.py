@@ -14,12 +14,19 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "init_viewpoint",
+            "name": "initialize_viewpoint",
             "description": "Adds a viewpoint to observe the listed objects. The viewpoints are added to the four corners of the bounding box of the listed objects. This tool returns the positions and rotations of the four viewpoint cameras, as well as the rendered images of the four cameras. You would better call this tool first before you can call the other tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "object_names": {"type": "array", "description": "The names of the objects to observe. Objects must exist in the scene (you can check the scene information to see if they exist). If you want to observe the whole scene, you can pass an empty list."}
+                    "object_names": {
+                        "type": "array", 
+                        "description": "The names of the objects to observe. Objects must exist in the scene (you can check the scene information to see if they exist). If you want to observe the whole scene, you can pass an empty list.",
+                        "items": {
+                            "type": "string",
+                            "description": "The name of the object to observe."
+                        }
+                    }
                 },
                 "required": ["object_names"]
             }
@@ -33,8 +40,22 @@ tool_configs = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {"type": "array", "description": "The location of the camera (in world coordinates)"},
-                    "rotation_euler": {"type": "array", "description": "The rotation of the camera (in euler angles)"}
+                    "location": {
+                        "type": "array", 
+                        "description": "The location of the camera (in world coordinates)",
+                        "items": {
+                            "type": "number",
+                            "description": "The location of the camera (in world coordinates)"
+                        }
+                    },
+                    "rotation_euler": {
+                        "type": "array", 
+                        "description": "The rotation of the camera (in euler angles)",
+                        "items": {
+                            "type": "number",
+                            "description": "The rotation of the camera (in euler angles)"
+                        }
+                    }
                 },
                 "required": ["location", "rotation_euler"]
             }
@@ -64,8 +85,22 @@ tool_configs = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "show_object_list": {"type": "array", "description": "The names of the objects to show. Objects must exist in the scene."},
-                    "hide_object_list": {"type": "array", "description": "The names of the objects to hide. Objects must exist in the scene."}
+                    "show_object_list": {
+                        "type": "array", 
+                        "description": "The names of the objects to show. Objects must exist in the scene.",
+                        "items": {
+                            "type": "string",
+                            "description": "The name of the object to show."
+                        }
+                    },
+                    "hide_object_list": {
+                        "type": "array", 
+                        "description": "The names of the objects to hide. Objects must exist in the scene.",
+                        "items": {
+                            "type": "string",
+                            "description": "The name of the object to hide."
+                        }
+                    }
                 },
                 "required": ["show_object_list", "hide_object_list"]
             }
@@ -177,13 +212,14 @@ class Investigator3D:
         # current_file = bpy.data.filepath
         # if current_file != self.blender_path:
         bpy.ops.wm.open_mainfile(filepath=str(self.blender_path))
+        self.bpy = bpy
         self.cam = self._get_or_create_cam()
 
     def _get_or_create_cam(self):
         # Use existing camera if available, otherwise create with fixed starting positions
         # Add a new camera in the scene
         bpy.ops.object.camera_add()
-        cam = bpy.context.active_object
+        cam = self.bpy.context.active_object
         cam.name = "InvestigatorCamera"
         cam.location = (0, 0, 5)
         cam.rotation_euler = (math.radians(60), 0, 0)
@@ -254,7 +290,7 @@ class Investigator3D:
         self.cam.location = location
         self.cam.rotation_euler = rotation_euler
 
-    def init_viewpoint(self, object_names: list) -> dict:
+    def initialize_viewpoint(self, object_names: list) -> dict:
         try:
             objects = []
             
@@ -439,12 +475,12 @@ def get_scene_info() -> dict:
         return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
-def init_viewpoint(object_names: list) -> dict:
+def initialize_viewpoint(object_names: list) -> dict:
     global _investigator
     if _investigator is None:
         return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
     try:
-        result = _investigator.init_viewpoint(object_names)
+        result = _investigator.initialize_viewpoint(object_names)
         return result
     except Exception as e:
         logging.error(f"Add viewpoint failed: {e}")
@@ -594,14 +630,14 @@ def test_tools():
     print(f"Result: {result}")
         
     # Test 6: Add viewpoint functionality (specified objects)
-    print("\n6. Testing init_viewpoint with specific objects...")
+    print("\n6. Testing initialize_viewpoint with specific objects...")
     try:
         test_objects = [obj['name'] for obj in objects]
         print(f"Test objects: {test_objects}")
-        result = init_viewpoint(object_names=test_objects)
+        result = initialize_viewpoint(object_names=test_objects)
         print(f"Result: {result}")
         if result.get("status") == "success":
-            print("✓ init_viewpoint passed")
+            print("✓ initialize_viewpoint passed")
             viewpoints = result.get('output', {}).get('viewpoints', [])
             print(f"  - Generated {len(viewpoints)} viewpoints:")
             for vp in viewpoints:
@@ -609,17 +645,17 @@ def test_tools():
                 print(f"      Position: {vp.get('position', 'N/A')}")
                 print(f"      Rotation: {vp.get('rotation', 'N/A')}")
         else:
-            print("✗ init_viewpoint failed")
+            print("✗ initialize_viewpoint failed")
     except Exception as e:
-        print(f"✗ init_viewpoint failed with exception: {e}")
+        print(f"✗ initialize_viewpoint failed with exception: {e}")
     
     # Test 7: Add viewpoint functionality (entire scene)
-    print("\n7. Testing init_viewpoint with whole scene...")
+    print("\n7. Testing initialize_viewpoint with whole scene...")
     try:
-        result = init_viewpoint(object_names=[])  # Empty list means observe entire scene
+        result = initialize_viewpoint(object_names=[])  # Empty list means observe entire scene
         print(f"Result: {result}")
         if result.get("status") == "success":
-            print("✓ init_viewpoint (whole scene) passed")
+            print("✓ initialize_viewpoint (whole scene) passed")
             viewpoints = result.get('output', {}).get('viewpoints', [])
             print(f"  - Generated {len(viewpoints)} viewpoints for whole scene:")
             for vp in viewpoints:
@@ -627,9 +663,9 @@ def test_tools():
                 print(f"      Position: {vp.get('position', 'N/A')}")
                 print(f"      Rotation: {vp.get('rotation', 'N/A')}")
         else:
-            print("✗ init_viewpoint (whole scene) failed")
+            print("✗ initialize_viewpoint (whole scene) failed")
     except Exception as e:
-        print(f"✗ init_viewpoint (whole scene) failed with exception: {e}")
+        print(f"✗ initialize_viewpoint (whole scene) failed with exception: {e}")
 
     if first_object:        
         # Test 3: Focus on object (if objects exist)

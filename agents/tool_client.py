@@ -107,11 +107,9 @@ class ExternalToolClient:
 
     async def connect_servers(self) -> List[Any]:
         """Connect to multiple MCP servers given a server_name->script map."""
-        if not self.tool_servers:
-            return
-        # Launch connections concurrently
-        await asyncio.gather(*[self.connect_server(server_path=path) for path in self.tool_servers])
-    
+        for path in self.tool_servers:
+            await self.connect_server(server_path=path)
+        
     async def call_tool(self, tool_name: str, tool_args: dict = None, server_name: str = None, timeout: int = 3600) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""
         if not server_name:
