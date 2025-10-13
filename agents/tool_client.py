@@ -10,31 +10,33 @@ from contextlib import AsyncExitStack
 class ExternalToolClient:
     """Client for connecting to external MCP tool servers (blender/slides/image/scene)."""
     def __init__(self, tool_servers: Dict[str, str], args: Optional[Dict[str, dict]] = None):
+        self.stack = AsyncExitStack()
         self.mcp_sessions = {}  # server_name -> McpSession
         self.tool_to_server: Dict[str, str] = {}
         self.tool_configs = {}
         self.tool_servers = tool_servers.split(",")
         self.args = args
     
-    async def connect_server(path: str):
-        async with AsyncExitStack() as stack:
-            server_params = StdioServerParameters(command="python", args=[path])
-            stdio, write = await stack.enter_async_context(stdio_client(server_params))
-            session = await stack.enter_async_context(ClientSession(stdio, write))
-            await session.initialize()
-            print(f"Connected to MCP server: {path}")
-            return session  # 可以存起来调用工具
+    async def connect_server(self, path: str):
+        server_params = StdioServerParameters(command="python", args=[path])
+        stdio, write = await self.stack.enter_async_context(stdio_client(server_params))
+        session = await self.stack.enter_async_context(ClientSession(stdio, write))
+        await session.initialize()
+        print(f"Connected to MCP server: {path}")
+        return session
 
     async def connect_servers(self) -> List[Any]:
         """Connect to multiple MCP servers given a server_name->script map."""
         for path in self.tool_servers:
-            session = await self.connect_server(path=path)
-            tools = session.get_tools()
-            for tool in tools:
+            print(f"Connecting to MCP server: {path}")
+            session = await self.connect_server(path)
+            tool_list = await session.list_tools()
+            for tool in tool_list.tools:
+                print(f"Adding tool: {tool.name} to server")
                 self.tool_to_server[tool.name] = path
                 self.mcp_sessions[path] = session
-            self.tool_configs[path] = tools
-            session.call_tool(tool_name="initialize", tool_args={"args": self.args})
+            tool_config = await session.call_tool(name="initialize", arguments={"args": self.args})
+            self.tool_configs[path] = tool_config
         
     async def call_tool(self, tool_name: str, tool_args: dict = None) -> Any:
         """Call a specific tool by name with timeout. Server is inferred from known mappings."""
@@ -43,7 +45,7 @@ class ExternalToolClient:
         if not session:
             raise RuntimeError(f"Server '{server_name}' for tool '{tool_name}' not connected")
         try:
-            call_tool_result = await session.call_tool(tool_name, tool_args)
+            call_tool_result = await session.call_tool(name=tool_name, arguments=tool_args)
             result = json.loads(call_tool_result.content[0].text)
             return result['output']
         except Exception as e:
@@ -51,8 +53,4 @@ class ExternalToolClient:
     
     async def cleanup(self):
         """Clean up connections by closing all MCP sessions."""
-        for server_name, mcp_session in self.mcp_sessions.items():
-            try:
-                await mcp_session.close()
-            except Exception as e:
-                logging.warning(f"Cleanup error for {server_name}: {e}")
+        await self.stack.aclose()

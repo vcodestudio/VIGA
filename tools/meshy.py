@@ -779,7 +779,7 @@ def main():
         print(json.dumps(text_res, ensure_ascii=False, indent=2))
     else:
         # Normal MCP server mode
-        mcp.run(transport="stdio")
+        mcp.run()
 
 if __name__ == "__main__":
     main()

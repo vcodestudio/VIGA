@@ -53,7 +53,7 @@ def end() -> dict:
     return {"status": "success", "output": {"text": ["END THE PROCESS"]}}
 
 def main():
-    mcp.run(transport="stdio")
+    mcp.run()
 
 if __name__ == "__main__":
     main()

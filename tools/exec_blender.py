@@ -1,5 +1,4 @@
 # blender_executor_server.py
-from asyncio.proactor_events import streams
 import os
 import subprocess
 import base64
@@ -311,7 +310,7 @@ print("Scene ready: press Play to watch the ball roll down the slope.")"""
         
     else:
         # Run MCP service normally
-        mcp.run(transport="stdio")
+        mcp.run()
 
 if __name__ == "__main__":
     main()

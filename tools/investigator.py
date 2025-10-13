@@ -538,7 +538,7 @@ def main():
         test_tools()
     else:
         # Run MCP server normally
-        mcp.run(transport="stdio")
+        mcp.run()
 
 def test_tools():
     """Test all investigator tool functions (read environment variable configuration)"""

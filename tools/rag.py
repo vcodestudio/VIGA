@@ -522,7 +522,7 @@ def main():
             f.write(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         # Default: run as MCP server
-        mcp.run(transport="stdio")
+        mcp.run()
 
 if __name__ == "__main__":
     main()

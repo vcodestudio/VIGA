@@ -53,7 +53,7 @@ def initialize(args: dict) -> dict:
     return {"status": "success", "output": {"text": ["Verifier base initialized successfully"], "tool_configs": tool_configs}}
 
 def main():
-    mcp.run(transport="stdio")
+    mcp.run()
 
 if __name__ == "__main__":
     main()
