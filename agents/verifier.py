@@ -66,6 +66,10 @@ class VerifierAgent:
             # Handle tool call
             if not message.tool_calls:
                 tool_response = {'text': ['Each return message must contain a tool call. Your previous message did not contain a tool call. Please reconsider.']}
+                self.memory.append({"role": "assistant", "content": message.content})
+                self.memory.append({"role": "user", "content": tool_response})
+                self._save_memory()
+                continue
             else:
                 tool_call = message.tool_calls[0]
                 tool_response = await self.tool_client.call_tool(tool_call.function.name, json.loads(tool_call.function.arguments))
