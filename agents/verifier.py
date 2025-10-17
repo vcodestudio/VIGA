@@ -69,9 +69,8 @@ class VerifierAgent:
             # Handle tool call
             print("Handle tool call...")
             if not message.tool_calls:
-                tool_response = {'text': ['Each return message must contain a tool call. Your previous message did not contain a tool call. Please reconsider.']}
                 self.memory.append({"role": "assistant", "content": message.content})
-                self.memory.append({"role": "user", "content": tool_response})
+                self.memory.append({"role": "user", "content": "Each return message must contain a tool call. Your previous message did not contain a tool call. Please reconsider."})
                 self._save_memory()
                 continue
             else:
