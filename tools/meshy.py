@@ -22,7 +22,7 @@ tool_configs = [
                 "type": "object",
                 "properties": {
                     "object_name": {"type": "string", "description": "The name of the object to generate. For example, 'chair', 'table', 'lamp', etc."},
-                    "reference_type": {"type": "string", "choices": ["text", "image"], "description": 'The type of reference to use. If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\".'},
+                    "reference_type": {"type": "string", "enum": ["text", "image"], "description": 'The type of reference to use. If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\".'},
                     "object_description": {"type": "string", "description": "If you use reference_type=\"text\", you must provide a detailed description of the object to generate."},
                     "rig_and_animate": {"type": "boolean", "description": "Whether to rig and animate the generated asset. True for dynamic scene, False for static scene"},
                     "action_description": {"type": "string", "description": "If you use rig_and_animate=True, you must provide a description of the action to apply to the generated asset. Only input verbs here, e.g. walk, run, jump, etc."}
