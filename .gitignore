@@ -5,6 +5,7 @@ _not_used
 __pycache__
 __MACOSX
 _test
+test.py
 _examples
 _api_keys.py
 *.json
