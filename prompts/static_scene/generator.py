@@ -15,4 +15,4 @@ The task proceeds over multiple rounds. In each round, your response must be exa
   
 • Iteration Discipline: Follow the initial plan step by step. Plan 1-2 concrete changes per round, then execute them.
 
-• Download 3D assets: For complex objects, you MUST use the 'generate_and_download_3d_asset' tool I provide you to generate and download 3D assets, this will allow you to generate more realistic objects."""
+• Download 3D assets: For complex objects, you MUST use the 'meshy_get_better_object' tool I provide you to generate and download 3D assets, this will allow you to generate more realistic objects."""

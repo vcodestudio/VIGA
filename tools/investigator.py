@@ -8,6 +8,7 @@ from pathlib import Path
 import logging
 from mcp.server.fastmcp import FastMCP
 import json
+import traceback
 
 # tool config for agent (only the function w/ @mcp.tools)
 tool_configs = [
@@ -134,16 +135,33 @@ mcp = FastMCP("scene-server")
 
 # Global tool instance
 _investigator = None
-_scene_info = None
 
 # ======================
-# Built-in tools
+# Camera investigator (Fixed: save path first then load)
 # ======================
 
-class GetSceneInfo:
-    def __init__(self, blender_path: str):
-        bpy.ops.wm.open_mainfile(filepath=str(blender_path))
+class Investigator3D:
+    def __init__(self, save_dir: str, blender_path: str, blender_command: str):
+        self.blender_path = blender_path          # Save path first
+        self.blender_command = blender_command
+        bpy.ops.wm.open_mainfile(filepath=str(self.blender_path))
+        self.base = Path(save_dir)
+        self.base.mkdir(parents=True, exist_ok=True)
+        self.target = None
+        self.radius = 5.0
+        self.theta = 0.0
+        self.phi = 0.0
+        self.count = 0
 
+    def _render(self):
+        bpy.context.scene.render.engine = 'CYCLES'
+        bpy.context.scene.render.filepath = str(self.base / f"{self.count+1}.png")
+        bpy.ops.render.render(write_still=True)
+        out = bpy.context.scene.render.filepath
+        self.count += 1
+        camera_parameters = str({"position": list(bpy.context.scene.camera.location), "rotation": list(bpy.context.scene.camera.rotation_euler)})
+        return {"image_path": out, "camera_parameters": camera_parameters}
+    
     def get_info(self) -> dict:
         try:
             scene_info = {"objects": [], "materials": [], "lights": [], "cameras": []}
@@ -190,34 +208,6 @@ class GetSceneInfo:
         except Exception as e:
             logging.error(f"scene info error: {e}")
             return {}
-
-# ======================
-# Camera investigator (Fixed: save path first then load)
-# ======================
-
-class Investigator3D:
-    def __init__(self, save_dir: str, blender_path: str):
-        self.blender_path = blender_path          # Save path first
-        bpy.ops.wm.open_mainfile(filepath=str(self.blender_path))
-        self.base = Path(save_dir)
-        self.base.mkdir(parents=True, exist_ok=True)
-        self.target = None
-        self.radius = 5.0
-        self.theta = 0.0
-        self.phi = 0.0
-        self.count = 0
-        
-    def reload_scene(self):
-        bpy.ops.wm.open_mainfile(filepath=str(self.blender_path))
-
-    def _render(self):
-        bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.render.filepath = str(self.base / f"{self.count+1}.png")
-        bpy.ops.render.render(write_still=True)
-        out = bpy.context.scene.render.filepath
-        self.count += 1
-        camera_parameters = str({"position": list(bpy.context.scene.camera.location), "rotation": list(bpy.context.scene.camera.rotation_euler)})
-        return {"image_path": out, "camera_parameters": camera_parameters}
 
     def focus_on_object(self, object_name: str) -> dict:
         obj = bpy.data.objects.get(object_name)
@@ -372,11 +362,9 @@ def initialize(args: dict) -> dict:
     Initialize 3D scene investigation tool.
     """
     global _investigator
-    global _scene_info
     try:
         save_dir = args.get("output_dir") + "/investigator/"
-        _investigator = Investigator3D(save_dir, str(args.get("blender_file")))
-        _scene_info = GetSceneInfo(str(args.get("blender_file")))
+        _investigator = Investigator3D(save_dir, str(args.get("blender_file")), str(args.get("blender_command")))
         return {"status": "success", "output": {"text": ["Investigator3D initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
@@ -442,10 +430,10 @@ def move(direction: str) -> dict:
 @mcp.tool()
 def get_scene_info() -> dict:
     try:
-        global _scene_info
-        if _scene_info is None:
+        global _investigator
+        if _investigator is None:
             return {"status": "error", "output": {"text": ["SceneInfo not initialized. Call initialize first."]}}
-        info = _scene_info.get_info()
+        info = _investigator.get_info()
         return {"status": "success", "output": {"text": [str(info)]}}
     except Exception as e:
         logging.error(f"Failed to get scene info: {e}")
@@ -526,17 +514,42 @@ def set_camera(location: list, rotation_euler: list) -> dict:
         return {"status": "error", "output": {"text": [str(e)]}}
     
 @mcp.tool()
-def reload_scene():
+def reload_scene(script_path: str) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        _investigator.reload_scene()
-        return {"status": "success", "output": {"text": ["Successfully reloaded the scene"]}}
-    except Exception as e:
-        logging.error(f"reload_scene failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
 
+    if script_path:
+        if not os.path.exists(script_path):
+            return {"status": "error", "output": {"text": [f"script not found: {script_path}"]}}
+        with open(script_path, "r", encoding="utf-8") as f:
+            script_code = f.read()
+    else:
+        return {"status": "error", "output": {"text": ["script_path is required"]}}
+
+    try:
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+    except Exception:
+        pass
+
+    g = {"__name__": "__main__", "bpy": bpy}
+
+    try:
+        prefs = bpy.context.preferences
+        old_undo = prefs.edit.use_global_undo
+        prefs.edit.use_global_undo = False
+        code = compile(script_code, "<mcp_reload_scene_script>", "exec")
+        exec(code, g)
+        bpy.context.view_layer.update()
+        return {"status": "success", "output": {"text": ["Scene reloaded successfully"]}}
+    except Exception as e:
+        tb = traceback.format_exc(limit=12)
+        return {"status": "error", "output": {"text": [repr(e), tb]}}
+    finally:
+        try:
+            bpy.context.preferences.edit.use_global_undo = old_undo
+        except Exception:
+            pass
 
 # ======================
 # Entry point and testing
@@ -558,8 +571,9 @@ def test_tools():
     print("=" * 50)
 
     # Set test paths (read from environment variables)
-    blender_file = os.getenv("BLENDER_FILE", "output/test/exec_blender/test.blend")
+    blender_file = os.getenv("BLENDER_FILE", "output/static_scene/20251018_012341/christmas1/blender_file.blend")
     test_save_dir = os.getenv("THOUGHT_SAVE", "output/test/investigator/")
+    script_path = os.getenv("SCRIPT_PATH", "output/static_scene/20251018_012341/christmas1/scripts/34.py")
 
     # Check if blender file exists
     if not os.path.exists(blender_file):
@@ -568,34 +582,6 @@ def test_tools():
         return
 
     print(f"✓ Using blender file: {blender_file}")
-
-    # Test 1: Get scene information
-    print("\n1. Testing get_scene_info...")
-    try:
-        result = get_scene_info(blender_file)
-        
-        with open('logs/investigator.log', 'w') as f:
-            f.write(json.dumps(result, ensure_ascii=False, indent=2))
-        
-        if result.get("status") == "success":
-            print("✓ get_scene_info passed")
-            info = result.get("output", {})
-
-            # Get first object name for subsequent tests
-            objects = info.get("objects", [])
-            if not objects:
-                print("⚠ No objects found in scene, skipping camera tests")
-                # Continue Meshy tests
-                first_object = None
-            else:
-                first_object = objects[0]['name']
-                print(f"  - Will focus on: {first_object}")
-        else:
-            print("✗ get_scene_info failed")
-            first_object = None
-    except Exception as e:
-        print(f"✗ get_scene_info failed with exception: {e}")
-        first_object = None
 
     # Test 2: Initialize investigation tool
     print("\n2. Testing initialize_investigator...")
@@ -610,200 +596,118 @@ def test_tools():
         print(f"✗ initialize_investigator failed with exception: {e}")
         
     # Attempt rendering
-    global _investigator
-    result = _investigator._render()
-    print(f"Result: {result}")
-        
-    # Test 6: Add viewpoint functionality (specified objects)
-    print("\n6. Testing initialize_viewpoint with specific objects...")
-    try:
-        test_objects = [obj['name'] for obj in objects]
-        print(f"Test objects: {test_objects}")
-        result = initialize_viewpoint(object_names=test_objects)
-        print(f"Result: {result}")
-        if result.get("status") == "success":
-            print("✓ initialize_viewpoint passed")
-            viewpoints = result.get('output', {}).get('viewpoints', [])
-            print(f"  - Generated {len(viewpoints)} viewpoints:")
-            for vp in viewpoints:
-                print(f"    Viewpoint {vp.get('view_index', 'N/A')}: {vp.get('image', 'N/A')}")
-                print(f"      Position: {vp.get('position', 'N/A')}")
-                print(f"      Rotation: {vp.get('rotation', 'N/A')}")
-        else:
-            print("✗ initialize_viewpoint failed")
-    except Exception as e:
-        print(f"✗ initialize_viewpoint failed with exception: {e}")
+    # global _investigator
+    # result = _investigator._render()
+    # print(f"Result: {result}")
     
-    # Test 7: Add viewpoint functionality (entire scene)
-    print("\n7. Testing initialize_viewpoint with whole scene...")
-    try:
-        result = initialize_viewpoint(object_names=[])  # Empty list means observe entire scene
-        print(f"Result: {result}")
-        if result.get("status") == "success":
-            print("✓ initialize_viewpoint (whole scene) passed")
-            viewpoints = result.get('output', {}).get('viewpoints', [])
-            print(f"  - Generated {len(viewpoints)} viewpoints for whole scene:")
-            for vp in viewpoints:
-                print(f"    Viewpoint {vp.get('view_index', 'N/A')}: {vp.get('image', 'N/A')}")
-                print(f"      Position: {vp.get('position', 'N/A')}")
-                print(f"      Rotation: {vp.get('rotation', 'N/A')}")
-        else:
-            print("✗ initialize_viewpoint (whole scene) failed")
-    except Exception as e:
-        print(f"✗ initialize_viewpoint (whole scene) failed with exception: {e}")
+    # Testing reload scene
+    for i in range(1000):
+        print(f"Round {i}")
+        print("Reload result:", reload_scene(script_path=script_path))
+        
+        
+    # # Test 6: Add viewpoint functionality (specified objects)
+    # print("\n6. Testing initialize_viewpoint with specific objects...")
+    # try:
+    #     test_objects = [obj['name'] for obj in objects]
+    #     print(f"Test objects: {test_objects}")
+    #     result = initialize_viewpoint(object_names=test_objects)
+    #     print(f"Result: {result}")
+    #     if result.get("status") == "success":
+    #         print("✓ initialize_viewpoint passed")
+    #         viewpoints = result.get('output', {}).get('viewpoints', [])
+    #         print(f"  - Generated {len(viewpoints)} viewpoints:")
+    #         for vp in viewpoints:
+    #             print(f"    Viewpoint {vp.get('view_index', 'N/A')}: {vp.get('image', 'N/A')}")
+    #             print(f"      Position: {vp.get('position', 'N/A')}")
+    #             print(f"      Rotation: {vp.get('rotation', 'N/A')}")
+    #     else:
+    #         print("✗ initialize_viewpoint failed")
+    # except Exception as e:
+    #     print(f"✗ initialize_viewpoint failed with exception: {e}")
+    
+    # # Test 7: Add viewpoint functionality (entire scene)
+    # print("\n7. Testing initialize_viewpoint with whole scene...")
+    # try:
+    #     result = initialize_viewpoint(object_names=[])  # Empty list means observe entire scene
+    #     print(f"Result: {result}")
+    #     if result.get("status") == "success":
+    #         print("✓ initialize_viewpoint (whole scene) passed")
+    #         viewpoints = result.get('output', {}).get('viewpoints', [])
+    #         print(f"  - Generated {len(viewpoints)} viewpoints for whole scene:")
+    #         for vp in viewpoints:
+    #             print(f"    Viewpoint {vp.get('view_index', 'N/A')}: {vp.get('image', 'N/A')}")
+    #             print(f"      Position: {vp.get('position', 'N/A')}")
+    #             print(f"      Rotation: {vp.get('rotation', 'N/A')}")
+    #     else:
+    #         print("✗ initialize_viewpoint (whole scene) failed")
+    # except Exception as e:
+    #     print(f"✗ initialize_viewpoint (whole scene) failed with exception: {e}")
 
-    if first_object:        
-        # Test 3: Focus on object (if objects exist)
-        print("\n3. Testing focus...")
-        try:
-            result = focus(object_name=first_object)
-            print(f"Result: {result}")
-            if result.get("status") == "success":
-                print("✓ focus passed")
-                print(f"  - Focused on: {first_object}")
-                print(f"  - Image saved: {result.get('output', 'N/A')}")
-            else:
-                print("✗ focus failed")
-        except Exception as e:
-            print(f"✗ focus failed with exception: {e}")
+    # if first_object:        
+    #     # Test 3: Focus on object (if objects exist)
+    #     print("\n3. Testing focus...")
+    #     try:
+    #         result = focus(object_name=first_object)
+    #         print(f"Result: {result}")
+    #         if result.get("status") == "success":
+    #             print("✓ focus passed")
+    #             print(f"  - Focused on: {first_object}")
+    #             print(f"  - Image saved: {result.get('output', 'N/A')}")
+    #         else:
+    #             print("✗ focus failed")
+    #     except Exception as e:
+    #         print(f"✗ focus failed with exception: {e}")
 
-        # Test 4: Zoom functionality
-        print("\n4. Testing zoom...")
-        try:
-            result = zoom(direction="in")
-            print(f"Result: {result}")
-            if result.get("status") == "success":
-                print("✓ zoom passed")
-                print(f"  - Image saved: {result.get('output', 'N/A')}")
-            else:
-                print("✗ zoom failed")
-        except Exception as e:
-            print(f"✗ zoom failed with exception: {e}")
+    #     # Test 4: Zoom functionality
+    #     print("\n4. Testing zoom...")
+    #     try:
+    #         result = zoom(direction="in")
+    #         print(f"Result: {result}")
+    #         if result.get("status") == "success":
+    #             print("✓ zoom passed")
+    #             print(f"  - Image saved: {result.get('output', 'N/A')}")
+    #         else:
+    #             print("✗ zoom failed")
+    #     except Exception as e:
+    #         print(f"✗ zoom failed with exception: {e}")
 
-        # Test 5: Move functionality
-        print("\n5. Testing move...")
-        try:
-            result = move(direction="up")
-            print(f"Result: {result}")
-            if result.get("status") == "success":
-                print("✓ move passed")
-                print(f"  - Image saved: {result.get('output', 'N/A')}")
-            else:
-                print("✗ move failed")
-        except Exception as e:
-            print(f"✗ move failed with exception: {e}")
+    #     # Test 5: Move functionality
+    #     print("\n5. Testing move...")
+    #     try:
+    #         result = move(direction="up")
+    #         print(f"Result: {result}")
+    #         if result.get("status") == "success":
+    #             print("✓ move passed")
+    #             print(f"  - Image saved: {result.get('output', 'N/A')}")
+    #         else:
+    #             print("✗ move failed")
+    #     except Exception as e:
+    #         print(f"✗ move failed with exception: {e}")
 
-        # Test 8: Set keyframe functionality
-        print("\n8. Testing set_keyframe...")
-        try:
-            result = set_keyframe(frame_number=1)
-            print(f"Result: {result}")
-            if result.get("status") == "success":
-                print("✓ set_keyframe passed")
-                print(f"  - Image saved: {result.get('output', 'N/A')}")
-                print(f"  - Frame changed from {result.get('output', {}).get('frame_info', {}).get('previous_frame', 'N/A')} to {result.get('output', {}).get('frame_info', {}).get('current_frame', 'N/A')}")
-            else:
-                print("✗ set_keyframe failed")
-        except Exception as e:
-            print(f"✗ set_keyframe failed with exception: {e}")
+    #     # Test 8: Set keyframe functionality
+    #     print("\n8. Testing set_keyframe...")
+    #     try:
+    #         result = set_keyframe(frame_number=1)
+    #         print(f"Result: {result}")
+    #         if result.get("status") == "success":
+    #             print("✓ set_keyframe passed")
+    #             print(f"  - Image saved: {result.get('output', 'N/A')}")
+    #             print(f"  - Frame changed from {result.get('output', {}).get('frame_info', {}).get('previous_frame', 'N/A')} to {result.get('output', {}).get('frame_info', {}).get('current_frame', 'N/A')}")
+    #         else:
+    #             print("✗ set_keyframe failed")
+    #     except Exception as e:
+    #         print(f"✗ set_keyframe failed with exception: {e}")
 
-    print("\n" + "=" * 50)
-    print("Test completed!")
-    print("=" * 50)
-    print(f"\nTest files saved to: {test_save_dir}")
-    print("\nTo run the MCP server normally:")
-    print("python tools/investigator.py")
-    print("\nTo run tests:")
-    print("BLENDER_FILE=/path/to.blend THOUGHT_SAVE=output/test/scene_test python tools/investigator.py --test")
+    # print("\n" + "=" * 50)
+    # print("Test completed!")
+    # print("=" * 50)
+    # print(f"\nTest files saved to: {test_save_dir}")
+    # print("\nTo run the MCP server normally:")
+    # print("python tools/investigator.py")
+    # print("\nTo run tests:")
+    # print("BLENDER_FILE=/path/to.blend THOUGHT_SAVE=output/test/scene_test python tools/investigator.py --test")
 
 
 if __name__ == "__main__":
     main()
-    
-    
-
-
-# ======================
-# MCP Tools
-# ======================
-
-
-# @mcp.tool()
-# def set_key_frame(target_frame: int, round: int = 0) -> dict:
-#     """
-#     Jump to a specific keyframe (absolute frame index) and render a view.
-#     """
-#     global _investigator
-#     if _investigator is None:
-#         return {"status": "error", "error": "Investigator3D not initialized. Call initialize_investigator first."}
-#     try:
-#         bpy.context.scene.frame_set(int(target_frame))
-#         result = _investigator._render(round)
-#         return {
-#             "status": "success",
-#             "image": result["image_path"],
-#             "camera_position": result["camera_position"],
-#             "keyframe_info": {"current_frame": int(target_frame)}
-#         }
-#     except Exception as e:
-#         logging.error(f"set_key_frame failed: {e}")
-#         return {"status": "error", "error": str(e)}
-
-
-
-# def set_camera_starting_position(direction: str = "z", round: int = 0) -> dict:
-#     """
-#     Set the camera to a fixed starting position for 3D scene investigation.
-    
-#     Args:
-#         direction: Starting camera direction - "z" (from above), "x" (from side), "y" (from front), or "bbox" (above bounding box)
-#         round: Current round number for file organization
-        
-#     Returns:
-#         dict: Status and camera position information
-        
-#     Example:
-#         set_camera_starting_position(direction="z", round=1)
-#         # Sets camera to look down from above the scene
-        
-#     Detailed Description:
-#         This tool sets the camera to predefined starting positions to ensure consistent 
-#         scene investigation. The available directions are:
-#         - "z": Camera positioned at (0,0,5) looking down at 60 degrees
-#         - "x": Camera positioned at (-5,0,2) looking from the side
-#         - "y": Camera positioned at (0,-5,2) looking from the front  
-#         - "bbox": Camera positioned at (0,0,10) looking down from above bounding box
-#     """
-#     global _investigator
-#     if _investigator is None:
-#         return {"status": "error", "output": "Investigator3D not initialized. Call initialize_investigator first."}
-    
-#     try:
-#         _investigator._set_camera_to_position(_investigator.cam, direction)
-#         result = _investigator._render(round)
-#         return {
-#             "status": "success",
-#             "output": {'image': result["image_path"], 'camera_position': result["camera_position"]}
-#         }
-#     except Exception as e:
-#         return {"status": "error", "output": str(e)}
-
-# @mcp.tool()
-# def setup_camera(view: str = "top", round: int = 0) -> dict:
-#     """
-#     Setup an observer camera to a canonical view.
-    
-#     Args:
-#         view: One of ["top", "front", "side", "oblique"].
-#         round: Current round number for file organization.
-#     Returns:
-#         dict: status, image path, camera position
-#     """
-#     mapping = {
-#         "top": "z",
-#         "front": "y",
-#         "side": "x",
-#         "oblique": "bbox",
-#     }
-#     direction = mapping.get(view, "z")
-#     return set_camera_starting_position(direction=direction, round=round)

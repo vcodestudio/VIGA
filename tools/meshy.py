@@ -16,8 +16,8 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "generate_and_download_3d_asset",
-            "description": "Use the Meshy API to generate a 3D asset.\n• You may provide either text or image as the reference:\n– If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\".\n– Otherwise, use reference_type=\"text\".\n• The tool downloads the generated asset locally and returns its file path for later import in code.\n• When generating assets that require rigging or animation, attach appropriate actions via the Meshy API where supported. The API currently supports only a limited set of objects and motions; for anything beyond that, implement animation via code.",
+            "name": "meshy_get_better_object",
+            "description": "Use the Meshy API to generate a 3D object and download it to local path. You may provide either text or image as the reference: If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\". The tool downloads the generated asset locally and returns its file path for later import in code. We have unlimited meshy resources, please use this tool to generate complex objects whenever possible.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -701,7 +701,7 @@ def initialize(args: dict) -> dict:
         return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
-def generate_and_download_3d_asset(object_name: str, reference_type: str, object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
+def meshy_get_better_object(object_name: str, reference_type: str, object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
     try:
         global _meshy_api
         previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=rig_and_animate, is_rigged=rig_and_animate)
@@ -775,7 +775,7 @@ def main():
 
         # Text reference test
         print("\n[test] Text reference: humanoid, rig_and_animate=True")
-        text_res = generate_and_download_3d_asset(
+        text_res = meshy_get_better_object(
             object_name="Snow man",
             reference_type="text",
             object_description="stylized humanoid character",
