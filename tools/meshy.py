@@ -51,7 +51,7 @@ class MeshyAPI:
         os.makedirs(self.save_dir, exist_ok=True)
         if self.previous_assets_dir:
             os.makedirs(self.previous_assets_dir, exist_ok=True)
-        with open('logs/meshy.log', 'w') as f:
+        with open(f'{self.save_dir}/meshy.log', 'w') as f:
             f.write(f"MeshyAPI initialized with save_dir: {self.save_dir} and previous_assets_dir: {self.previous_assets_dir}\n")
 
     def normalize_name(self, name: str) -> str:
@@ -157,7 +157,7 @@ class MeshyAPI:
             for chunk in r.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{self.save_dir}/meshy.log', 'a') as f:
             f.write(f"Downloaded {file_name} from {file_url} to {output_path}\n")
         return output_path
 
@@ -267,7 +267,7 @@ def download_meshy_asset(object_name: str, description: str) -> dict:
 
         logging.info(f"[Meshy] Creating preview task for: {description}")
         preview_id = _meshy_api.create_text_to_3d_preview(description)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{_meshy_api.save_dir}/meshy.log', 'a') as f:
             f.write(f"Preview ID: {preview_id}\n")
 
         preview_task = _meshy_api.poll_text_to_3d(preview_id, interval_sec=5, timeout_sec=900)
@@ -277,7 +277,7 @@ def download_meshy_asset(object_name: str, description: str) -> dict:
 
         logging.info(f"[Meshy] Starting refine for preview task: {preview_id}")
         refine_id = _meshy_api.create_text_to_3d_refine(preview_id)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{_meshy_api.save_dir}/meshy.log', 'a') as f:
             f.write(f"Refine ID: {refine_id}\n")
             
         refine_task = _meshy_api.poll_text_to_3d(refine_id, interval_sec=5, timeout_sec=1800)
@@ -332,7 +332,7 @@ def download_meshy_asset_from_image(object_name: str, image_path: str, prompt: s
             logging.info(f"[Meshy] Using prompt: {prompt}")
         
         preview_id = _meshy_api.create_image_to_3d_preview(image_path, prompt)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{_meshy_api.save_dir}/meshy.log', 'a') as f:
             f.write(f"Preview ID: {preview_id}\n")
 
         preview_task = _meshy_api.poll_image_to_3d(preview_id, interval_sec=5, timeout_sec=900)
@@ -384,7 +384,7 @@ def create_rigged_character(model_url: str, object_name: str) -> dict:
 
         logging.info(f"[Meshy] Creating rigging task for: {model_url}")
         rig_task_id = _meshy_api.create_rigging_task(model_url=model_url)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{_meshy_api.save_dir}/meshy.log', 'a') as f:
             f.write(f"Rig task ID: {rig_task_id}\n")
 
         rig_task = _meshy_api.poll_rigging_task(rig_task_id, interval_sec=5, timeout_sec=1800)
@@ -435,7 +435,7 @@ def create_animated_character(rig_task_id: str, action_description: str, object_
 
         logging.info(f"[Meshy] Creating animation task for rig_task_id: {rig_task_id}")
         anim_task_id = _meshy_api.create_animation_task(rig_task_id=rig_task_id, action_description=action_description)
-        with open('logs/meshy.log', 'a') as f:
+        with open(f'{_meshy_api.save_dir}/meshy.log', 'a') as f:
             f.write(f"Anim task ID: {anim_task_id}\n")
 
         anim_task = _meshy_api.poll_animation_task(anim_task_id, interval_sec=5, timeout_sec=1800)
@@ -493,11 +493,7 @@ def create_rigged_and_animated_character(model_url: str, action_description: str
             rig_task_id = rigging_result["output"]["task_id"]
         
         animation_result = create_animated_character(rig_task_id=rig_task_id, action_description=action_description, object_name=object_name)
-
-        if animation_result.get("status") != "success":
-            return animation_result
-
-        return {'status': 'success', 'output': animation_result["output"]}
+        return animation_result
 
     except Exception as e:
         logging.error(f"Failed to create rigged and animated character: {e}")
@@ -506,6 +502,7 @@ def create_rigged_and_animated_character(model_url: str, action_description: str
 @mcp.tool()
 def initialize(args: dict) -> dict:
     global _image_cropper
+    global _meshy_api
     try:
         va_api_key = args.get("va_api_key")
         target_image_path = args.get("target_image_path")
@@ -520,7 +517,6 @@ def initialize(args: dict) -> dict:
         if va_api_key and target_image_path:
             _image_cropper = ImageCropper(va_api_key, target_image_path)
         if meshy_api_key:
-            global _meshy_api
             _meshy_api = MeshyAPI(meshy_api_key, save_dir, previous_assets_dir)
         return {"status": "success", "output": {"text": ["Meshy initialize completed"], "tool_configs": tool_configs}}
     
@@ -565,7 +561,7 @@ def meshy_get_better_object(object_name: str, reference_type: str, object_descri
         if not rig_and_animate:
             return {"status": "success", "output": {"text": ["Successfully generated static asset, downloaded to: " + static_result.get('output', {}).get('path', '')]}}
         
-        model_url = static_result.get('model_url', None)
+        model_url = static_result.get('output', {}).get('model_url', None)
         dynamic_result = create_rigged_and_animated_character(model_url=model_url, action_description=action_description, object_name=object_name)
         if dynamic_result.get('status') == 'success':
             return {"status": "success", "output": {"text": ["Successfully generated dynamic asset, downloaded to: " + dynamic_result.get('output', {}).get('path', '')]}}
@@ -579,14 +575,15 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         meshy_api_key = os.getenv("MESHY_API_KEY")
         va_api_key = os.getenv("VA_API_KEY")
-        save_dir = "test/meshy/assets"
+        save_dir = "output/test/meshy"
         previous_assets_dir = "data/static_scene/christmas1/assets"
 
         init_payload = {
             "meshy_api_key": meshy_api_key,
             "va_api_key": va_api_key,
-            "save_dir": save_dir,
-            "previous_assets_dir": previous_assets_dir,
+            "output_dir": save_dir,
+            "assets_dir": previous_assets_dir,
+            "target_image_path": "data/static_scene/christmas1/target.png",
         }
         result = initialize(init_payload)
         print("initialize result:", result)
