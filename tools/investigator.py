@@ -200,7 +200,10 @@ class Executor:
             # If image output
             with open(f"{self.base}/tmp/camera_info.json", "r") as f:
                 camera_info = json.load(f)
-            return {"status": "success", "output": {"image": imgs, "text": [proc.stdout], "camera_parameters": camera_info}}
+                for camera in camera_info:
+                    camera['location'] = [round(x, 2) for x in camera['location']]
+                    camera['rotation'] = [round(x, 2) for x in camera['rotation']]
+            return {"status": "success", "output": {"image": imgs, "text": ["Camera parameters: " + str(camera) for camera in camera_info]}}
         except subprocess.CalledProcessError as e:
             logging.error(f"Blender failed: {e.stderr}")
             return {"status": "error", "output": {"text": [e.stderr or e.stdout]}}
@@ -439,7 +442,7 @@ for obj in bpy.data.objects:
     if obj.name in show_list:
         obj.hide_viewport = False
         obj.hide_render = False
-
+        
 # Render after visibility update
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
 bpy.context.scene.render.engine = 'CYCLES'
@@ -450,8 +453,8 @@ bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
 bpy.ops.render.render(write_still=True)
 
 camera_info = [{{
-    "location": list(camera.location),
-    "rotation": list(camera.rotation_euler)
+    "location": list(bpy.context.scene.camera.location),
+    "rotation": list(bpy.context.scene.camera.rotation_euler)
 }}]
 
 with open(f"{self.base}/tmp/camera_info.json", "w") as f:
@@ -624,10 +627,10 @@ for i, pos in enumerate(camera_positions):
     bpy.context.scene.render.filepath = os.path.join(render_dir, str(i+1)+".png")
     bpy.ops.render.render(write_still=True)
     
-    camera_infos.append([{{
+    camera_infos.append({{
         "location": list(camera.location),
         "rotation": list(camera.rotation_euler)
-    }}])
+    }})
     
 with open(f"{self.base}/tmp/camera_info.json", "w") as f:
     json.dump(camera_infos, f)
@@ -759,126 +762,76 @@ def initialize(args: dict) -> dict:
         return {"status": "success", "output": {"text": ["Investigator3D initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
+    
+@mcp.tool()
+def get_scene_info() -> dict:
+    global _investigator
+    if _investigator is None:
+        return {"status": "error", "output": {"text": ["SceneInfo not initialized. Call initialize first."]}}
+    return _investigator.get_info()
 
 def focus(object_name: str) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        # Object existence check is now handled in the script execution
-        result = _investigator.focus_on_object(object_name)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"Focus failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.focus_on_object(object_name)
 
 def zoom(direction: str) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        # Check if there is a target object
-        if _investigator.target is None:
-            return {"status": "error", "output": {"text": ["No target object set. Call focus first."]}}
-        result = _investigator.zoom(direction)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"Zoom failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.zoom(direction)
 
 def move(direction: str) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        # Check if there is a target object
-        if _investigator.target is None:
-            return {"status": "error", "output": {"text": ["No target object set. Call focus first."]}}
-        result = _investigator.move_camera(direction)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"Move failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
-
-@mcp.tool()
-def get_scene_info() -> dict:
-    try:
-        global _investigator
-        if _investigator is None:
-            return {"status": "error", "output": {"text": ["SceneInfo not initialized. Call initialize first."]}}
-        return _investigator.get_info()
-    except Exception as e:
-        logging.error(f"Failed to get scene info: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.move_camera(direction)
 
 @mcp.tool()
 def initialize_viewpoint(object_names: list) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        result = _investigator.initialize_viewpoint(object_names)
-        result['text'] = [f"[Viewpoint {i+1}] Camera parameters: {[round(x, 2) for x in result['camera_parameters'][i]]}" for i in range(len(result['image']))]
-        return {"status": "success", "output": {"image": result["image"], "text": result['text']}}
-    except Exception as e:
-        logging.error(f"Add viewpoint failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.initialize_viewpoint(object_names)
 
 @mcp.tool()
 def investigate(operation: str, object_name: str = None, direction: str = None) -> dict:
     if operation == "focus":
         if not object_name:
             return {"status": "error", "output": {"text": ["object_name is required for focus"]}}
-        result = focus(object_name=object_name)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
+        return focus(object_name=object_name)
     elif operation == "zoom":
         if direction not in ("in", "out"):
             return {"status": "error", "output": {"text": ["direction must be 'in' or 'out' for zoom"]}}
-        result = zoom(direction=direction)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
+        return zoom(direction=direction)
     elif operation == "move":
         if direction not in ("up", "down", "left", "right"):
             return {"status": "error", "output": {"text": ["direction must be one of up/down/left/right for move"]}}
-        result = move(direction=direction)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
+        return move(direction=direction)
     else:
         return {"status": "error", "output": {"text": [f"Unknown operation: {operation}"]}}
 
 @mcp.tool()
-def set_visibility(show_objects: list = None, hide_objects: list = None) -> dict:
+def set_visibility(show_objects: list = [], hide_objects: list = []) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        result = _investigator.set_visibility(show_objects, hide_objects)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"set_visibility failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
-
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.set_visibility(show_objects, hide_objects)
+        
 @mcp.tool()
 def set_keyframe(frame_number: int) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        result = _investigator.set_keyframe(frame_number)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"Set keyframe failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}, "status": "error"}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.set_keyframe(frame_number)
     
 @mcp.tool()
 def set_camera(location: list, rotation_euler: list) -> dict:
     global _investigator
     if _investigator is None:
-        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize_investigator first."]}}
-    try:
-        result = _investigator.set_camera(location, rotation_euler)
-        return {"status": "success", "output": {"image": result["image"], "text": [f"Camera parameters: {[round(x, 2) for x in result['camera_parameters']]}"]}}
-    except Exception as e:
-        logging.error(f"set_camera failed: {e}")
-        return {"status": "error", "output": {"text": [str(e)]}}
+        return {"status": "error", "output": {"text": ["Investigator3D not initialized. Call initialize first."]}}
+    return _investigator.set_camera(location, rotation_euler)
     
 @mcp.tool()
 def reload_scene() -> dict:
@@ -909,7 +862,7 @@ def test_tools():
     print("=" * 50)
 
     # Set test paths (read from environment variables)
-    blender_file = os.getenv("BLENDER_FILE", "output/static_scene/20251018_012341/christmas1/blender_file.blend")
+    blender_file = os.getenv("BLENDER_FILE", "output/static_scene/20251026_080047/christmas1/blender_file.blend")
     test_save_dir = os.getenv("THOUGHT_SAVE", "output/test/")
     blender_command = os.getenv("BLENDER_COMMAND", "utils/blender/infinigen/blender/blender")
     blender_script = os.getenv("BLENDER_SCRIPT", "data/static_scene/verifier_script.py")
@@ -928,43 +881,48 @@ def test_tools():
     args = {"output_dir": test_save_dir, "blender_file": blender_file, "blender_command": blender_command, "blender_script": blender_script, "gpu_devices": gpu_devices}
     result = initialize(args)
     print(f"Result: {result}")
-        
-    # Test 2: Get scene info
-    print("\n2. Testing get_scene_info...")
-    scene_info = get_scene_info()
-    print(f"Result: {scene_info}")
     
-    object_names = ['CornerCap']
+    # # Test set camera
+    # print("\n1.1. Testing set camera...")
+    # set_camera_result = set_camera(location=[0, 0, 0], rotation_euler=[0, 0, 0])
+    # print(f"Result: {set_camera_result}")
+        
+    # # Test 2: Get scene info
+    # print("\n2. Testing get_scene_info...")
+    # scene_info = get_scene_info()
+    # print(f"Result: {scene_info}")
+    
+    object_names = ['Fireplace_Block']
     print(f"Object names: {object_names}")
         
     # Test 4: Initialize viewpoint
-    print("\n4. Testing initialize_viewpoint...")
-    viewpoint_result = initialize_viewpoint(object_names=object_names)
-    print(f"Result: {viewpoint_result}")
+    # print("\n4. Testing initialize_viewpoint...")
+    # viewpoint_result = initialize_viewpoint(object_names=object_names)
+    # print(f"Result: {viewpoint_result}")
 
     # Test 5: Focus, zoom, move, set_keyframe if objects exist
     first_object = object_names[0]
-    print(f"\n5. Testing camera operations with object: {first_object}")
+    # print(f"\n5. Testing camera operations with object: {first_object}")
     
-    # Test focus
-    print("\n5.1. Testing focus...")
-    focus_result = focus(object_name=first_object)
-    print(f"Result: {focus_result}")
+    # # Test focus
+    # print("\n5.1. Testing focus...")
+    # focus_result = focus(object_name=first_object)
+    # print(f"Result: {focus_result}")
 
-    # Test zoom
-    print("\n5.2. Testing zoom...")
-    zoom_result = zoom(direction="in")
-    print(f"Result: {zoom_result}")
+    # # Test zoom
+    # print("\n5.2. Testing zoom...")
+    # zoom_result = zoom(direction="in")
+    # print(f"Result: {zoom_result}")
 
-    # Test move
-    print("\n5.3. Testing move...")
-    move_result = move(direction="left")
-    print(f"Result: {move_result}")
+    # # Test move
+    # print("\n5.3. Testing move...")
+    # move_result = move(direction="left")
+    # print(f"Result: {move_result}")
     
-    # Test set_keyframe
-    print("\n5.4. Testing set_keyframe...")
-    keyframe_result = set_keyframe(frame_number=1)
-    print(f"Result: {keyframe_result}")
+    # # Test set_keyframe
+    # print("\n5.4. Testing set_keyframe...")
+    # keyframe_result = set_keyframe(frame_number=1)
+    # print(f"Result: {keyframe_result}")
     
     # Test set_visibility
     print("\n5.5. Testing set_visibility...")
@@ -972,14 +930,14 @@ def test_tools():
     print(f"Result: {visibility_result}")
     
     # Test 3: Reload scene
-    print("\n3. Testing reload_scene...")
-    reload_result = reload_scene()
-    print(f"Result: {reload_result}")
+    # print("\n3. Testing reload_scene...")
+    # reload_result = reload_scene()
+    # print(f"Result: {reload_result}")
 
-    # Test focus
-    print("\n5.1. Testing focus...")
-    focus_result = focus(object_name=first_object)
-    print(f"Result: {focus_result}")
+    # # Test focus
+    # print("\n5.1. Testing focus...")
+    # focus_result = focus(object_name=first_object)
+    # print(f"Result: {focus_result}")
 
     print("\n" + "=" * 50)
     print("Test completed!")
