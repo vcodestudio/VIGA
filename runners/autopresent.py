@@ -156,7 +156,7 @@ def run_autopresent_task(task_config: Dict, args) -> tuple:
     Returns:
         Tuple of (task_name, success: bool, error_message: str)
     """
-    task_name = task_config['task_name'] + "/" + task_config['task_dir'].split('/')[-1]
+    task_name = task_config['task_name'] + "/" + task_config['resource_dir'].split('/')[-1]
     print(f"\n{'='*60}")
     print(f"Running task: {task_name}")
     print(f"{'='*60}")
@@ -249,7 +249,7 @@ def run_tasks_parallel(tasks: List[Dict], args, max_workers: int = 10) -> tuple:
                     print(f"❌ {task_name} failed: {error_msg}")
             except Exception as e:
                 failed_tasks += 1
-                task_name = task_config['task_dir'].split('/')[-1]
+                task_name = task_config['resource_dir'].split('/')[-1]
                 failed_task_details.append({
                     "task_name": task_name,
                     "error": str(e)
