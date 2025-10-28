@@ -37,9 +37,10 @@ class VerifierAgent:
         """
         print("\n=== Running verifier agent ===\n")
         
-        # Ensure the scene is reloaded
-        print("Reload scene...")
-        await self.tool_client.call_tool("reload_scene", {})
+        # Reload scene if needed
+        if "reload_scene" in self.tool_client.tool_configs:
+            print("Reload scene...")
+            await self.tool_client.call_tool("reload_scene", {})
         print("Build user message...")
         user_message = self.prompt_builder.build_prompt("verifier", "user", user_message)
         print("Extend memory...")
