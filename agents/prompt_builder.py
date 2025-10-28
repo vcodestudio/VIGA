@@ -32,15 +32,36 @@ class PromptBuilder:
         """Build generator prompt for static_scene mode using prompt manager."""
         content = []
         if self.config.get("target_image_path"):
-            content.append({"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("target_image_path"))}})
-            content.append({"type": "text", "text": f"Target image loaded from local path: {self.config.get('target_image_path')}"})
+            if os.path.isdir(self.config.get("target_image_path")):
+                for i, file in enumerate(os.listdir(self.config.get("target_image_path"))):
+                    content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("target_image_path"), file))}})
+                    content.append({"type": "text", "text": f"Target image {i+1} loaded from local path: {os.path.join(self.config.get('target_image_path'), file)}"})
+            else:
+                content.append({"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("target_image_path"))}})
+                content.append({"type": "text", "text": f"Target image loaded from local path: {self.config.get('target_image_path')}"})  
+            
         if self.config.get("target_description"):
             content.append({"type": "text", "text": f"Task description: {self.config.get('target_description')}"})
+            
+        if self.config.get("init_image_path"):
+            if os.path.isdir(self.config.get("init_image_path")):
+                for i, file in enumerate(os.listdir(self.config.get("init_image_path"))):
+                    content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("init_image_path"), file))}})
+                    content.append({"type": "text", "text": f"Initial image {i+1} loaded from local path: {os.path.join(self.config.get('init_image_path'), file)}"})
+            else:
+                content.append({"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("init_image_path"))}})
+            content.append({"type": "text", "text": f"Initial image loaded from local path: {self.config.get('init_image_path')}"})
+            
+        if self.config.get("init_code_path"):
+            with open(self.config.get("init_code_path"), 'r') as f:
+                content.append({"type": "text", "text": f"Initial code: {f.read()}"})
+        
         if self.config.get("resource_dir"):
             for file in os.listdir(os.path.join(self.config.get("resource_dir"), "media")):
                 content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("resource_dir"), "media", file))}})
                 content.append({"type": "text", "text": f"Resource image loaded from local path: {os.path.join(self.config.get('resource_dir'), 'media', file)}. You can import these images when generating the scene."})
             content.append({"type": "text", "text": f"Please specify the output slide path as output.pptx in the code."})
+            
         return [{"role": "system", "content": prompts.get('system', '')}, {"role": "user", "content": content}]
     
     def _build_user_prompt(self, prompts: Dict) -> List[Dict]:
