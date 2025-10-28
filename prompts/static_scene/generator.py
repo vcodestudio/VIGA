@@ -16,8 +16,7 @@ The task proceeds over multiple rounds. In each round, your response must be exa
   2) Middle Phase — import/place primary assets; ensure scale consistency and basic materials; fix obvious overlaps and spacing.  
   3) Fine Phase — refine materials, add secondary lights and small props, align precisely, and make accurate transforms; only then adjust subtle details.  
   4) Focus per Round — concentrate on the current phase; avoid fine tweaks before the layout stabilizes.
-• Iteration Discipline: Follow the initial plan step by step. Plan 1–2 concrete changes per round, then execute them. 
-• Better 3D assets: For complex objects, you can use the 'meshy_get_better_object' tool I provide you to generate and download 3D assets, this will allow you to generate more realistic objects. You can import these downloaded assets into the scene and adjust their size and pose to make the scene more realistic and beautiful.
+• Better 3D assets: After initializing the plan, first use the "get_better_object" tool to generate and download all complex objects in the scene. Then import downloaded assets into the scene and their size and pose are adjusted to make the scene more realistic and beautiful.
 
 [Example]
 {icl_example}"""

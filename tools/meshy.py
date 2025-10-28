@@ -16,8 +16,8 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "meshy_get_better_object",
-            "description": "Use the Meshy API to generate a 3D object and download it to local path. You may provide either text or image as the reference: If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\". The tool downloads the generated asset locally and returns its file path for later import in code. We have unlimited meshy resources, please use this tool to generate complex objects whenever possible.",
+            "name": "get_better_object",
+            "description": "A low-level preparation tool used to download, cache, and register external 3D assets before any scene editing or code execution.\nThis tool is responsible for retrieving high-quality assets from the meshy library based on natural language descriptions, saving them locally, and making their paths available for later use.\n📌 It does not place or modify assets in the scene. It only prepares them.\n⚠️ All external assets must be obtained through this tool first. execute_and_evaluate must not be used to implicitly create or fetch assets.\n✅ Example use cases:\n“Download a modern laptop asset.”\n“Fetch a potted plant asset for later placement.”\n“Prepare a table and chair set before arranging them in the scene.”",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -521,7 +521,7 @@ def initialize(args: dict) -> dict:
         return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
-def meshy_get_better_object(object_name: str, reference_type: str, object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
+def get_better_object(object_name: str, reference_type: str, object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
     try:
         global _meshy_api
         previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=rig_and_animate, is_rigged=rig_and_animate)
@@ -585,14 +585,14 @@ def main():
         result = initialize(init_payload)
         print("initialize result:", result)
 
-        result = meshy_get_better_object(
+        result = get_better_object(
             object_name="cat",
             reference_type="text",
             object_description="Realistic domestic short-hair bicolor cat with gray and white coat similar to a tuxedo pattern: gray cap over head and ears, gray back and tail, white face blaze, chest, belly, and legs. Medium adult size with short fur. Blender-compatible quadruped rig suitable for walk cycle. Include natural materials with slight fur roughness and subtle color variation.",
             rig_and_animate=True,
             action_description="walk",
         )
-        print("meshy_get_better_object result:", result)
+        print("get_better_object result:", result)
     else:
         mcp.run()
         

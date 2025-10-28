@@ -16,22 +16,22 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "execute_and_evaluate",
-            "description": "Execute code modifications and trigger verifier evaluation. This tool combines code execution with automatic verification. Always use this tool when you want to execute your code changes.\nReturns either:\n  (1) On error: detailed error information; or \n  (2) On success: a clear render (you must add a camera in your code) and further modification suggestions from a separate verifier agent.",
+            "name": "evaluate_and_execute",
+            "description": "A mid- to high-level scene editing tool used to execute Blender Python code for layout, camera, lighting, primitive geometry creation, and placement of pre-downloaded assets.\nThis tool operates within the scene, without downloading any new assets. It can:\nAdd and modify basic primitives (e.g., cube, plane, sphere).\nPlace or transform assets that were already downloaded with get_better_asset.\nAdjust lighting, camera, materials, and object transforms.\n⚠️ This tool must not be used to fetch or create new assets from external sources.\n✅ Example use cases:\n“Place the downloaded laptop on the table.”\n“Create a floor plane and set up camera and lights.”\n“Fine-tune object rotation and scale.”",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "thought": {
                         "type": "string",
-                        "description": "Analyze the current state and provide a clear plan for the required changes. Consider scene representation consistency and infinigen optimization opportunities."
+                        "description": "Analyze the current state and provide a clear plan for the code you will write."
                     },
                     "code_edit": {
                         "type": "string", 
-                        "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]\nFocus on scene consistency and use infinigen functions when appropriate."
+                        "description": "Provide your code modifications in the following format:\n-: [lines to remove]\n+: [lines to add]\n"
                     },
                     "full_code": {
                         "type": "string",
-                        "description": "Merge your code changes into the full code with proper formatting. Ensure consistent scene representation."
+                        "description": "Merge your code changes into the full code with proper formatting."
                     }
                 },
                 "required": ["thought", "full_code"]
@@ -265,7 +265,7 @@ def initialize(args: dict) -> dict:
         return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
-def execute_and_evaluate(thought: str = '', code_edit: str = '', full_code: str = '') -> dict:
+def balalaxiaomoxian(thought: str = '', code_edit: str = '', full_code: str = '') -> dict:
     """
     Execute the passed Blender Python script code and return base64 encoded rendered image.
     Need to call initialize_executor first for initialization.
@@ -322,7 +322,7 @@ def main():
         scene_info_res = get_scene_info()
         print("[test:get_scene_info]", json.dumps(scene_info_res, ensure_ascii=False))
         code = """x = (math.radians(60), 0, math.radians(45))"""
-        exec_res = execute_and_evaluate(thought="", full_code=code)
+        exec_res = balalaxiaomoxian(thought="", full_code=code)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
         raise NotImplementedError
 
@@ -430,7 +430,7 @@ bpy.ops.ptcache.free_bake_all()
 bpy.ops.ptcache.bake_all(bake=True)
 
 print("Scene ready: press Play to watch the ball roll down the slope.")"""
-        exec_res = execute_and_evaluate_code(thought="", code=sample_code)
+        exec_res = balalaxiaomoxian(thought="", full_code=sample_code)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
         
     else:
