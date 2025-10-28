@@ -27,6 +27,7 @@ async def main():
     parser.add_argument("--output-dir", default=None, help="Output directory")
     parser.add_argument("--task-name", default=None, help="Task name for hints extraction")
     parser.add_argument("--assets-dir", default=None, help="Assets directory path for static_scene and dynamic_scene modes")
+    parser.add_argument("--resource-dir", default=None, help="Task directory path for autopresent mode")
     parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     
     # Execution parameters

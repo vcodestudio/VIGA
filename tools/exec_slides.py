@@ -39,8 +39,8 @@ mcp = FastMCP("slides-executor")
 _executor = None
 
 class SlidesExecutor:
-    def __init__(self, task_dir: str, output_dir: str):
-        self.task_dir = Path(task_dir)
+    def __init__(self, resource_dir: str, output_dir: str):
+        self.task_dir = Path(resource_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.count = 0
@@ -86,11 +86,11 @@ class SlidesExecutor:
             result = self._execute_slide_code(str(runned_code_path))
 
             if result == "Success" and image_path.exists():
-                return {"status": "success", "output": [str(image_path)]}
+                return {"status": "success", "output": {"image": [str(image_path)], "text": ["The code executed successfully, and the image was generated successfully."]}}
             else:
-                return {"status": "failure", "output": result}
+                return {"status": "error", "output": {"text": [result]}}
         except Exception as e:
-            return {"status": "failure", "output": str(e)}
+            return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
 def initialize(args: dict) -> dict:
@@ -99,10 +99,10 @@ def initialize(args: dict) -> dict:
     """
     global _executor
     try:
-        _executor = SlidesExecutor(args.get("task_dir"), args.get("output_dir"))
-        return {"status": "success", "output": "Slides executor initialized successfully"}
+        _executor = SlidesExecutor(args.get("resource_dir"), args.get("output_dir"))
+        return {"status": "success", "output": {"text": ["Slides executor initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
 def execute_and_evaluate(thought: str = '', code_edit: str = '', full_code: str = '') -> dict:
@@ -115,12 +115,12 @@ def execute_and_evaluate(thought: str = '', code_edit: str = '', full_code: str 
     """
     global _executor
     if _executor is None:
-        return {"status": "error", "output": "Executor not initialized. Call initialize_executor first."}
+        return {"status": "error", "output": {"text": ["Executor not initialized. Call initialize_executor first."]}}
     try:
         result = _executor.execute(full_code)
         return result
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 def test_specific_file():
     """

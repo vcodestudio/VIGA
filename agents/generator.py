@@ -133,6 +133,14 @@ class GeneratorAgent:
         if tool_call_name == "initialize_plan":
             self.init_plan = "\n".join(message['user']['plan'])
             self.memory[1]['content'].append({"type": "text", "text": f"Initial plan: {self.init_plan}"})
+        # Add downloaded assets
+        if tool_call_name == "get_better_object":
+            try:
+                object_name = json.loads(message['assistant'].tool_calls[0].function.arguments)['object_name']
+                object_path = message['user']['text'][0].split('downloaded to: ')[1]
+                self.memory[1]['content'].append({"type": "text", "text": f"Downloaded {object_name} to {object_path}"})
+            except Exception as e:
+                print(f"Error adding downloaded assets: {e}")
     
     def _save_memory(self):
         """Save the memory to the file"""

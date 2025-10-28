@@ -135,10 +135,10 @@ def load_autopresent_dataset(base_path: str, task_name: str, task_id: Optional[s
             
         task_config = {
             "task_name": task_name,
-            "task_dir": str(task_dir),
             "init_code_path": '',
             "init_image_path": '',
             "target_description": target_description,
+            "resource_dir": str(task_dir),
         }
         tasks.append(task_config)
         print(f"Found task: {task_name}/{task_dir.name}")
@@ -182,6 +182,7 @@ def run_autopresent_task(task_config: Dict, args) -> tuple:
         # Tool servers
         "--generator-tools", args.generator_tools,
         "--verifier-tools", args.verifier_tools,
+        "--resource-dir", task_config["resource_dir"],
     ]
     
     print(f"Command: {' '.join(cmd)}")
