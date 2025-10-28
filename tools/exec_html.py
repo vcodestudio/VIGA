@@ -94,7 +94,7 @@ class HTMLExecutor:
             return False, "Screenshot timeout"
         except FileNotFoundError:
             # Try alternative browser commands
-            alternatives = ["chromium-browser", "chromium", "firefox"]
+            alternatives = ["chromium-browser", "chromium", "firefox", "google-chrome"]
             for alt_browser in alternatives:
                 try:
                     cmd[0] = alt_browser
@@ -137,12 +137,12 @@ class HTMLExecutor:
             output_path = self.output_dir / f"{self.count}.png"
             success, message = self._take_screenshot(html_path, str(output_path))
             if not success:
-                return {"status": "error", "output": message}
+                return {"status": "error", "output": {"text": [message]}}
             optimized_path = self._optimize_image(str(output_path))
-            return {"status": "success", "output": [optimized_path]}
+            return {"status": "success", "output": {"image": [optimized_path], "text": ["Screenshot taken successfully."]}}
         except Exception as e:
             logging.error(f"HTML execution failed: {e}")
-            return {"status": "error", "output": str(e)}
+            return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
 def initialize(args: dict) -> dict:
@@ -174,68 +174,14 @@ def execute_and_evaluate(thought: str = '', code_edit: str = '', full_code: str 
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
 
-    
-def test_execute_test_html(test_html_path: Optional[str] = None,
-                           output_dir: Optional[str] = None,
-                           browser_command: str = "google-chrome") -> Dict:
-    """
-    Test helper: execute a local test.html and produce a screenshot.
-
-    Args:
-        test_html_path: Path to the HTML file to execute. Defaults to
-            a "test.html" placed next to this file.
-        output_dir: Directory to write screenshots. Defaults to a temp dir
-            under the system temp root.
-        browser_command: Browser command to use (e.g., google-chrome/chromium/firefox).
-
-    Returns:
-        A dict containing status, message/error, and output paths when applicable.
-    """
-    try:
-        # Resolve defaults
-        if test_html_path is None:
-            test_html_path = str((Path(__file__).parent / "test.html").resolve())
-        if output_dir is None:
-            temp_root = tempfile.mkdtemp(prefix="design2code_test_output_")
-            output_dir = temp_root
-
-        if not os.path.exists(test_html_path):
-            return {"status": "error", "output": {"text": [f"Test HTML not found: {test_html_path}"]}}
-
-        # Read HTML
-        with open(test_html_path, "r", encoding="utf-8") as f:
-            html_code = f.read()
-
-        # Run executor directly
-        executor = HTMLExecutor(output_dir=output_dir, browser_command=browser_command)
-        result = executor.execute(html_code)
-
-        # Attach some helpful information
-        output = {
-            "status": result.get("status", "error"),
-            "details": result,
-            "output_dir": str(output_dir),
-            "test_html_path": test_html_path,
-        }
-
-        # Log a concise message
-        if output["status"] == "success":
-            logging.info(f"Test succeeded. Screenshot: {result.get('output')[0]}")
-        else:
-            logging.error(f"Test failed: {result.get('output')}")
-
-        return output
-    except Exception as e:
-        logging.exception("Unexpected error running HTML executor test")
-        return {"status": "error", "output": str(e)}
-
 def main():
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        test_result = test_execute_test_html(test_html_path="code_test.html", output_dir="output/test/design2code/")
-        success = test_result.get("status") == "success"
-        print(f"\n🎯 Overall test result: {'PASSED' if success else 'FAILED'}")
-        sys.exit(0 if success else 1)
+        args = {"output_dir": "output/test/design2code/", "browser_command": "google-chrome"}
+        initialize(args)
+        code = """<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n    <meta charset=\\\"UTF-8\\\">\\n    <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n    <title>Crosschain Risk Framework</title>\\n    <style>\\n        body {\\n            display: flex;\\n            margin: 0;\\n            font-family: Arial, sans-serif;\\n        }\\n        /* Sidebar */\\n        .sidebar {\\n            width: 20%;\\n            background-color: #f7f8fa;\\n            padding: 20px;\\n            box-shadow: 2px 0 5px rgba(0,0,0,0.1);\\n            min-height: 100vh;\\n        }\\n        .sidebar h2, .sidebar ul {\\n            margin: 0;\\n            padding: 0;\\n        }\\n        .sidebar ul {\\n            list-style-type: none;\\n            padding-top: 20px;\\n        }\\n        .sidebar li {\\n            padding: 10px 0;\\n        }\\n        \\n        /* Main Content */\\n        .main-content {\\n            width: 80%;\\n            padding: 20px;\\n        }\\n        h1, h2 {\\n            margin: 20px 0;\\n        }\\n\\n        /* Header */\\n        .header {\\n            display: flex;\\n            justify-content: flex-end;\\n            align-items: center;\\n            padding: 10px;\\n            background-color: #2c3e50;\\n            color: white;\\n        }\\n        .search-bar {\\n            margin-right: 15px;\\n        }\\n        .github-icon {\\n            width: 24px;\\n            height: 24px;\\n        }\\n    </style>\\n</head>\\n<body>\\n    <div class=\\\"sidebar\\\">\\n        <h2>Crosschain Risk Framework</h2>\\n        <ul>\\n            <li>Introduction</li>\\n            <li>Categories of Risk</li>\\n            <li>Network Consensus Risk</li>\\n            <li>Protocol Architecture Risk</li>\\n        </ul>\\n    </div>\\n    <div class=\\\"main-content\\\">\\n        <div class=\\\"header\\\">\\n            <input class=\\\"search-bar\\\" type=\\\"text\\\" placeholder=\\\"Search\\\" style=\\\"width:200px; height:30px;\\\">\\n            <img class=\\\"github-icon\\\" src=\\\"github-icon.png\\\" alt=\\\"GitHub\\\">\\n        </div>\\n        <h1>Introduction</h1>\\n        <p><!-- Introduction content goes here --></p>\\n    </div>\\n</body>\\n</html>"""
+        result = execute_and_evaluate(full_code=code)
+        print("Result: ", result)
     else:
         mcp.run(transport="stdio")
 
