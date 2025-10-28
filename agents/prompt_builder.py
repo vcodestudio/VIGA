@@ -50,7 +50,7 @@ class PromptBuilder:
                     content.append({"type": "text", "text": f"Initial image {i+1} loaded from local path: {os.path.join(self.config.get('init_image_path'), file)}"})
             else:
                 content.append({"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("init_image_path"))}})
-            content.append({"type": "text", "text": f"Initial image loaded from local path: {self.config.get('init_image_path')}"})
+                content.append({"type": "text", "text": f"Initial image loaded from local path: {self.config.get('init_image_path')}"})
             
         if self.config.get("init_code_path"):
             with open(self.config.get("init_code_path"), 'r') as f:
