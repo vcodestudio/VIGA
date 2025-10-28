@@ -223,7 +223,7 @@ def main():
     parser.add_argument("--test-id", default=None, help="Test ID to check for failed cases and retest them")
     
     # Main.py parameters
-    parser.add_argument("--max-rounds", type=int, default=10, help="Maximum number of interaction rounds")
+    parser.add_argument("--max-rounds", type=int, default=20, help="Maximum number of interaction rounds")
     parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model to use")
     parser.add_argument("--api-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
     parser.add_argument("--api-key", default=OPENAI_API_KEY, help="OpenAI API key")
@@ -281,8 +281,6 @@ def main():
     # Save task list for reference
     with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
         json.dump(tasks, f, indent=2)
-        
-    tasks = tasks[:1]
 
     # Run tasks
     start_time = time.time()
