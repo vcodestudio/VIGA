@@ -19,7 +19,7 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "execute_and_evaluate_code",
+            "name": "execute_and_evaluate",
             "description": "Execute HTML/CSS code and trigger verifier evaluation. This tool combines code execution with automatic verification. Always use this tool when you want to execute your code changes.\nReturns either:\n  (1) On error: detailed error information; or \n  (2) On success: a screenshot of the rendered HTML page and further modification suggestions from a separate verifier agent.\nImportant: The execution environment cannot read files generated in previous runs. Therefore, each response must output the complete, standalone HTML/CSS code that generates the entire page from scratch. If you want to make small changes relative to the previous version, use code_edit parameter to structure your reasoning before producing the final script: First, pinpoint the exact lines to modify in the previous script. Then provide a unified-style mini diff using the following format (no extra commentary inside the block):\n-: [lines to remove]\n+: [lines to add]\n. After the diff, apply those changes and output the full, updated HTML/CSS code (not just the patch).",
             "parameters": {
                 "type": "object",
@@ -152,15 +152,12 @@ def initialize(args: dict) -> dict:
     global _executor
     try:
         _executor = HTMLExecutor(args.get("output_dir"), args.get("browser_command", "google-chrome"))
-        return {
-            "status": "success", 
-            "output": f"HTML executor initialized with output directory: {args.get('output_dir')}"
-        }
+        return {"status": "success", "output": {"text": ["HTML executor initialized successfully."], "tool_configs": tool_configs}}
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 @mcp.tool()
-def execute_and_evaluate_code(thought: str = '', code_edit: str = '', full_code: str = '') -> dict:
+def execute_and_evaluate(thought: str = '', code_edit: str = '', full_code: str = '') -> dict:
     """
     Execute HTML/CSS code and generate screenshot.
     
@@ -170,15 +167,12 @@ def execute_and_evaluate_code(thought: str = '', code_edit: str = '', full_code:
     """
     global _executor
     if _executor is None:
-        return {
-            "status": "error", 
-            "output": "HTML executor not initialized. Call initialize_executor first."
-        }
+        return {"status": "error", "output": {"text": ["HTML executor not initialized. Call initialize_executor first."]}}
     try:
         result = _executor.execute(full_code)
         return result
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": {"text": [str(e)]}}
 
     
 def test_execute_test_html(test_html_path: Optional[str] = None,
@@ -206,10 +200,7 @@ def test_execute_test_html(test_html_path: Optional[str] = None,
             output_dir = temp_root
 
         if not os.path.exists(test_html_path):
-            return {
-                "status": "error",
-                "output": f"Test HTML not found: {test_html_path}"
-            }
+            return {"status": "error", "output": {"text": [f"Test HTML not found: {test_html_path}"]}}
 
         # Read HTML
         with open(test_html_path, "r", encoding="utf-8") as f:

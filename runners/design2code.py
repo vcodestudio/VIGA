@@ -104,6 +104,7 @@ def run_design2code_task(task_config: Dict, args) -> tuple:
         "--generator-tools", args.generator_tools,
         "--verifier-tools", args.verifier_tools,
         "--browser-command", args.browser_command,
+        "--clear-memory"
     ]
 
     print(f"Command: {' '.join(cmd)}")
@@ -215,6 +216,8 @@ def main():
         sys.exit(1)
 
     print(f"Found {len(tasks)} cases")
+
+    tasks = tasks[:1]
 
     start_time = time.time()
 
