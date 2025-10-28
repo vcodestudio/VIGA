@@ -16,7 +16,7 @@ tool_configs = [
     {
         "type": "function",
         "function": {
-            "name": "evaluate_and_execute",
+            "name": "execute_and_evaluate",
             "description": "A mid- to high-level scene editing tool used to execute Blender Python code for layout, camera, lighting, primitive geometry creation, and placement of pre-downloaded assets.\nThis tool operates within the scene, without downloading any new assets. It can:\nAdd and modify basic primitives (e.g., cube, plane, sphere).\nPlace or transform assets that were already downloaded with get_better_asset.\nAdjust lighting, camera, materials, and object transforms.\n⚠️ This tool must not be used to fetch or create new assets from external sources.\n✅ Example use cases:\n“Place the downloaded laptop on the table.”\n“Create a floor plane and set up camera and lights.”\n“Fine-tune object rotation and scale.”",
             "parameters": {
                 "type": "object",
