@@ -72,14 +72,8 @@ class SlidesExecutor:
                 f.write(code)
 
             # Replace hardcoded .save("xx.pptx") with dynamic save path
-            code = re.sub(r'presentation\.save\("([^"]+\.pptx)"\)',
-                          f'presentation.save("{slide_path}")',
-                          code)
-            # replace all '{xxx}/media/image_{}.jpg' to 'self.task_dir/media/image_{}.jpg'
-            code = re.sub(r'media/image_(\d+)\.jpg',
-                          f'{self.task_dir}/media/image_\\1.jpg',
-                          code)
-            
+            code = re.sub(r'output\.pptx', f'{slide_path}', code)
+
             with open(runned_code_path, "w") as f:
                 f.write(code)
 

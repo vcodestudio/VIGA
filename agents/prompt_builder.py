@@ -40,6 +40,7 @@ class PromptBuilder:
             for file in os.listdir(os.path.join(self.config.get("resource_dir"), "media")):
                 content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("resource_dir"), "media", file))}})
                 content.append({"type": "text", "text": f"Resource image loaded from local path: {os.path.join(self.config.get('resource_dir'), 'media', file)}. You can import these images when generating the scene."})
+            content.append({"type": "text", "text": f"Please specify the output slide path as output.pptx in the code"})
         return [{"role": "system", "content": prompts.get('system', '')}, {"role": "user", "content": content}]
     
     def _build_user_prompt(self, prompts: Dict) -> List[Dict]:
