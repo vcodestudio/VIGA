@@ -17,15 +17,15 @@ tool_configs = [
         "type": "function",
         "function": {
             "name": "get_better_object",
-            "description": "enerate high-quality 3D assets, save them locally, and provide their paths for later use.\nYou may provide either text or image as the reference:\n– If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\".\n– Otherwise, use reference_type=\"text\".",
+            "description": "Download high-quality 3D assets, save them locally, and provide their paths for later use.\nYou may provide either text or image as the reference:\n– If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\".\n– Otherwise, use reference_type=\"text\".",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "object_name": {"type": "string", "description": "The name of the object to generate. For example, 'chair', 'table', 'lamp', etc."},
+                    "object_name": {"type": "string", "description": "The name of the object to download. For example, 'chair', 'table', 'lamp', etc."},
                     "reference_type": {"type": "string", "enum": ["text", "image"], "description": 'The type of reference to use. If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\".'},
-                    "object_description": {"type": "string", "description": "If you use reference_type=\"text\", you must provide a detailed description of the object to generate."},
-                    "rig_and_animate": {"type": "boolean", "description": "Whether to rig and animate the generated asset. True for dynamic scene, False for static scene"},
-                    "action_description": {"type": "string", "description": "If you use rig_and_animate=True, you must provide a description of the action to apply to the generated asset. Only input verbs here, e.g. walk, run, jump, etc."}
+                    "object_description": {"type": "string", "description": "If you use reference_type=\"text\", you must provide a detailed description of the object to download."},
+                    "rig_and_animate": {"type": "boolean", "description": "Whether to rig and animate the downloaded asset. True for dynamic scene, False for static scene"},
+                    "action_description": {"type": "string", "description": "If you use rig_and_animate=True, you must provide a description of the action to apply to the downloaded asset. Only input verbs here, e.g. walk, run, jump, etc."}
                 },
                 "required": ["object_name", "reference_type", "rig_and_animate"]
             }
