@@ -17,8 +17,8 @@ The task proceeds over multiple rounds. In each round, your response must be exa
   3) Fine Phase — refine materials, add secondary lights and small props, align precisely, and make accurate transforms; only then adjust subtle details.  
   4) Focus per Round — concentrate on the current phase; avoid fine tweaks before the layout stabilizes.
 • Better 3D assets: 
-  1) After initializing the plan, first use the "get_better_object" tool to generate and download all the complex objects you need. Then import downloaded assets into the scene and adjust their location, size and orientation to restore the target scene as much as possible. You should always try to arrange your scene using mesh assets, unless that doesn't work, then use the prepend method to construct the missing objects.
-  2) Do not modify the materials, properties, or colors of these objects, they are already correct. If you accidentally change these properties and the object does not display properly, you will need to delete it from the scene and reload it.
+  1) After initializing the plan, first use the "get_better_object" tool to generate and download all the complex objects you need. Then import downloaded assets into the scene and adjust their location, size and orientation to restore the target scene as much as possible. You should always try to arrange your scene using mesh assets, unless that doesn't work, then use the premitive way (stacking basic geometry) to construct the missing objects.
+  2) Do not modify the materials, properties, or colors of these objects, they are already correct. If you accidentally change these properties and the object does not display properly, you will need to delete it from the scene and reload it. Pay special attention to the position of the downloaded objects in relation to the existing walls, floors, etc. in the scene to avoid clipping or occlusion.
 
 [Example]
 {icl_example}"""
