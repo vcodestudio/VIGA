@@ -22,7 +22,7 @@ tool_configs = [
                 "type": "object",
                 "properties": {
                     "overall_description": {"type": "string", "description": "A thorough, comprehensive depiction of the entire scene.\nExample (Simple Room — Overall Description): “A compact, modern study room measuring 4.0 m (X) × 3.0 m (Y) × 2.8 m (Z), with the world origin at the center of the floor. Walls are matte white (slightly warm); the floor is light-gray concrete with subtle roughness; the ceiling is white. The +Y side is the ‘north wall,’ −Y is ‘south,’ +X is ‘east,’ −X is ‘west.’ A single rectangular window (1.2 m × 1.0 m) is centered on the west wall (X = −2.0 m plane), sill height 0.9 m from the floor, with a thin black metal frame and frosted glass that softly diffuses daylight. Primary furniture: a medium-tone oak desk against the north wall, a simple black task chair, a slim floor lamp to the desk’s right, and a low potted plant softening the corner. A framed A2 poster hangs above the desk, and a 1.6 m × 1.0 m flat-woven rug (light beige) sits beneath the desk area. Lighting combines soft daylight from the window with a warm key from the floor lamp; the ambience is calm, minimal, and functional.”"},
-                    "detailed_plan": {"type": "string", "description": "Consider a detailed plan for scene construction. This plan should follow this format:\n1. Resource Preparation: Download the necessary 3D assets, which are typically complex objects that cannot be constructed using basic geometry.\n2. Rough Stage: Establish the global layout and basic environment components, including the floor, walls or background, camera, and main light source.\n3. Intermediate Stage: Import the downloaded objects into the scene, adjusting their positions, scales, and orientations to align with the global layout. Construct any missing objects using basic geometry.\n4. Refinement Stage: Refine details, enhance materials, add auxiliary lights and props, and make precise local adjustments to enhance realism and accuracy."}
+                    "detailed_plan": {"type": "string", "description": "Consider a detailed plan for scene construction. This plan should follow this format:\n1. Preparation Stage: Use the appropriate tool to generate and download the necessary 3D assets, which are typically complex objects that cannot be constructed using basic geometry.\n2. Rough Stage: Establish the global layout and basic environment components, including the floor, walls or background, camera, and main light source.\n3. Intermediate Stage: Import the downloaded objects into the scene, adjusting their positions, scales, and orientations to align with the global layout. Construct any missing objects using basic geometry.\n4. Refinement Stage: Refine details, enhance materials, add auxiliary lights and props, and make precise local adjustments to enhance realism and accuracy."}
                 },
                 "required": ["overall_description", "detailed_plan"]
             }
@@ -32,17 +32,18 @@ tool_configs = [
         "type": "function",
         "function": {
             "name": "get_better_object",
-            "description": "Download high-quality 3D assets, save them locally, and provide their paths for later use.\nYou may provide either text or image as the reference:\n– If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\".\n– Otherwise, use reference_type=\"text\".",
+            "description": "Generate high-quality 3D assets, download them locally, and provide their paths for later use.",
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "thought": {"type": "string", "description": "Think about the object you want to download. Consider the overall description of the scene and the detailed plan for scene construction."},
                     "object_name": {"type": "string", "description": "The name of the object to download. For example, 'chair', 'table', 'lamp', etc."},
-                    "reference_type": {"type": "string", "enum": ["text", "image"], "description": 'The type of reference to use. If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\".'},
+                    "reference_type": {"type": "string", "enum": ["text", "image"], "description": 'The type of generation reference. If the target 3D asset in the reference image is clear and unobstructed, use reference_type=\"image\". Otherwise, use reference_type=\"text\".'},
                     "object_description": {"type": "string", "description": "If you use reference_type=\"text\", you must provide a detailed description of the object to download."},
                     "rig_and_animate": {"type": "boolean", "description": "Whether to rig and animate the downloaded asset. True for dynamic scene, False for static scene"},
                     "action_description": {"type": "string", "description": "If you use rig_and_animate=True, you must provide a description of the action to apply to the downloaded asset. Only input verbs here, e.g. walk, run, jump, etc."}
                 },
-                "required": ["object_name", "reference_type", "rig_and_animate"]
+                "required": ["thought", "object_name"]
             }
         }
     }
@@ -540,11 +541,11 @@ def initialize_plan(overall_description: str, detailed_plan: str) -> dict:
     """
     Store the detailed scene plan to a file and return the path.
     """
-    output_text = f"Overall Description: {overall_description}\nDetailed Plan: {detailed_plan}\nPlease follow the plan to build the scene."
+    output_text = f"{detailed_plan}\nPlease follow the plan from stage 1 to stage 4, step by step."
     return {"status": "success", "output": {"plan": [output_text], "text": ["Plan initialized successfully"]}}
 
 @mcp.tool()
-def get_better_object(object_name: str, reference_type: str, object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
+def get_better_object(thought: str, object_name: str, reference_type: str = 'text', object_description: str = None, rig_and_animate: bool = False, action_description: str = None) -> dict:
     try:
         global _meshy_api
         previous_asset = _meshy_api.check_previous_asset(object_name, is_animated=rig_and_animate, is_rigged=rig_and_animate)
@@ -615,7 +616,7 @@ def main():
             rig_and_animate=True,
             action_description="walk",
         )
-        print("get_better_object result:", result)
+        print("download_object result:", result)
     else:
         mcp.run()
         

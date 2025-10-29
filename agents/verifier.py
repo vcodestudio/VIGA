@@ -74,9 +74,6 @@ class VerifierAgent:
             response = self.client.chat.completions.create(**chat_args)
             message = response.choices[0].message
             
-            with open(f'{self.config.get("output_dir")}/verifier_memory.log', 'w') as f:
-                f.write(json.dumps(message.model_dump(), indent=4, ensure_ascii=False))
-            
             # Handle tool call
             print("Handle tool call...")
             if not message.tool_calls:
