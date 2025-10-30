@@ -32,7 +32,7 @@ tool_configs = [
         "type": "function",
         "function": {
             "name": "get_better_object",
-            "description": "Generate high-quality 3D assets, download them locally, and provide their paths for later use.",
+            "description": "Generate high-quality 3D assets, download them locally, and provide their paths for later use. The textures, materials, and finishes of these objects are already high-quality with fine-grained detail; please do not repaint them. If you do, you will need to re-import the object.",
             "parameters": {
                 "type": "object",
                 "properties": {
