@@ -8,16 +8,24 @@ import sys
 import json
 import time
 import argparse
-import subprocess
-import asyncio
-import signal
 from pathlib import Path
 from typing import List, Dict, Optional
-from utils._api_keys import OPENAI_API_KEY
+from utils._api_keys import OPENAI_API_KEY, OPENAI_BASE_URL, CLAUDE_API_KEY, CLAUDE_BASE_URL, GEMINI_API_KEY, GEMINI_BASE_URL
+from utils.common import get_image_base64, extract_code_pieces
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 import torch
+from openai import OpenAI
+import subprocess
 
+prompt = """You are the BlenderGymGenerator—a professional Blender code agent responsible for converting an initial 3D scene into a target scene and generating it based on a provided target image. You will receive: (1) initial Python code to set up the current scene; (2) an initial image displaying the current scene; and (3) a target image displaying the target scene. Your task is to modify the code to transform the initial scene into the target scene. Please output the complete modified code."""
+
+def build_client(model_name: str):
+    if "gpt" in model_name:
+        return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    elif "claude" in model_name:
+        return OpenAI(api_key=CLAUDE_API_KEY, base_url=CLAUDE_BASE_URL)
+    elif "gemini" in model_name:
+        return OpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_BASE_URL)
 
 def load_blendergym_dataset(base_path: str, task_name: str, test_id: Optional[str] = None) -> List[Dict]:
     """
@@ -104,58 +112,42 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     print(f"{'='*60}")
     
     # Prepare output directories
-    output_base = Path(args.output_dir + "/" + task_name)
-    
-    # Create directories
+    output_base = os.path.join(task_config['task_dir'], "baseline")
     output_base.mkdir(parents=True, exist_ok=True)
     
-    # Build main.py command
+    client = build_client(args.model)
+    response = client.chat.completions.create(
+        model=args.model,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Initial code: \n" + open(task_config['init_code_path']).read()},
+                {"type": "text", "text": "Initial image: "},
+                {"type": "image_url", "image_url": {"url": get_image_base64(task_config['init_image_path'])}},
+                {"type": "text", "text": "Target image: "},
+                {"type": "image_url", "image_url": {"url": get_image_base64(task_config['target_image_path'])}},
+            ]},
+        ],
+    )
+    
+    response_text = response.choices[0].message.content.strip()
+    code_pieces = extract_code_pieces(response_text)
+    output_name = args.model.replace('-', '_').replace('.', '_')
+    
+    with open(os.path.join(output_base, f"{output_name}.py"), "w") as f:
+        f.write(code_pieces)
+    print(f"Saving code to {os.path.join(output_base, f"{output_name}.py")}")
+        
     cmd = [
-        sys.executable, "main.py",
-        "--mode", "blendergym",
-        "--model", args.model,
-        "--api-key", args.api_key,
-        "--api-base-url", args.api_base_url if args.api_base_url else "https://api.openai.com/v1",
-        "--max-rounds", str(args.max_rounds),
-        "--memory-length", str(args.memory_length),
-        "--task-name", task_config["task_name"],
-        "--init-code-path", str(task_config["init_code_path"]),
-        "--init-image-path", str(task_config["init_image_path"]),
-        "--target-image-path", str(task_config["target_image_path"]),
-        "--output-dir", str(output_base),
-        # Tool servers
-        "--generator-tools", args.generator_tools,
-        "--verifier-tools", args.verifier_tools,
-        # Blender execution parameters (for generator)
-        "--blender-command", args.blender_command,
-        "--blender-file", str(task_config["blender_file"]),
-        "--blender-script", args.blender_script,
-        "--gpu-devices", args.gpu_devices,
-        "--clear-memory"
+        "utils/blender/infinigen/blender/blender",
+        "--background", task_config['blender_file'],
+        "--python", "data/blendergym/pipeline_render_script.py",
+        "--", os.path.join(output_base, f"{output_name}.py"), os.path.join(output_base, f"{output_name}")
     ]
+    subprocess.run(cmd, check=True)
+    print(f"Running blender command: {cmd}")
+    return task_name, True, ""
     
-    if args.save_blender_file:
-        cmd.append("--save-blender-file")
-    
-    print(f"Command: {' '.join(cmd)}")
-    
-    try:
-        # Run the command
-        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600, env=os.environ)  # 1 hour timeout
-        print(f"Task completed successfully: {task_name}")
-        return (task_name, True, "")
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Task failed: {task_name}, Error: {e}"
-        print(error_msg)
-        return (task_name, False, str(e))
-    except subprocess.TimeoutExpired:
-        error_msg = f"Task timed out: {task_name}"
-        print(error_msg)
-        return (task_name, False, "Timeout")
-    except Exception as e:
-        error_msg = f"Task failed with exception: {task_name}, Error: {e}"
-        print(error_msg)
-        return (task_name, False, str(e))
 
 def run_tasks_parallel(tasks: List[Dict], args, max_workers: int = 10) -> tuple:
     """
@@ -215,28 +207,10 @@ def main():
     
     # Dataset parameters
     parser.add_argument("--dataset-path", default="data/blendergym", help="Path to BlenderGym dataset root directory")
-    parser.add_argument("--output-dir", default=f"output/blendergym/{time.strftime('%Y%m%d_%H%M%S')}", help="Output directory for results")
     
     # Task selection
     parser.add_argument("--task", choices=['all', 'blendshape', 'geometry', 'lighting', 'material', 'placement'], default='all', help="Specific task to run")
-    parser.add_argument("--task-id", default=None, help="Specific task id to run (e.g., '1')")
-    parser.add_argument("--test-id", default=None, help="Test ID to check for failed cases and retest them")
-    
-    # Main.py parameters
-    parser.add_argument("--max-rounds", type=int, default=20, help="Maximum number of interaction rounds")
     parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model to use")
-    parser.add_argument("--api-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
-    parser.add_argument("--api-key", default=OPENAI_API_KEY, help="OpenAI API key")
-    parser.add_argument("--memory-length", type=int, default=12, help="Memory length")
-    
-    # Blender parameters
-    parser.add_argument("--blender-command", default="utils/blender/infinigen/blender/blender", help="Blender command path")
-    parser.add_argument("--blender-script", default="data/blendergym/pipeline_render_script.py", help="Blender execution script")
-    parser.add_argument("--save-blender-file", action="store_true", help="Save blender file")
-    
-    # Tool server scripts (comma-separated)
-    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/generator_base.py", help="Comma-separated list of generator tool server scripts")
-    parser.add_argument("--verifier-tools", default="tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
     
     # Parallel execution parameters
     parser.add_argument("--max-workers", type=int, default=10, help="Maximum number of parallel workers")
@@ -249,13 +223,9 @@ def main():
     
     args = parser.parse_args()
     
-    # Handle test-id logic
-    if args.test_id is not None:
-        args.output_dir = f"output/blendergym/{args.test_id}"
-    
     # Normal execution - load dataset
     print(f"Loading BlenderGym dataset from: {args.dataset_path}")
-    tasks = load_blendergym_dataset(args.dataset_path, args.task, args.test_id)
+    tasks = load_blendergym_dataset(args.dataset_path, args.task, None)
     
     if not tasks:
         print("No valid tasks found in dataset!")
@@ -272,16 +242,6 @@ def main():
         print("No tasks match the specified filters!")
         sys.exit(1)
     
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Save args to json
-    with open(os.path.join(args.output_dir, "args.json"), "w") as f:
-        json.dump(args.__dict__, f, indent=2)
-    
-    # Save task list for reference
-    with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
-        json.dump(tasks, f, indent=2)
-
     # Run tasks
     start_time = time.time()
     
@@ -321,7 +281,6 @@ def main():
     print(f"Successful: {successful_tasks}")
     print(f"Failed: {failed_tasks}")
     print(f"Execution time: {execution_time:.2f} seconds")
-    print(f"Output directory: {args.output_dir}")
     
     # Save detailed results
     results = {
@@ -333,15 +292,6 @@ def main():
         "execution_mode": "sequential" if args.sequential else f"parallel_{args.max_workers}_workers"
     }
     
-    with open(os.path.join(args.output_dir, "execution_results.json"), "w") as f:
-        json.dump(results, f, indent=2)
-    
-    if successful_tasks > 0:
-        print(f"\nResults saved to: {args.output_dir}")
-        print("Check individual task directories for renders and thought processes.")
-    
-    if failed_tasks > 0:
-        print(f"\nFailed tasks details saved to: {os.path.join(args.output_dir, 'execution_results.json')}")
 
 if __name__ == "__main__":
     main()
