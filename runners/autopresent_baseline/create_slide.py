@@ -2,12 +2,8 @@ import os
 import argparse
 import subprocess
 from utils import encode_image, extract_code_pieces
-
-import openai
-openai.api_key = os.environ["OPENAI_API_KEY"]
-if os.environ.get("OPENAI_BASE_URL") is not None:
-    openai.base_url = os.environ["OPENAI_BASE_URL"]
-client = openai.OpenAI()
+from openai import OpenAI
+from _api_keys import OPENAI_API_KEY, OPENAI_BASE_URL, CLAUDE_API_KEY, CLAUDE_BASE_URL, GEMINI_API_KEY, GEMINI_BASE_URL
 
 SYSTEM_MESSAGE = """* You are an expert presentation slides designer who creates modern, fashionable, and stylish slides using Python code. Your job is to generate the required PPTX slide by writing and executing a Python script. Make sure to follow the guidelines below and do not skip any of them:
 1.  Ensure your code can successfully execute. If needed, you can also write tests to verify your code.
@@ -27,6 +23,14 @@ IMAGE_INSTRUCTION_DICT = {
     "no_image": "If you need to add images, you will need to generate or search for images yourself.",
 }
 
+
+def build_client(model_name: str):
+    if "gpt" in model_name:
+        return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    elif "claude" in model_name:
+        return OpenAI(api_key=CLAUDE_API_KEY, base_url=CLAUDE_BASE_URL)
+    elif "gemini" in model_name:
+        return OpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_BASE_URL)
 
 def main():
     # system message
@@ -127,6 +131,8 @@ if __name__ == "__main__":
 
     args.output_dir = args.example_dir + "/baseline"
     os.makedirs(args.output_dir, exist_ok=True)
+    
+    client = build_client(args.model_name)
 
     if args.output_name is None:
         args.output_name = args.model_name.replace('-', '_')

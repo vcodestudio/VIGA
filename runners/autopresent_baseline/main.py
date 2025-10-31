@@ -32,7 +32,8 @@ def main():
         else:
             command.extend(["--library_path", "runners/autopresent_baseline/library/library.txt"])
     
-    command.extend(["--example_path", example_dict[args.setting][int(args.use_library)]])
+    # Remove example path for seed-prompt test
+    # command.extend(["--example_path", example_dict[args.setting][int(args.use_library)]])
 
     if args.slide_deck == 'all':
         slide_dirs = ['art_photos', 'business', 'design', 'entrepreneur', 'environment', 'food', 'marketing', 'social_media', 'technology']
