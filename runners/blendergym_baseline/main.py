@@ -5,19 +5,21 @@ Loads BlenderGym dataset and runs the dual-agent system for 3D scene generation.
 """
 import os
 import sys
-import json
 import time
 import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
-from utils._api_keys import OPENAI_API_KEY, OPENAI_BASE_URL, CLAUDE_API_KEY, CLAUDE_BASE_URL, GEMINI_API_KEY, GEMINI_BASE_URL
-from utils.common import get_image_base64, extract_code_pieces
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch
 from openai import OpenAI
 import subprocess
 
-prompt = """You are the BlenderGymGenerator—a professional Blender code agent responsible for converting an initial 3D scene into a target scene and generating it based on a provided target image. You will receive: (1) initial Python code to set up the current scene; (2) an initial image displaying the current scene; and (3) a target image displaying the target scene. Your task is to modify the code to transform the initial scene into the target scene. Please output the complete modified code."""
+# add runners directory to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils._api_keys import OPENAI_API_KEY, OPENAI_BASE_URL, CLAUDE_API_KEY, CLAUDE_BASE_URL, GEMINI_API_KEY, GEMINI_BASE_URL
+from utils.common import get_image_base64, extract_code_pieces
+
+prompt = """You are the BlenderGymGenerator—a professional Blender code agent responsible for converting an initial 3D scene into a target scene and generating it based on a provided target image. You will receive: (1) initial Python code to set up the current scene; (2) initial images displaying the current scene; and (3) target images displaying the target scene. Your task is to modify the code to transform the initial scene into the target scene. Please output the complete modified code."""
 
 def build_client(model_name: str):
     if "gpt" in model_name:
@@ -113,22 +115,19 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     
     # Prepare output directories
     output_base = os.path.join(task_config['task_dir'], "baseline")
-    output_base.mkdir(parents=True, exist_ok=True)
+    os.makedirs(output_base, exist_ok=True)
+    
+    messages=[{"role": "system", "content": prompt}, {"role": "user", "content": [{"type": "text", "text": "Initial code: \n" + open(task_config['init_code_path']).read()}]}]
+    
+    messages[1]["content"].append({"type": "text", "text": "Initial images: "})
+    for image_path in os.listdir(task_config['init_image_path']):
+        messages[1]["content"].append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(task_config['init_image_path'], image_path))}})
+    messages[1]["content"].append({"type": "text", "text": "Target images: "})
+    for image_path in os.listdir(task_config['target_image_path']):
+        messages[1]["content"].append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(task_config['target_image_path'], image_path))}})
     
     client = build_client(args.model)
-    response = client.chat.completions.create(
-        model=args.model,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": [
-                {"type": "text", "text": "Initial code: \n" + open(task_config['init_code_path']).read()},
-                {"type": "text", "text": "Initial image: "},
-                {"type": "image_url", "image_url": {"url": get_image_base64(task_config['init_image_path'])}},
-                {"type": "text", "text": "Target image: "},
-                {"type": "image_url", "image_url": {"url": get_image_base64(task_config['target_image_path'])}},
-            ]},
-        ],
-    )
+    response = client.chat.completions.create(model=args.model, messages=messages)
     
     response_text = response.choices[0].message.content.strip()
     code_pieces = extract_code_pieces(response_text)
@@ -136,7 +135,7 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     
     with open(os.path.join(output_base, f"{output_name}.py"), "w") as f:
         f.write(code_pieces)
-    print(f"Saving code to {os.path.join(output_base, f"{output_name}.py")}")
+    print(f"Saving code to {os.path.join(output_base, f'{output_name}.py')}")
         
     cmd = [
         "utils/blender/infinigen/blender/blender",
