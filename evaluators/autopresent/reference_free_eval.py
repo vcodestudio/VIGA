@@ -4,10 +4,10 @@ import pptx
 import base64
 import argparse
 from PIL import Image
+from openai import OpenAI
+from _api_keys import OPENAI_API_KEY
 
-import openai
-openai.api_key = os.environ["OPENAI_API_KEY"]
-client = openai.OpenAI()
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 INSTRUCTION = """Please evaluate the slide based on the following criteria:
 {}
