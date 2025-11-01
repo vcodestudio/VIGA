@@ -186,8 +186,7 @@ def compose_step_frame(total_size: Tuple[int,int], left_img: Image.Image, right_
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=str, required=True, help="steps.json")
-    ap.add_argument("--renders_dir", type=str, default="renders", help="默认的渲染目录（step_XXX.png）")
+    ap.add_argument("--steps", type=str, required=True, help="/home/shaofengyin/AgenticVerifier/output/static_scene/demo/20251028_133713/christmas1/generator_memory.json")
     ap.add_argument("--out", type=str, default="video.mp4")
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
@@ -195,22 +194,37 @@ def main():
     ap.add_argument("--step_duration", type=float, default=2.5, help="每步停留时长（秒）")
     ap.add_argument("--scroll_code", action="store_true", help="若代码过长则缓慢向下滚动")
     args = ap.parse_args()
+    
+    args.renders_dir = Path(args.steps).parent / "renders"
 
     steps = json.loads(Path(args.steps).read_text(encoding="utf-8"))
     frames = []
     frames_per_step = max(1, int(args.fps * args.step_duration))
 
-    for i, step in enumerate(steps, start=1):
+    for i, complete_step in enumerate(steps, start=1):
+        if 'tool_calls' not in complete_step:
+            continue
+        tool_call = complete_step['tool_calls'][0]
+        if tool_call['function']['name'] != "execute_and_evaluate":
+            continue
+        step = json.loads(tool_call['function']['arguments'])
         thought = step.get("thought", "").strip()
-        code = step.get("code", "").strip()
-
-        # 右半图片路径
-        fallback = Path(args.renders_dir) / f"step_{i:03d}.png"
-        image_path = step.get("image_path") or ""
-        cand = Path(image_path) if image_path else fallback
-        right_img = None
-        if cand.exists():
-            right_img = Image.open(cand).convert("RGB")
+        if "code" in step:
+            code = step.get("code", "").strip()
+        else:
+            code = step.get("full_code", "").strip()
+            
+        if i+2 >= len(steps):
+            continue
+        user_message = steps[i+2]
+        if user_message['role'] != 'user':
+            continue
+        if len(user_message['content']) < 3:
+            continue
+        if 'Image loaded from local path: ' not in user_message['content'][2]['text']:
+            continue
+        image_path = user_message['content'][2]['text'].split("Image loaded from local path: ")[1]
+        right_img = Image.open(image_path).convert("RGB")
 
         # 计算滚动范围（如果开启滚动）
         max_scroll = 0
