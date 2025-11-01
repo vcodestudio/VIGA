@@ -20,16 +20,8 @@ import torch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils._api_keys import OPENAI_API_KEY, MESHY_API_KEY, VA_API_KEY, OPENAI_BASE_URL
 
-def load_blendergym_dataset(base_path: str, task_name: str, test_id: Optional[str] = None) -> List[Dict]:
-    """
-    Load BlenderGym dataset structure.
-    
-    Args:
-        base_path: Path to BlenderGym dataset root
-        
-    Returns:
-        List of task configurations
-    """
+def load_blendergym_dataset(base_path: str, task_name: str, test_id: Optional[str] = None, task_id: Optional[int] = None) -> List[Dict]:
+
     tasks = []
     base_path = Path(base_path)
     
@@ -42,13 +34,14 @@ def load_blendergym_dataset(base_path: str, task_name: str, test_id: Optional[st
     else:
         task_list = [task_name]
         
-    current_task_path = Path(f'output/blendergym/{test_id}')
     current_task_dirs = []
-    for task in task_list:
-        for task_dir in current_task_path.glob(f"{task}*"):
-            current_task_dir = task_dir / "scores.json"
-            if os.path.exists(current_task_dir):
-                current_task_dirs.append(os.path.basename(task_dir))
+    if test_id is not None:
+        current_task_path = Path(f'output/blendergym/{test_id}')
+        for task in task_list:
+            for task_dir in current_task_path.glob(f"{task}*"):
+                current_task_dir = task_dir / "scores.json"
+                if os.path.exists(current_task_dir):
+                    current_task_dirs.append(os.path.basename(task_dir))
                 
     task_dirs = []
     for task in task_list:
@@ -83,7 +76,8 @@ def load_blendergym_dataset(base_path: str, task_name: str, test_id: Optional[st
             "target_image_path": str(goal_renders_dir),
             "blender_file": str(blender_file),
         }
-        tasks.append(task_config)
+        if task_id is None or task_dir.name == f"{task}{task_id}":
+            tasks.append(task_config)
         print(f"Found task: {task_name}/{task_dir.name}")
     
     return tasks
@@ -134,9 +128,6 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
         "--gpu-devices", args.gpu_devices,
         "--clear-memory"
     ]
-    
-    if args.save_blender_file:
-        cmd.append("--save-blender-file")
     
     print(f"Command: {' '.join(cmd)}")
     
@@ -256,7 +247,7 @@ def main():
     
     # Normal execution - load dataset
     print(f"Loading BlenderGym dataset from: {args.dataset_path}")
-    tasks = load_blendergym_dataset(args.dataset_path, args.task, args.test_id)
+    tasks = load_blendergym_dataset(args.dataset_path, args.task, args.test_id, args.task_id)
     
     if not tasks:
         print("No valid tasks found in dataset!")
