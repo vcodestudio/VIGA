@@ -18,3 +18,5 @@ web
 logs
 chroma
 TODO.md
+*.png
+*.pdf
