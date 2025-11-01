@@ -2,7 +2,7 @@ from playwright.sync_api import sync_playwright
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--url", default="http://0.0.0.0:8000/index.html?dataset=3")
+parser.add_argument("--url", default="http://0.0.0.0:8000/index.html?dataset=1")
 parser.add_argument("--out", default="image/out.png")
 parser.add_argument("--pdf", default="pdf/out.pdf")
 parser.add_argument("--width", type=int, default=1920)
