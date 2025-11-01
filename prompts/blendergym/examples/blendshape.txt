@@ -26,7 +26,7 @@
       },
       {
         "type": "text",
-        "text": "Starting Python code:\nimport bpy\n\nbpy.data.shape_keys[\"Key\"].key_blocks[\"BellySag\"].value = 5\nbpy.data.shape_keys[\"Key\"].key_blocks[\"BellyShrink\"].value = 2\nbpy.data.shape_keys[\"Key\"].key_blocks[\"ShoulderWideness\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"BackTaper\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"ChestEnlarge\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"ChestArea\"].value = 0 \nbpy.data.shape_keys[\"Key\"].key_blocks[\"MoreChin\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"Abs\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"eyelids\"].value = 0\nbpy.data.shape_keys[\"Key\"].key_blocks[\"nose\"].value = 0\n\nbpy.data.shape_keys['Key.002'].key_blocks['beardchin'].value = 0\nbpy.data.shape_keys['Key.002'].key_blocks['eyelash'].value = 0\nbpy.data.shape_keys['Key.002'].key_blocks['mustache'].value = 0\nbpy.data.shape_keys['Key.002'].key_blocks['bang'].value = 0\nbpy.data.shape_keys['Key.002'].key_blocks['hair'].value = 0\nbpy.data.shape_keys['Key.002'].key_blocks['beardchin'].value = 0"
+        "text": "Starting Python code:\nimport bpy\n\nbpy.data.shape_keys[\"Key\"].key_blocks[\"BellySag\"].value = 5\nbpy.data.shape_keys[\"Key\"].key_blocks[\"BellyShrink\"].value = 2\nbpy.data.shape_keys[\"Key\"].key_blocks[\"ShoulderWideness\"].value = 0\n"
       }
     ]
   },
