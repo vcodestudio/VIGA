@@ -55,9 +55,13 @@ class PromptBuilder:
             
         if self.config.get("init_image_path"):
             if os.path.isdir(self.config.get("init_image_path")):
-                for i, file in enumerate(os.listdir(self.config.get("init_image_path"))):
-                    content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("init_image_path"), file))}})
-                    content.append({"type": "text", "text": f"Initial image {i+1} loaded from local path: {os.path.join(self.config.get('init_image_path'), file)}"})
+                if 'render1.png' in os.listdir(self.config.get("init_image_path")):
+                    content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("init_image_path"), 'render1.png'))}})
+                    content.append({"type": "text", "text": f"Initial image loaded from local path: {os.path.join(self.config.get('init_image_path'), 'render1.png')}"})
+                else:
+                    for i, file in enumerate(os.listdir(self.config.get("init_image_path"))):
+                        content.append({"type": "image_url", "image_url": {"url": get_image_base64(os.path.join(self.config.get("init_image_path"), file))}})
+                        content.append({"type": "text", "text": f"Initial image {i+1} loaded from local path: {os.path.join(self.config.get('init_image_path'), file)}"})
             else:
                 content.append({"type": "image_url", "image_url": {"url": get_image_base64(self.config.get("init_image_path"))}})
                 content.append({"type": "text", "text": f"Initial image loaded from local path: {self.config.get('init_image_path')}"})
@@ -75,19 +79,9 @@ class PromptBuilder:
         return [{"role": "system", "content": prompts.get('system', '')}, {"role": "user", "content": content}]
     
     def _build_user_prompt(self, prompts: Dict) -> List[Dict]:
-        if prompts['argument'].get('code_diff', '') != '':
-            content = [
-                {"type": "text", "text": f"Initial plan: {prompts.get('init_plan', '')}"},
-                {"type": "text", "text": f"Thought: {prompts['argument'].get('thought', '')}"},
-                {"type": "text", "text": f"Code edit: {prompts['argument'].get('code_diff', '')}"},
-                {"type": "text", "text": f"Full code: {prompts['argument'].get('code', '')}"},
-            ]
-        else:
-            content = [
-                {"type": "text", "text": f"Initial plan: {prompts.get('init_plan', '')}"},
-                {"type": "text", "text": f"Thought: {prompts['argument'].get('thought', '')}"},
-                {"type": "text", "text": f"Full code: {prompts['argument'].get('code', '')}"},
-            ]
+        content = [{"type": "text", "text": f"Initial plan: {prompts.get('init_plan', '')}"}]
+        for key, value in prompts['argument'].items():
+            content.append({"type": "text", "text": f"{key}: {value}"})
         if 'image' in prompts['execution']:
             for text, image in zip(prompts['execution']['text'], prompts['execution']['image']):
                 content.append({"type": "image_url", "image_url": {"url": get_image_base64(image)}})
