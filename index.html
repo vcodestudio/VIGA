@@ -187,9 +187,6 @@
                 const src = p1.trim();
                 return '<img src="' + src + '" alt="image" />';
             });
-            html = html.replace(/(\S+\.(?:png|jpg|jpeg|gif|webp))/gi, (m) => {
-                return '<img src="' + m + '" alt="image" />';
-            });
             html = html.replace(/\n/g, '<br/>');
             return html;
         }
