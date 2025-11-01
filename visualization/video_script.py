@@ -216,8 +216,7 @@ def compose_step_frame(total_size: Tuple[int,int], left_img: Image.Image, right_
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--steps", type=str, default="/home/shaofengyin/AgenticVerifier/output/static_scene/demo/20251028_133713/christmas1/generator_memory.json")
-    ap.add_argument("--out", type=str, default="video.mp4")
+    ap.add_argument("--name", type=str, default="20251028_133713")
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--fps", type=int, default=1)
@@ -225,9 +224,20 @@ def main():
     ap.add_argument("--scroll_code", action="store_true", help="若代码过长则缓慢向下滚动")
     args = ap.parse_args()
     
-    args.renders_dir = Path(args.steps).parent / "renders"
+    if os.path.exists(f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'):
+        base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'
+    else:
+        base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/{args.name}'
+        
+    steps_path = ''
+    for task in os.listdir(base_path):
+        if os.path.exists(f'{base_path}/{task}/generator_memory.json'):
+            steps_path = f'{base_path}/{task}/generator_memory.json'
+    
+    args.renders_dir = Path(steps_path).parent / "renders"
+    args.out = f'visualization/video/{args.name}_{task}'
 
-    steps = json.loads(Path(args.steps).read_text(encoding="utf-8"))
+    steps = json.loads(Path(steps_path).read_text(encoding="utf-8"))
     frames = []
     frames_per_step = max(1, int(args.fps * args.step_duration))
     count = 0
