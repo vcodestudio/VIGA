@@ -257,7 +257,7 @@ def parse_args():
     ap.add_argument("--name", required=True, type=str, help="Output name (e.g., 20251028_133713)")
     ap.add_argument("--task", type=str, default="tofu17", help="Task name")
     ap.add_argument("--blender_command", type=str, default="utils/blender/infinigen/blender/blender", help="Blender command")
-    ap.add_argument("--blender_script", type=str, default="data/dynamic_scene/verifier_script.py", help="Blender execution script")
+    ap.add_argument("--blender_script", type=str, default="data/dynamic_scene/video_script.py", help="Blender execution script")
     ap.add_argument("--blender_save", type=str, default=None, help="Directory to save intermediate .blend files")
     ap.add_argument("--render_dir", type=str, default=None, help="Directory to save rendered videos")
     ap.add_argument("--cam_name", type=str, default="AgentFixedCam")
@@ -370,17 +370,17 @@ def main():
             logging.error(f"[Step {step_num}] Execution failed: {result['output'].get('text', ['Unknown error'])}")
             continue
         
-        # 渲染动画
-        render_output = render_dir / f"{step_num}.mp4"
-        success, output = render_blend_file(
-            args.blender_command, str(initial_blend_file), str(render_output),
-            render_script_content, args.gpu_devices
-        )
+        # # 渲染动画
+        # render_output = render_dir / f"{step_num}.mp4"
+        # success, output = render_blend_file(
+        #     args.blender_command, str(initial_blend_file), str(render_output),
+        #     render_script_content, args.gpu_devices
+        # )
         
-        if success:
-            logging.info(f"[Step {step_num}] Rendered: {render_output}")
-        else:
-            logging.error(f"[Step {step_num}] Render failed: {output}")
+        # if success:
+        #     logging.info(f"[Step {step_num}] Rendered: {render_output}")
+        # else:
+        #     logging.error(f"[Step {step_num}] Render failed: {output}")
     
     logging.info("[OK] All steps processed and rendered.")
 
