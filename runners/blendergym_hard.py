@@ -13,7 +13,7 @@ import asyncio
 import signal
 from pathlib import Path
 from typing import List, Dict, Optional
-from _api_keys import OPENAI_API_KEY, MESHY_API_KEY, VA_API_KEY, OPENAI_BASE_URL
+from utils._api_keys import OPENAI_API_KEY, MESHY_API_KEY, VA_API_KEY, OPENAI_BASE_URL
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
@@ -154,7 +154,7 @@ def run_blendergym_hard_task(task_config: Dict, args) -> tuple:
         cmd.extend(["--target-description", task_config["target_description"]])
 
     try:
-        result = subprocess.run(cmd, check=False)  # 1 hour timeout
+        result = subprocess.run(cmd)  # no timeout
         
         if result.returncode == 0:
             print(f"✅ BlenderGym Hard task {task_name} completed successfully")

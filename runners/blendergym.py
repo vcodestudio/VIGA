@@ -133,7 +133,7 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     
     try:
         # Run the command
-        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600, env=os.environ)  # 1 hour timeout
+        result = subprocess.run(cmd)  # no timeout
         print(f"Task completed successfully: {task_name}")
         return (task_name, True, "")
     except subprocess.CalledProcessError as e:

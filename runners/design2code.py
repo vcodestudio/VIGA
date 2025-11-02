@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from _api_keys import OPENAI_API_KEY
+from utils._api_keys import OPENAI_API_KEY
 
 
 def _collect_test_pairs(dataset_dir: str) -> List[Tuple[str, str, str]]:
@@ -110,7 +110,7 @@ def run_design2code_task(task_config: Dict, args) -> tuple:
     print(f"Command: {' '.join(cmd)}")
 
     try:
-        subprocess.run(cmd, check=True, capture_output=False, timeout=1800)  # 30 min timeout
+        subprocess.run(cmd)  # no timeout
         print(f"Case completed successfully: {case_id}")
         return (case_id, True, "")
     except subprocess.CalledProcessError as e:

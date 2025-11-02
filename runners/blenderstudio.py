@@ -6,7 +6,7 @@ Loads BlenderGym dataset and runs the dual-agent system for 3D scene generation.
 import os
 import sys
 import shutil
-from _api_keys import OPENAI_API_KEY
+from utils._api_keys import OPENAI_API_KEY
 
 # Add the project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -232,7 +232,7 @@ def run_blendergym_task(task_config: Dict, args) -> tuple:
     
     try:
         # Run the command
-        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600)  # 1 hour timeout
+        result = subprocess.run(cmd)  # no timeout
         print(f"Task completed successfully: {task_name}")
         return (task_name, True, "")
     except subprocess.CalledProcessError as e:

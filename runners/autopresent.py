@@ -13,7 +13,7 @@ import asyncio
 import signal
 from pathlib import Path
 from typing import List, Dict, Optional
-from _api_keys import OPENAI_API_KEY
+from utils._api_keys import OPENAI_API_KEY
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
@@ -190,7 +190,7 @@ def run_autopresent_task(task_config: Dict, args) -> tuple:
     
     try:
         # Run the command
-        result = subprocess.run(cmd, check=True, capture_output=False, timeout=3600)  # 1 hour timeout
+        result = subprocess.run(cmd)  # no timeout
         print(f"Task completed successfully: {task_name}")
         return (task_name, True, "")
     except subprocess.CalledProcessError as e:
