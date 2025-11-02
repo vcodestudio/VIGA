@@ -5,12 +5,12 @@
 make_video.py
 把每一步的 thought+code（左半屏）与 render 图（右半屏）拼成视频。
 用法示例：
-    python make_video.py --steps steps.json --renders_dir renders \
+    python make_video.py --traj traj.json --renders_dir renders \
         --out video.mp4 --width 1920 --height 1080 --fps 30 --step_duration 2.5
 
 注意：
 - 默认在 renders_dir 中按 step_001.png, step_002.png... 寻找右半屏图像；
-  若 steps.json 的该步含有 image_path 且文件存在，会优先使用该路径。
+  若 traj.json 的该步含有 image_path 且文件存在，会优先使用该路径。
 - 左半屏会自动换行、代码高亮；超长会出现可控滚动（以确保内容展示）。
 """
 
@@ -111,7 +111,7 @@ def render_left_panel(size: Tuple[int,int], thought: str, code: str, scroll_px: 
 
     font_path = find_mono_font()
     font_thought = ImageFont.truetype(font_path, size=48) if font_path else ImageFont.load_default()
-    font_code   = ImageFont.truetype(font_path, size=24) if font_path else ImageFont.load_default()
+    font_code   = ImageFont.truetype(font_path, size=20) if font_path else ImageFont.load_default()
     font_label  = ImageFont.truetype(font_path, size=22) if font_path else ImageFont.load_default()
 
     x = PADDING
@@ -222,6 +222,7 @@ def main():
     ap.add_argument("--fps", type=int, default=1)
     ap.add_argument("--step_duration", type=float, default=1.0, help="每步停留时长（秒）")
     ap.add_argument("--scroll_code", action="store_true", help="若代码过长则缓慢向下滚动")
+    ap.add_argument("--fix_camera", action="store_true", help="固定相机位置和方向")
     args = ap.parse_args()
     
     if os.path.exists(f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'):
@@ -229,20 +230,24 @@ def main():
     else:
         base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/{args.name}'
         
-    steps_path = ''
+    traj_path = ''
     for task in os.listdir(base_path):
         if os.path.exists(f'{base_path}/{task}/generator_memory.json'):
-            steps_path = f'{base_path}/{task}/generator_memory.json'
+            traj_path = f'{base_path}/{task}/generator_memory.json'
     
-    args.renders_dir = Path(steps_path).parent / "renders"
+    if ap.fix_camera:
+        image_path = os.path.dirname(traj_path) + '/video/renders'
+    
+    args.renders_dir = Path(traj_path).parent / "renders"
     args.out = f'visualization/video/{args.name}_{task}.mp4'
 
-    steps = json.loads(Path(steps_path).read_text(encoding="utf-8"))
+    traj = json.loads(Path(traj_path).read_text(encoding="utf-8"))
     frames = []
     frames_per_step = max(1, int(args.fps * args.step_duration))
     count = 0
+    code_count = 0
 
-    for i, complete_step in enumerate(steps, start=1):
+    for i, complete_step in enumerate(traj, start=1):
         if 'tool_calls' not in complete_step:
             continue
         tool_call = complete_step['tool_calls'][0]
@@ -254,22 +259,30 @@ def main():
             code = step.get("code", "").strip()
         else:
             code = step.get("full_code", "").strip()
-        if i+1 >= len(steps):
+        if i+1 >= len(traj):
             continue
         
-        user_message = steps[i+1]
-        if user_message['role'] != 'user':
-            continue
-        if len(user_message['content']) < 3:
-            continue
-        if 'Image loaded from local path: ' not in user_message['content'][2]['text']:
-            continue
-        image_path = user_message['content'][2]['text'].split("Image loaded from local path: ")[1]
-        image_name = image_path.split("/renders/")[-1]
-        right_img_path = os.path.join(args.renders_dir, image_name)
-        if not os.path.exists(right_img_path):
-            continue
-        right_img = Image.open(right_img_path).convert("RGB")
+        code_count += 1
+        
+        if ap.fix_camera:
+            right_img_path = os.path.join(image_path, f'{code_count}.png')
+            if not os.path.exists(right_img_path):
+                continue
+            right_img = Image.open(right_img_path).convert("RGB")
+        else:
+            user_message = traj[i+1]
+            if user_message['role'] != 'user':
+                continue
+            if len(user_message['content']) < 3:
+                continue
+            if 'Image loaded from local path: ' not in user_message['content'][2]['text']:
+                continue
+            image_path = user_message['content'][2]['text'].split("Image loaded from local path: ")[1]
+            image_name = image_path.split("/renders/")[-1]
+            right_img_path = os.path.join(args.renders_dir, image_name)
+            if not os.path.exists(right_img_path):
+                continue
+            right_img = Image.open(right_img_path).convert("RGB")
         
         print(f"Processing step {count+1}...")
         count += 1

@@ -10,6 +10,7 @@ from typing import Optional, Dict, Tuple
 import base64
 from PIL import Image
 import io
+import math
 
 # 导入 Executor 类（从 tools/exec_blender.py）
 class Executor:
@@ -104,8 +105,54 @@ class Executor:
 
 logging.basicConfig(level=logging.INFO)
 
+def calculate_camera_rotation_from_look_at(cam_loc: tuple, look_at: tuple) -> tuple:
+    """
+    从相机位置和目标点计算旋转欧拉角（度）
+    返回 (rx, ry, rz) 以度为单位的欧拉角
+    """
+    import numpy as np
+    
+    cam_pos = np.array(cam_loc)
+    target_pos = np.array(look_at)
+    
+    # 计算方向向量（从相机指向目标）
+    direction = target_pos - cam_pos
+    distance = np.linalg.norm(direction)
+    
+    if distance < 1e-6:
+        # 如果相机和目标重合，返回默认旋转
+        return (0.0, 0.0, 0.0)
+    
+    direction = direction / distance  # 归一化
+    
+    # 计算旋转角度
+    # Blender 相机默认 -Z 轴为前向，Y 轴为上
+    # 我们需要旋转使得 -Z 指向目标点
+    
+    # 计算 pitch (绕 X 轴旋转，上下)
+    pitch = math.degrees(math.asin(-direction[2]))
+    
+    # 计算 yaw (绕 Z 轴旋转，左右)
+    yaw = math.degrees(math.atan2(direction[1], direction[0]))
+    
+    # 在 Blender 的 Euler XYZ 模式下，顺序是 (X, Y, Z)
+    # 我们需要调整以适应 Blender 的坐标系
+    # X 旋转对应 pitch
+    # Z 旋转对应 yaw  
+    # Y 旋转设为 0（不绕 Y 轴旋转）
+    
+    # 在 Blender 中，相机看向 -Z 方向，所以需要调整
+    # 使用 to_track_quat 的等效计算
+    
+    # 简化计算：使用 atan2 和 asin
+    rx = pitch  # 上下角度
+    ry = 0.0    # 不绕 Y 轴旋转
+    rz = yaw    # 左右角度
+    
+    return (rx, ry, rz)
+
 def create_render_script(render_dir: Path, cam_name: str, cam_loc: tuple, 
-                        cam_rot_deg: tuple, lens: float, engine: str, 
+                        cam_rot_eul: tuple, lens: float, engine: str, 
                         res: tuple, file_format: str, samples: int, 
                         device: str, color_mgt_view: str, color_mgt_look: str):
     """创建在 Blender 中运行的渲染脚本"""
@@ -122,7 +169,7 @@ if not render_output:
 # 设置固定相机
 cam_name = "{cam_name}"
 cam_loc = {cam_loc}
-cam_rot_deg = {cam_rot_deg}
+cam_rot_eul = {cam_rot_eul}
 lens = {lens}
 
 cam_obj = bpy.data.objects.get(cam_name)
@@ -133,7 +180,7 @@ if cam_obj is None or cam_obj.type != 'CAMERA':
 
 cam_obj.location = cam_loc
 cam_obj.rotation_mode = 'XYZ'
-cam_obj.rotation_euler = cam_rot_deg
+cam_obj.rotation_euler = cam_rot_eul
 cam_obj.data.lens = lens
 bpy.context.scene.camera = cam_obj
 
@@ -240,7 +287,8 @@ def parse_args():
     ap.add_argument("--render_dir", type=str, default=None, help="Directory to save rendered images")
     ap.add_argument("--cam_name", type=str, default="AgentFixedCam")
     ap.add_argument("--cam_loc", type=str, default="0,-6,4", help="x,y,z")
-    ap.add_argument("--cam_rot_deg", type=str, default="65,0,0", help="x,y,z (degrees, Euler XYZ)")
+    ap.add_argument("--cam_rot_eul", type=str, default=None, help="x,y,z (degrees, Euler XYZ). If not provided, use --look_at instead")
+    ap.add_argument("--look_at", type=str, default=None, help="x,y,z - target point to look at. Alternative to --cam_rot_eul")
     ap.add_argument("--lens", type=float, default=35.0)
     ap.add_argument("--engine", type=str, default="BLENDER_EEVEE", choices=["BLENDER_EEVEE", "CYCLES"])
     ap.add_argument("--res", type=str, default="1920x1080")
@@ -294,12 +342,26 @@ def main():
     
     # 解析相机参数
     cam_loc = tuple(float(x) for x in args.cam_loc.split(","))
-    cam_rot_deg = tuple(float(x) for x in args.cam_rot_deg.split(","))
+    
+    # 处理 look_at 或 cam_rot_eul
+    if args.look_at:
+        look_at_tuple = tuple(float(x) for x in args.look_at.split(","))
+        logging.info(f"Using look_at: {look_at_tuple}, calculating rotation from camera position and target")
+        # 从 look_at 计算旋转欧拉角
+        cam_rot_eul_tuple = calculate_camera_rotation_from_look_at(cam_loc, look_at_tuple)
+        logging.info(f"Calculated cam_rot_eul: {cam_rot_eul_tuple}")
+    elif args.cam_rot_eul:
+        cam_rot_eul_tuple = tuple(float(x) for x in args.cam_rot_eul.split(","))
+        logging.info(f"Using cam_rot_eul: {cam_rot_eul_tuple}")
+    else:
+        logging.warning("Neither --look_at nor --cam_rot_eul provided, using default rotation (65,0,0)")
+        cam_rot_eul_tuple = (65.0, 0.0, 0.0)
+    
     W, H = (int(s) for s in args.res.lower().split("x"))
     
-    # 创建渲染脚本内容
+    # 创建渲染脚本内容（使用计算出的或提供的旋转角）
     render_script_content = create_render_script(
-        render_dir, args.cam_name, cam_loc, cam_rot_deg, args.lens,
+        render_dir, args.cam_name, cam_loc, cam_rot_eul_tuple, args.lens,
         args.engine, (W, H), args.file_format, args.samples, args.device,
         args.color_mgt_view, args.color_mgt_look
     )
