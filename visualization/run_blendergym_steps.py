@@ -54,7 +54,6 @@ class Executor:
         env['AL_LIB_LOGLEVEL'] = '0'
         
         try:
-            env['RENDER_DIR'] = render_path
             proc = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True, env=env)
             out = proc.stdout
             err = proc.stderr
@@ -114,8 +113,24 @@ def create_render_script(render_dir: Path, cam_name: str, cam_loc: tuple,
 import sys
 from math import radians
 
+# 加载 .blend 文件路径从命令行参数获取
+blend_file = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else None
+if not blend_file:
+    print("Error: No blend file specified")
+    sys.exit(1)
+
 # 渲染输出路径
-render_path = os.environ.get("RENDER_DIR", "/tmp")
+render_output = sys.argv[sys.argv.index("--") + 2] if len(sys.argv) > sys.argv.index("--") + 2 else None
+if not render_output:
+    print("Error: No render output path specified")
+    sys.exit(1)
+
+# 加载 .blend 文件
+try:
+    bpy.ops.wm.open_mainfile(filepath=blend_file)
+except Exception as e:
+    print(f"Error loading blend file: {{e}}")
+    sys.exit(1)
 
 # 设置固定相机
 cam_name = "{cam_name}"
@@ -160,7 +175,7 @@ else:
     scene.eevee.taa_render_samples = max(1, {samples})
 
 # 渲染
-bpy.context.scene.render.filepath = render_path
+bpy.context.scene.render.filepath = render_output
 bpy.ops.render.render(write_still=True)
 print("Render completed to", bpy.context.scene.render.filepath)
 '''
@@ -355,6 +370,8 @@ def main():
             logging.info(f"[Step {step_num}] Rendered: {render_output}")
         else:
             logging.error(f"[Step {step_num}] Render failed: {output}")
+            
+        break
     
     logging.info("[OK] All steps processed and rendered.")
 
