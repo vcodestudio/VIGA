@@ -14,6 +14,7 @@ make_video.py
 - 左半屏会自动换行、代码高亮；超长会出现可控滚动（以确保内容展示）。
 """
 
+from calendar import c
 import os
 import json
 import math
@@ -275,7 +276,10 @@ def main():
         
         if args.animation:
             # 从 video_path 加载 MP4 文件
-            video_file_path = os.path.join(video_path, f'{code_count}.mp4')
+            if not os.path.exists(os.path.join(video_path, f'{code_count}')):
+                continue
+            
+            video_file_path = os.path.join(video_path, f'{code_count}/Camera_Main.mp4')
             if not os.path.exists(video_file_path):
                 print(f"Skipping step {code_count}: video file not found: {video_file_path}")
                 continue
