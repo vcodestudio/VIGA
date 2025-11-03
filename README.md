@@ -12,14 +12,16 @@ The official envs names are `[agent, blender, pptx, chrome]` for agent, exec_ble
 
 For blender, you need to further install executable `blender` and `infinigen` in the system:
 
+```zsh
+cd utils
+git clone https://github.com/princeton-vl/infinigen.git
+bash scripts/install/interactive_blender.sh
+```
+
 For slide, you need to further install `unoconv` in the system:
 
 ```zsh
 sudo apt install -y libreoffice unoconv
-```
-
-To verify the installation, run
-
-```zsh
+# To verify the installation, run
 /usr/bin/python3 /usr/bin/unoconv --version
 ```
