@@ -226,20 +226,26 @@ def main():
     ap.add_argument("--animation", action="store_true", help="从video_path加载MP4文件并拼接（与fix_camera相同逻辑）")
     args = ap.parse_args()
     
-    if os.path.exists(f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'):
-        base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'
+    if args.animation:
+        if os.path.exists(f'/home/shaofengyin/AgenticVerifier/output/dynamic_scene/demo/{args.name}'):
+            base_path = f'/home/shaofengyin/AgenticVerifier/output/dynamic_scene/demo/{args.name}'
+        else:
+            base_path = f'/home/shaofengyin/AgenticVerifier/output/dynamic_scene/{args.name}'
     else:
-        base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/{args.name}'
+        if os.path.exists(f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'):
+            base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/demo/{args.name}'
+        else:
+            base_path = f'/home/shaofengyin/AgenticVerifier/output/static_scene/{args.name}'
         
     traj_path = ''
     for task in os.listdir(base_path):
         if os.path.exists(f'{base_path}/{task}/generator_memory.json'):
             traj_path = f'{base_path}/{task}/generator_memory.json'
     
-    if args.fix_camera or args.animation:
+    if args.fix_camera:
         image_path = os.path.dirname(traj_path) + '/video/renders'
-        if args.animation:
-            video_path = image_path  # 使用相同的路径
+    if args.animation:
+        video_path = os.path.dirname(traj_path) + '/video/renders'
     
     args.renders_dir = Path(traj_path).parent / "renders"
     args.out = f'visualization/video/{args.name}_{task}.mp4'
