@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils._api_keys import OPENAI_API_KEY, MESHY_API_KEY, VA_API_KEY, OPENAI_BASE_URL
@@ -236,7 +235,7 @@ def main():
     
     available_gpu_devices = os.getenv("CUDA_VISIBLE_DEVICES")
     if available_gpu_devices is None:
-        available_gpu_devices = ",".join(str(i) for i in range(torch.cuda.device_count()))
+        available_gpu_devices = "0,1,2,3,4,5,6,7"
     parser.add_argument("--gpu-devices", default=available_gpu_devices, help="GPU devices for Blender")
     
     args = parser.parse_args()
