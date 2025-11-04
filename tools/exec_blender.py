@@ -103,7 +103,7 @@ class Executor:
             err = proc.stderr
             if os.path.isdir(render_path):
                 imgs = sorted([str(p) for p in Path(render_path).glob("*") if p.suffix in ['.png','.jpg']])
-                return True, imgs, out
+                return True, imgs, err
             return True, out, err
         except subprocess.CalledProcessError as e:
             logging.error(f"Blender failed: {e}")
@@ -196,7 +196,7 @@ print("Scene info extracted successfully")
             return {"status": "error", "output": {"text": ['Error: ' + (stderr or stdout)]}}
         elif len(os.listdir(render_file)) == 0:
             os.rmdir(render_file)
-            return {"status": "success", "output": {"text": ['The code executed successfully, but no image was generated. Please check and make sure that:\n(1) you have added the camera in the code (just modify the camera pose and other information, do not render the image in the code).\n(2) You may need to handle errors in the code. The following is the return message for reference. Please check if there are any errors and fix them: ' + (stderr or stdout)]}}
+            return {"status": "success", "output": {"text": ['The code was executed, but no image was generated. Please check and make sure that:\n(1) you have added the camera in the code (just modify the camera pose and other information, do not render the image in the code).\n(2) You may need to handle errors in the code. The following is the return message for reference. Please check if there are any errors and fix them: ' + (stderr or stdout)]}}
         else:
             return {"status": "success", "output": {"image": stdout, "text": [f"Render from camera {x}" for x in range(len(stdout))], 'require_verifier': True}}
 
@@ -306,8 +306,8 @@ def main():
         # Read args from environment for convenience
         args = {
             "blender_command": os.getenv("BLENDER_COMMAND", "utils/Infinigen/blender/blender"),
-            "blender_file": os.getenv("BLENDER_FILE", "data/blendergym/blendshape1/blender_file.blend"),
-            "blender_script": os.getenv("BLENDER_SCRIPT", "data/blendergym/generator_script.py"),
+            "blender_file": os.getenv("BLENDER_FILE", "output/static_scene/20251104_162949/restroom5/blender_file.blend"),
+            "blender_script": os.getenv("BLENDER_SCRIPT", "data/static_scene/generator_script.py"),
             "output_dir": os.getenv("OUTPUT_DIR", "output/test/exec_blender"),
             "blender_save": os.getenv("BLENDER_SAVE", None),
             "gpu_devices": os.getenv("GPU_DEVICES", None),
@@ -320,7 +320,8 @@ def main():
         # Test get_scene_info
         scene_info_res = get_scene_info()
         print("[test:get_scene_info]", json.dumps(scene_info_res, ensure_ascii=False))
-        code = """"""
+        code_fpath = 'output/static_scene/20251104_162949/restroom5/scripts/1.py'
+        code = open(code_fpath, "r").read()
         exec_res = execute_and_evaluate(thought="", code=code)
         print("[test:exec_script]", json.dumps(exec_res, ensure_ascii=False))
         raise NotImplementedError
