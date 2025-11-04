@@ -143,12 +143,14 @@ def run_static_scene_task(task_config: Dict, args) -> tuple:
         "--assets-dir", task_config["assets_dir"],
         "--init-code-path", task_config["init_code_path"],
         "--init-image-path", task_config["init_image_path"],
-        "--clear-memory"
     ]
     
+    if args.explicit_comp:
+        cmd.extend(["--explicit-comp"])
+    if args.clear_memory:
+        cmd.extend(["--clear-memory"])
     if args.gpu_devices:
         cmd.extend(["--gpu-devices", args.gpu_devices])
-    
     if task_config["target_description"]:
         cmd.extend(["--target-description", task_config["target_description"]])
 
@@ -231,12 +233,16 @@ def main():
     parser.add_argument("--blender-save", default=f"data/static_scene/empty_scene.blend", help="Save blender file")
     
     # Tool server scripts (comma-separated)
-    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/generator_base.py,tools/initialize_plan.py", help="Comma-separated list of generator tool server scripts")
+    parser.add_argument("--generator-tools", default="tools/exec_blender.py,tools/generator_base.py,tools/initialize_plan.py,tools/undo.py", help="Comma-separated list of generator tool server scripts")
     parser.add_argument("--verifier-tools", default="tools/investigator.py,tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
     
     # Execution parameters
     parser.add_argument("--max-workers", type=int, default=1, help="Maximum number of parallel workers")
     parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
+    
+    # Additional parameters
+    parser.add_argument("--explicit-comp", action="store_true", help="Enable explicit completion")
+    parser.add_argument("--clear-memory", action="store_true", help="Clear memory")
     
     args = parser.parse_args()
     

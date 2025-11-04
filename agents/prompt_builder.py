@@ -91,3 +91,50 @@ class PromptBuilder:
             for text in prompts['execution']['text']:
                 content.append({"type": "text", "text": text})
         return [{"role": "user", "content": content}]
+    
+    def build_memory(self, memory: List[Dict]) -> List[Dict]:
+        system_memory = memory[:2]
+        reverse_memory = memory[2:][::-1]
+        chat_memory = []
+        for i in range(len(reverse_memory)):
+            if reverse_memory[i]['role'] == 'tool' and reverse_memory[i]['name'] == 'undo-last-step':
+                # If role == user, skip 2+3=5 steps
+                if reverse_memory[i+2]['role'] == 'user':
+                    i = i + 5
+                else:
+                    i = i + 4
+            chat_memory.append(reverse_memory[i])
+            if len(chat_memory) >= self.config.get("memory_length"):
+                break
+        all_memory = system_memory + chat_memory[::-1]
+        if self.config.get('explicit_comp'):
+            target_image_message = []
+            for i in range(len(memory[1]['content'])):
+                if memory[1]['content'][i]['type'] == 'text' and 'Target image' in memory[1]['content'][i]['text']:
+                    target_image_message.append(memory[1]['content'][i-1])
+                    target_image_message.append(memory[1]['content'][i])
+                    break
+            initial_image_message = []
+            for i in range(len(memory[1]['content'])):
+                if memory[1]['content'][i]['type'] == 'text' and 'Initial image' in memory[1]['content'][i]['text']:
+                    initial_image_message.append(memory[1]['content'][i-1])
+                    initial_image_message.append(memory[1]['content'][i])
+                    break
+            last_image_message = []
+            last_id = len(memory)-1
+            for i in range(len(memory)-1, 0,-1):
+                if memory[i]['role'] == 'user' and memory[i]['content'][1]['type'] == 'image_url':
+                    last_image_message.append(memory[i]['content'][1])
+                    last_image_message.append(memory[i]['content'][2])
+                    last_id = i
+                    break
+            last_last_image_message = []
+            for i in range(last_id-1, 0,-1):
+                if memory[i]['role'] == 'user' and memory[i]['content'][1]['type'] == 'image_url':
+                    last_last_image_message.append(memory[i]['content'][1])
+                    last_last_image_message.append(memory[i]['content'][2])
+                    break
+            all_memory.append({"role": "user", "content": [
+                {"type": "text", "text": "Here are four images: initial state, target state, previous operation, and the operation before that. Please compare these images and determine whether your current operation is effectively approaching the target scenario."},
+            ]})
+        return all_memory

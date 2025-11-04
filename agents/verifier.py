@@ -52,17 +52,11 @@ class VerifierAgent:
         result = None
         
         for i in range(self.config.get("max_rounds")):
-            # Prepare chat args
             print(f"=== Round {i} ===\n")
-            if len(self.memory) > self.config.get("memory_length")+1:
-                if self.memory[-self.config.get("memory_length")+1]['role'] == 'tool':
-                    memory = self.memory[:2] + self.memory[-self.config.get("memory_length"):]
-                else:
-                    memory = self.memory[:2] + self.memory[-self.config.get("memory_length")+1:]
-            else:
-                memory = self.memory
             
+            # Prepare chat args
             print("Prepare chat args...")
+            memory = self.prompt_builder.build_memory(self.memory)
             tool_configs = self.tool_client.tool_configs
             tool_configs = [x for v in tool_configs.values() for x in v]
             chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, "tool_choice": "auto", **self.init_chat_args}

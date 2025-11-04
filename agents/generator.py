@@ -45,17 +45,10 @@ class GeneratorAgent:
         print("\n=== Running generator agent ===\n")
         for i in range(self.config.get("max_rounds")):
             print(f"=== Round {i} ===\n")
-            # Prepare chat args
-            if len(self.memory) > self.config.get("memory_length")+1:
-                # Check whether it is at the tool position when truncating memory
-                if self.memory[-self.config.get("memory_length")+1]['role'] == 'tool':
-                    memory = self.memory[:2] + self.memory[-self.config.get("memory_length"):]
-                else:
-                    memory = self.memory[:2] + self.memory[-self.config.get("memory_length")+1:]
-            else:
-                memory = self.memory
             
+            # Prepare chat args
             print("Prepare chat args...")
+            memory = self.prompt_builder.build_memory(self.memory)
             tool_configs = self.tool_client.tool_configs
             tool_configs = [x for v in tool_configs.values() for x in v]
             chat_args = {"model": self.config.get("model"), "messages": memory, "tools": tool_configs, "tool_choice": "auto", **self.init_chat_args}

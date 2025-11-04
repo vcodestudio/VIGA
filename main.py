@@ -30,6 +30,7 @@ async def main():
     parser.add_argument("--resource-dir", default=None, help="Task directory path for autopresent mode")
     parser.add_argument("--gpu-devices", default=os.getenv("CUDA_VISIBLE_DEVICES"), help="GPU devices for Blender")
     parser.add_argument("--clear-memory", action="store_true", help="Clear memory")
+    parser.add_argument("--explicit-comp", action="store_true", help="Enable explicit completion")
     
     # Execution parameters
     parser.add_argument("--blender-command", default="utils/blender/infinigen/blender/blender", help="Blender command path")
