@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.common import get_model_info
@@ -204,8 +205,8 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Save args
-    with open(os.path.join(args.output_dir, "args.json"), "w") as f:
-        json.dump(args.__dict__, f, indent=2)
+    with open(args.output_dir + "/args.json", "w") as f:
+        json.dump(args.__dict__, f, indent=4, ensure_ascii=False)
 
     # Load tasks
     print(f"Loading Design2Code dataset from: {args.dataset_path}")

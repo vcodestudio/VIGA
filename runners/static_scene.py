@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.common import get_model_info, get_meshy_info
@@ -260,6 +261,9 @@ def main():
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
+    
+    with open(args.output_dir + "/args.json", "w") as f:
+        json.dump(args.__dict__, f, indent=4, ensure_ascii=False)
     
     # Run tasks
     start_time = time.time()

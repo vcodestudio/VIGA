@@ -382,7 +382,7 @@ def main():
     
     # Save args to json
     with open(os.path.join(args.output_dir, "args.json"), "w") as f:
-        json.dump(args.__dict__, f, indent=2)
+        json.dump(args.__dict__, f, indent=4, ensure_ascii=False)
     
     # Save task list for reference
     with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
