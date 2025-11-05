@@ -11,45 +11,45 @@ from typing import Tuple, Dict
 from mcp.server.fastmcp import FastMCP
 import json
 
-tool_configs = [
-    {
-        "type": "function",
-        "function": {
-            "name": "execute_and_evaluate",
-            "description": "Execute blender python code and trigger verifier evaluation.\nReturns either:\n(1) On error: detailed error information; or \n(2) On success: a clear render (you must add a camera in your code) and further modification suggestions from a separate verifier agent.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "thought": {
-                        "type": "string",
-                        "description": "Think step by step about the current scene and reason about what code to write next. Describe your reasoning process clearly."
-                    },
-                    "code_diff": {
-                        "type": "string",
-                        "description": "Before outputting the final code, precisely list the line-level edits you will make. Use this minimal diff-like format ONLY:\n\n-: [lines to remove]\n+: [lines to add]\n\nRules:\n1) Show only the smallest necessary edits (avoid unrelated changes).\n2) Keep ordering: list removals first, then additions.\n3) Do not include commentary here—only the edit blocks.\n4) If starting from scratch, use `-: []` and put all new lines under `+: [...]`.\n5) Every line is a literal code line (no markdown, no fences)."
-                    },
-                    "code": {
-                        "type": "string",
-                        "description": "Provide the COMPLETE, UPDATED Blender Python code AFTER applying the edits listed in `code_diff`. The full code must include both the modified lines and the unchanged lines to ensure a coherent, runnable script."
-                    }
+execute_and_evaluate_tool = {
+    "type": "function",
+    "function": {
+        "name": "execute_and_evaluate",
+        "description": "Execute blender python code and trigger verifier evaluation.\nReturns either:\n(1) On error: detailed error information; or \n(2) On success: a clear render (you must add a camera in your code) and further modification suggestions from a separate verifier agent.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "thought": {
+                    "type": "string",
+                    "description": "Think step by step about the current scene and reason about what code to write next. Describe your reasoning process clearly."
                 },
-                "required": ["thought", "code_diff", "code"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_scene_info",
-            "description": "Get the scene information including objects, materials, lights, and cameras. This tool provides detailed information about the current state of the Blender scene, which can be used to understand what objects exist and their properties.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+                "code_diff": {
+                    "type": "string",
+                    "description": "Before outputting the final code, precisely list the line-level edits you will make. Use this minimal diff-like format ONLY:\n\n-: [lines to remove]\n+: [lines to add]\n\nRules:\n1) Show only the smallest necessary edits (avoid unrelated changes).\n2) Keep ordering: list removals first, then additions.\n3) Do not include commentary here—only the edit blocks.\n4) If starting from scratch, use `-: []` and put all new lines under `+: [...]`.\n5) Every line is a literal code line (no markdown, no fences)."
+                },
+                "code": {
+                    "type": "string",
+                    "description": "Provide the COMPLETE, UPDATED Blender Python code AFTER applying the edits listed in `code_diff`. The full code must include both the modified lines and the unchanged lines to ensure a coherent, runnable script."
+                }
+            },
+            "required": ["thought", "code_diff", "code"]
         }
     }
-]
+}
+
+get_scene_info_tool = {
+    "type": "function",
+    "function": {
+        "name": "get_scene_info",
+        "description": "Get the scene information including objects, materials, lights, and cameras. This tool provides detailed information about the current state of the Blender scene, which can be used to understand what objects exist and their properties.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+}
+
 
 mcp = FastMCP("blender-executor")
 
@@ -264,6 +264,10 @@ def initialize(args: dict) -> dict:
             blender_save=args.get("blender_save"),
             gpu_devices=args.get("gpu_devices")
         )
+        if 'blender' in args.get("mode"):
+            tool_configs = [execute_and_evaluate_tool]
+        else:
+            tool_configs = [execute_and_evaluate_tool, get_scene_info_tool]
         return {"status": "success", "output": {"text": ["Executor initialized successfully"], "tool_configs": tool_configs}}
     except Exception as e:
         return {"status": "error", "output": {"text": [str(e)]}}
