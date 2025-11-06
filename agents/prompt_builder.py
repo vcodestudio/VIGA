@@ -145,7 +145,7 @@ class PromptBuilder:
                     "role": "user", 
                     "content": [{
                         "type": "text", 
-                        "text": "Here are three images: target state, last state, and the state before the last state. Please compare these images and determine whether your current operation is effectively approaching the target scenario."
+                        "text": "Here are three images: target state, last state, and the state before the last state. Please compare these images and determine whether your current operation is effectively approaching the target scenario, thereby determine your next action."
                     }] + target_image_message + last_image_message + last_last_image_message
                 })
         return all_memory
