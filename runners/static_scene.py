@@ -144,12 +144,11 @@ def run_static_scene_task(task_config: Dict, args) -> tuple:
         "--assets-dir", task_config["assets_dir"],
         "--init-code-path", task_config["init_code_path"],
         "--init-image-path", task_config["init_image_path"],
+        "--clear-memory",
     ]
     
     if args.explicit_comp:
         cmd.extend(["--explicit-comp"])
-    if args.clear_memory:
-        cmd.extend(["--clear-memory"])
     if args.gpu_devices:
         cmd.extend(["--gpu-devices", args.gpu_devices])
     if task_config["target_description"]:
@@ -243,7 +242,6 @@ def main():
     
     # Additional parameters
     parser.add_argument("--explicit-comp", action="store_true", help="Enable explicit completion")
-    parser.add_argument("--clear-memory", action="store_true", help="Clear memory")
     
     args = parser.parse_args()
     
