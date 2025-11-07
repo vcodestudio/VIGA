@@ -97,9 +97,9 @@ def gather_results(model_name: str, slide_name: str = 'all'):
 
     # Calculate averages
     for key in ref_eval_result.keys():
-        ref_eval_result[key] = ref_eval_result[key] / total_num
+        ref_eval_result[key] = ref_eval_result[key] / (total_num - fail_num)
     for key in ref_free_eval_result.keys():
-        ref_free_eval_result[key] = ref_free_eval_result[key] / total_num
+        ref_free_eval_result[key] = ref_free_eval_result[key] / (total_num - fail_num)
 
     # Print results
     print(f"Model name: {model_name}")
@@ -112,7 +112,7 @@ def gather_results(model_name: str, slide_name: str = 'all'):
     overall_score = (ref_eval_result['match'] + ref_eval_result['text'] + 
                     ref_eval_result['color'] + ref_eval_result['position'] + 
                     ref_free_eval_result['text'] + ref_free_eval_result['image'] + 
-                    ref_free_eval_result['layout'] + ref_free_eval_result['color']) / 8
+                    ref_free_eval_result['layout'] + ref_free_eval_result['color']) / 8 * (total_num - fail_num) / total_num
     print(f"Overall score: {overall_score:.4f}")
     
     with open(f"data/autopresent/baseline/{model_name}.txt", 'w') as f:
@@ -122,7 +122,7 @@ def gather_results(model_name: str, slide_name: str = 'all'):
         f.write(f"Failed slides: {fail_num}\n")
         f.write(f"Ref-based evaluation results: {ref_eval_result}\n")
         f.write(f"Ref-free evaluation results: {ref_free_eval_result}\n")
-        f.write(f"Overall score: {overall_score:.4f}\n")
+        f.write(f"Overall score: {overall_score:.4f}\n\n")
 
 
 def main():
