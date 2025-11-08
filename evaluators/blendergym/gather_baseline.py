@@ -39,8 +39,8 @@ def main():
     with open(score_file, 'r') as f:
         scores = json.load(f)
         
-    n_clip_penalty = 1.0
-    pl_penalty = 0.8
+    n_clip_penalty = 2.0
+    pl_penalty = 1.0
     
     for task_type, task_scores in scores.items():
         if 'num_instances' not in task_scores:
