@@ -19,10 +19,11 @@ vlm_penalty = 0.0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Gather baseline BlenderStudio results')
-    parser.add_argument('test_id', type=str, help='Test ID (e.g., 20250815_150016)')
+    parser.add_argument('--model', type=str, default='gpt-4o', help='Model to evaluate (e.g., gpt-4o)')
     args = parser.parse_args()
+    model = args.model.replace('-', '_').replace('.', '_')
     
-    score_file = f'output/blenderstudio/{args.test_id}/_evaluation/overall_scores.json'
+    score_file = f'data/blenderstudio/_evaluation/ref_based_overall_scores_{model}.json'
     with open(score_file, 'r') as f:
         scores = json.load(f)
         
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     with open(score_file, 'w') as f:
         json.dump(scores, f, indent=4)
         
-    vlm_score_file = f'output/blenderstudio/{args.test_id}/_evaluation/reference_free_overall_scores.json'
+    vlm_score_file = f'data/blenderstudio/_evaluation/ref_free_overall_scores_{model}.json'
     with open(vlm_score_file, 'r') as f:
         vlm_scores = json.load(f)
         

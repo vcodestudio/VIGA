@@ -18,6 +18,9 @@ from transformers import CLIPProcessor, CLIPModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils._api_keys import OPENAI_API_KEY
+
 # Task instance counts for different task types
 TASK_INSTANCE_COUNT_DICT = {
     'level1': 9,
@@ -162,7 +165,7 @@ def evaluate_image_with_gpt(image_path: str, target_image_path: str, task_descri
         dict: Evaluation result with score and justification
     """
     if client is None:
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        client = OpenAI(api_key=OPENAI_API_KEY)
     
     try:
         # Encode image
@@ -428,9 +431,7 @@ def main():
     # Initialize OpenAI client if needed
     client = None
     if args.eval_type in ['ref_free', 'both']:
-        if "OPENAI_API_KEY" not in os.environ:
-            raise ValueError("OPENAI_API_KEY environment variable is required for reference-free evaluation")
-        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        client = OpenAI(api_key=OPENAI_API_KEY)
     
     # Ensure CLIP is loaded if needed
     if args.eval_type in ['ref_based', 'both']:
