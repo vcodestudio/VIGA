@@ -5,20 +5,24 @@ This script evaluates the quality of generated images against task descriptions 
 """
 
 import os
+import sys
 import argparse
 import json
 import base64
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils._api_keys import OPENAI_API_KEY
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Task instance counts for different task types
 TASK_INSTANCE_COUNT_DICT = {
     'level1': 9,
     'level2': 9,
     'level3': 9,
-    'level4': 3
 }
 
 # Evaluation criteria for different aspects
@@ -176,14 +180,14 @@ def process_task_instance_reference_free(output_base_dir: str, task_dir: str, mo
         return task_dir, {}, {}
 
     # Load task description
-    gt_task_dir = f"data/blendergym_hard/{task_dir}/task.txt"
+    gt_task_dir = f"data/blenderstudio/{task_dir}/task.txt"
     print(f"Loading task description from {gt_task_dir}")
     task_description = load_task_description(gt_task_dir)
     if not task_description:
         print(f"Warning: No task description found for {task_dir}")
         task_description = "Task description not available"
 
-    gt_renders_dir = f"data/blendergym_hard/{task_dir}/renders/goal"
+    gt_renders_dir = f"data/blenderstudio/{task_dir}/renders/goal"
     if not os.path.exists(gt_renders_dir):
         return task_dir, {}, None, None
 
@@ -208,7 +212,7 @@ def process_task_instance_reference_free(output_base_dir: str, task_dir: str, mo
         render_path = os.path.join(round_path, 'render1.png')
         
         if 'level1' in task_dir:
-            render_name = 'style1.png'
+            render_name = 'render1.png'
         else:
             render_name = 'visprompt1.png'
         target_image_path = os.path.join(gt_renders_dir, render_name)
@@ -302,7 +306,7 @@ def main():
     test_id = args.test_id
     
     # Set up paths
-    output_base_dir = f"output/blendergym_hard/{test_id}"
+    output_base_dir = f"output/blenderstudio/{test_id}"
     if not os.path.exists(output_base_dir):
         raise ValueError(f"Output directory {output_base_dir} does not exist.")
     
