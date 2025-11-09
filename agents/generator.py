@@ -122,11 +122,15 @@ class GeneratorAgent:
         
         # Add initial plan
         if tool_call_name == "initialize_plan":
+            have_plan = False
             self.init_plan = "\n".join(message['user']['plan'])
             for info in self.memory[1]['content']:
                 if info['type'] == 'text' and info['text'].startswith('Initial plan:'):
                     info['text'] = f"Initial plan: {self.init_plan}"
+                    have_plan = True
                     break
+            if not have_plan:
+                self.memory[1]['content'].append({"type": "text", "text": f"Initial plan: {self.init_plan}"})
         
         # Add downloaded assets
         if tool_call_name == "get_better_object":
