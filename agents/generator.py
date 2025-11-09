@@ -72,6 +72,10 @@ class GeneratorAgent:
                 tool_call = message.tool_calls[0]
                 print(f"Call tool {tool_call.function.name}...")
                 tool_arguments = json.loads(tool_call.function.arguments)
+                
+                with open(self.config.get("output_dir") + f"/_tool_call.json", "w") as f:
+                    json.dump({'name': tool_call.function.name, 'arguments': tool_arguments}, f, indent=4, ensure_ascii=False)
+                    
                 tool_response = await self.tool_client.call_tool(tool_call.function.name, tool_arguments)
                 # If the tool is execute_and_evaluate, run the verifier
                 if tool_response.get('require_verifier', False):
@@ -131,7 +135,7 @@ class GeneratorAgent:
                     break
             if not have_plan:
                 self.memory[1]['content'].append({"type": "text", "text": f"Initial plan: {self.init_plan}"})
-        
+
         # Add downloaded assets
         if tool_call_name == "get_better_object":
             try:

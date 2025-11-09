@@ -325,7 +325,7 @@ def undo_last_step() -> dict:
     if os.path.exists(code_path):
         os.remove(code_path)
     if os.path.exists(render_path):
-        os.rmdir(render_path)
+        shutil.rmtree(render_path)
     _executor.count -= 1
     render_path = _executor.render_path / f"{_executor.count}"
     if os.path.exists(render_path / "state.blend") and _executor.blender_save:
