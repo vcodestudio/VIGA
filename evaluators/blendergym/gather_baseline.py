@@ -49,7 +49,7 @@ def main():
         task_scores['final_n_clip'] = (task_scores['avg_n_clip'] * task_scores['num_instances'] + n_clip_penalty * missing_rounds * TASK_SCALE_DICT[task_type]) / TASK_INSTANCE_COUNT_DICT[task_type]
         task_scores['final_pl'] = (task_scores['avg_pl'] * task_scores['num_instances'] + pl_penalty * missing_rounds * TASK_SCALE_DICT[task_type]) / TASK_INSTANCE_COUNT_DICT[task_type]
         task_scores['failed_instances'] = missing_rounds
-        print(f"Task type: {task_type}, Final n_clip: {task_scores['final_n_clip']:.4f}, Final pl: {task_scores['final_pl']:.4f}")
+        print(f"Task type: {task_type}, Final n_clip: {task_scores['final_n_clip']}, Final pl: {task_scores['final_pl']}")
         
     with open(score_file, 'w') as f:
         json.dump(scores, f, indent=4)
