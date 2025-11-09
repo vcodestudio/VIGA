@@ -56,6 +56,11 @@ undo_last_step_tool = {
     "function": {
         "name": "undo_last_step",
         "description": "If you believe that your last action did not improve the current state, but instead moved it further away from the target state, you can call this tool to undo the last action.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
     }
 }
 
