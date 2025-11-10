@@ -109,71 +109,85 @@ def process_task_instance(output_base_dir: str, task_dir: str):
                where best_* can be None if no valid rounds.
     """
     task_instance_dir = os.path.join(output_base_dir, task_dir)
-    renders_dir = os.path.join(task_instance_dir, "renders")
+    
+    
+    if os.path.exists(os.path.join(task_instance_dir, "scores.json")):
+        exist_score = False
+        with open(os.path.join(task_instance_dir, "scores.json"), 'r') as f:
+            task_instance_scores = json.load(f)
+            for key, score in task_instance_scores.items():
+                if score != {}:
+                    exist_score = True
+                    break
+    if exist_score:
+        pass
+            
+    else:
+        renders_dir = os.path.join(task_instance_dir, "renders")
 
-    if not os.path.exists(renders_dir):
-        return task_dir, {}, None, None
+        if not os.path.exists(renders_dir):
+            return task_dir, {}, None, None
 
-    gt_renders_dir = f"data/blendergym/{task_dir}/renders/goal"
-    if not os.path.exists(gt_renders_dir):
-        return task_dir, {}, None, None
+        gt_renders_dir = f"data/blendergym/{task_dir}/renders/goal"
+        if not os.path.exists(gt_renders_dir):
+            return task_dir, {}, None, None
 
-    task_instance_scores = {}
+        task_instance_scores = {}
 
-    # Get all round directories (1, 2, 3, 4, etc.)
-    round_dirs = [d for d in os.listdir(renders_dir)
-                 if os.path.isdir(os.path.join(renders_dir, d))]
-    try:
-        round_dirs.sort(key=lambda x: int(x))
-    except Exception:
-        # Fallback to lexical sort if non-numeric dirs exist
-        round_dirs.sort()
+        # Get all round directories (1, 2, 3, 4, etc.)
+        round_dirs = [d for d in os.listdir(renders_dir)
+                    if os.path.isdir(os.path.join(renders_dir, d))]
+        try:
+            round_dirs.sort(key=lambda x: int(x))
+        except Exception:
+            # Fallback to lexical sort if non-numeric dirs exist
+            round_dirs.sort()
 
-    if not round_dirs:
-        return task_dir, {}, None, None
+        if not round_dirs:
+            return task_dir, {}, None, None
 
-    for round_dir in round_dirs:
-        round_path = os.path.join(renders_dir, round_dir)
-        task_instance_scores[round_dir] = {}
+        for round_dir in round_dirs:
+            round_path = os.path.join(renders_dir, round_dir)
+            task_instance_scores[round_dir] = {}
 
-        n_clip_views = []
-        pl_views = []
+            n_clip_views = []
+            pl_views = []
 
-        # render1
-        render1_path = os.path.join(round_path, "render1.png")
-        gt_render1_path = os.path.join(gt_renders_dir, "render1.png")
-        if os.path.exists(render1_path) and os.path.exists(gt_render1_path):
-            try:
-                proposal_render = Image.open(render1_path)
-                gt_render = Image.open(gt_render1_path)
-                n_clip = float(1 - clip_similarity(proposal_render, gt_render))
-                pl = float(photometric_loss(proposal_render, gt_render))
-                n_clip_views.append(n_clip)
-                pl_views.append(pl)
-                task_instance_scores[round_dir]['render1'] = {'n_clip': n_clip, 'pl': pl}
-            except Exception:
-                pass
+            # render1
+            render1_path = os.path.join(round_path, "render1.png")
+            gt_render1_path = os.path.join(gt_renders_dir, "render1.png")
+            if os.path.exists(render1_path) and os.path.exists(gt_render1_path):
+                try:
+                    proposal_render = Image.open(render1_path)
+                    gt_render = Image.open(gt_render1_path)
+                    n_clip = float(1 - clip_similarity(proposal_render, gt_render))
+                    pl = float(photometric_loss(proposal_render, gt_render))
+                    n_clip_views.append(n_clip)
+                    pl_views.append(pl)
+                    task_instance_scores[round_dir]['render1'] = {'n_clip': n_clip, 'pl': pl}
+                except Exception:
+                    pass
 
-        # render2
-        render2_path = os.path.join(round_path, "render2.png")
-        gt_render2_path = os.path.join(gt_renders_dir, "render2.png")
-        if os.path.exists(render2_path) and os.path.exists(gt_render2_path):
-            try:
-                proposal_render2 = Image.open(render2_path)
-                gt_render2 = Image.open(gt_render2_path)
-                n_clip2 = float(1 - clip_similarity(proposal_render2, gt_render2))
-                pl2 = float(photometric_loss(proposal_render2, gt_render2))
-                n_clip_views.append(n_clip2)
-                pl_views.append(pl2)
-                task_instance_scores[round_dir]['render2'] = {'n_clip': n_clip2, 'pl': pl2}
-            except Exception:
-                pass
+            # render2
+            render2_path = os.path.join(round_path, "render2.png")
+            gt_render2_path = os.path.join(gt_renders_dir, "render2.png")
+            if os.path.exists(render2_path) and os.path.exists(gt_render2_path):
+                try:
+                    proposal_render2 = Image.open(render2_path)
+                    gt_render2 = Image.open(gt_render2_path)
+                    n_clip2 = float(1 - clip_similarity(proposal_render2, gt_render2))
+                    pl2 = float(photometric_loss(proposal_render2, gt_render2))
+                    n_clip_views.append(n_clip2)
+                    pl_views.append(pl2)
+                    task_instance_scores[round_dir]['render2'] = {'n_clip': n_clip2, 'pl': pl2}
+                except Exception:
+                    pass
 
-        if n_clip_views:
-            avg_n_clip = sum(n_clip_views) / len(n_clip_views)
-            avg_pl = sum(pl_views) / len(pl_views)
-            task_instance_scores[round_dir]['avg_n_clip'] = avg_n_clip
-            task_instance_scores[round_dir]['avg_pl'] = avg_pl
+            if n_clip_views:
+                avg_n_clip = sum(n_clip_views) / len(n_clip_views)
+                avg_pl = sum(pl_views) / len(pl_views)
+                task_instance_scores[round_dir]['avg_n_clip'] = avg_n_clip
+                task_instance_scores[round_dir]['avg_pl'] = avg_pl
 
     # Determine best rounds
     valid_rounds = {k: v for k, v in task_instance_scores.items() if 'avg_n_clip' in v and 'avg_pl' in v}
