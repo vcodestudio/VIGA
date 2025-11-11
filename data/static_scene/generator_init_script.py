@@ -53,8 +53,8 @@ if __name__ == "__main__":
             print(obj.name)
 
     # Render from camera1
-    if 'Camera.001' in bpy.data.objects and rendering_dir:
-        bpy.context.scene.camera = bpy.data.objects['Camera.001']
+    if 'Camera1' in bpy.data.objects and rendering_dir:
+        bpy.context.scene.camera = bpy.data.objects['Camera1']
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = os.path.join(rendering_dir, 'render1.png')
         bpy.ops.render.render(write_still=True)
