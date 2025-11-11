@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import shutil
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.common import get_model_info, get_meshy_info
@@ -114,14 +115,8 @@ def run_static_scene_task(task_config: Dict, args) -> tuple:
 
     # Create an empty blender file inside output_dir for build-from-scratch flows
     created_blender_file = os.path.join(task_config["output_dir"], "blender_file.blend")
-    try:
-        create_empty_blend_cmd = (
-            f"{args.blender_command} --background --factory-startup "
-            f"--python-expr \"import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.save_mainfile(filepath='" + created_blender_file + "')\""
-        )
-        subprocess.run(create_empty_blend_cmd, shell=True, check=True)
-    except Exception as e:
-        print(f"Warning: Failed to create empty blender file: {e}. Proceeding anyway.")
+    # copy the blender file to the output directory
+    shutil.copy(args.blender_file, created_blender_file)
     
     # Build main.py command
     cmd = [
