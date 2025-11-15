@@ -18,7 +18,7 @@ class PromptBuilder:
         """Generic method to build generator prompts based on mode and config."""
         # Get system prompt only (format/hints embedded in system)
         if not prompts:
-            prompts = prompt_manager.get_all_prompts(self.config)
+            prompts = prompt_manager.get_all_prompts(self.config | {'agent_type': agent_type})
         
         # Build the prompt based on mode
         if prompt_type == "system":
