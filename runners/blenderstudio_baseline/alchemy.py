@@ -10,6 +10,8 @@ import json
 import time
 import argparse
 import base64
+import subprocess
+import shutil
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,7 +22,6 @@ from api_keys import OPENAI_API_KEY
 from PIL import Image
 import numpy as np
 import torch
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from transformers import CLIPProcessor, CLIPModel
 import openai
 from tqdm import tqdm
@@ -249,6 +250,514 @@ def clip_fallback_comparison(image1_path: str, image2_path: str, target_path: st
     except Exception as e:
         print(f"CLIP fallback also failed: {e}, defaulting to image1")
         return 1
+
+
+def load_blenderstudio_dataset(base_path: str, task_name: str, task_id: Optional[str] = None) -> List[Dict]:
+    """
+    Load BlenderStudio dataset structure (similar to load_blendergym_dataset in blenderstudio.py).
+    
+    Args:
+        base_path: Path to BlenderStudio dataset root
+        task_name: Task name (e.g., 'level1', 'level2', 'level3', or 'all')
+        task_id: Optional task ID to filter specific tasks
+        
+    Returns:
+        List of task configurations
+    """
+    tasks = []
+    base_path = Path(base_path)
+    
+    if not base_path.exists():
+        print(f"Error: BlenderStudio dataset path does not exist: {base_path}")
+        return tasks
+    
+    if task_name == 'all':
+        task_list = ['level1', 'level2', 'level3']
+    else:
+        task_list = [task_name]
+    
+    # If task_id is not None, only run the task_id
+    if task_id is not None:
+        task_dirs = [(base_path / f"{task_name}/{task_id}", task_name + '-' + task_id[-1])]
+    # Otherwise, run all tasks in the task_list
+    else:
+        task_dirs = []
+        for task in task_list:
+            task_path = base_path / task
+            for task_dir in task_path.glob("*"):
+                task_name_final = task + '-' + str(task_dir.name.split('/')[-1][-1])
+                task_dirs.append((task_dir, task_name_final))
+    
+    for task_dir, task_name_final in task_dirs:
+        # Check for required files
+        start_code_path = task_dir / "start.py"
+        start_renders_dir = task_dir / "renders" / "start"
+        goal_renders_dir = task_dir / "renders" / "goal"
+        blender_file = task_dir / "blender_file.blend"
+        
+        if not start_code_path.exists():
+            print(f"Warning: start.py not found in {task_dir}")
+            continue
+        
+        if not goal_renders_dir.exists() or not start_renders_dir.exists():
+            print(f"Warning: renders directory not found: {goal_renders_dir}")
+            continue
+        
+        if not blender_file.exists():
+            print(f"Warning: blender_file.blend not found in {task_dir}")
+            continue
+        
+        task_name_path = task_dir / "task.txt"
+        if os.path.exists(task_name_path):
+            task_description = open(task_name_path, 'r').read()
+        else:
+            task_description = ""
+        
+        task_config = {
+            "task_name": task_name_final,
+            "task_dir": str(task_dir),
+            "init_code_path": str(start_code_path),
+            "init_image_path": str(start_renders_dir),
+            "target_image_path": str(goal_renders_dir),
+            "blender_file": str(blender_file),
+            "target_description": task_description,
+        }
+        tasks.append(task_config)
+        print(f"Found task: {task_name_final}")
+    
+    return tasks
+
+
+def execute_blender_code(blender_command: str, blender_file: str, blender_script: str, 
+                         code: str, script_save_dir: Path, render_save_dir: Path, 
+                         count: int, gpu_devices: Optional[str] = None) -> Tuple[bool, str, Dict]:
+    """
+    Execute Blender Python code and render images.
+    
+    Args:
+        blender_command: Path to Blender executable
+        blender_file: Path to Blender file
+        blender_script: Path to Blender execution script
+        code: Python code to execute
+        script_save_dir: Directory to save the code file
+        render_save_dir: Directory to save rendered images
+        count: Counter for file naming
+        gpu_devices: GPU devices string (e.g., "0,1")
+        
+    Returns:
+        Tuple of (success: bool, error_message: str, result_dict: Dict)
+        result_dict contains rendered image paths if successful
+    """
+    code_file = script_save_dir / f"{count}.py"
+    render_file = render_save_dir / f"{count}"
+    
+    # Save code to file
+    script_save_dir.mkdir(parents=True, exist_ok=True)
+    with open(code_file, "w") as f:
+        f.write(code)
+    
+    # Create render directory
+    render_file.mkdir(parents=True, exist_ok=True)
+    for img in os.listdir(render_file):
+        os.remove(os.path.join(render_file, img))
+    
+    # Execute Blender
+    cmd = [
+        blender_command,
+        "--background", blender_file,
+        "--python", blender_script,
+        "--", str(code_file), str(render_file)
+    ]
+    
+    if gpu_devices:
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = gpu_devices
+    else:
+        env = None
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
+            env=env
+        )
+        
+        if result.returncode != 0:
+            return False, result.stderr + result.stdout, {}
+        
+        # Check if render files exist
+        render_files = list(render_file.glob("*.png"))
+        if len(render_files) == 0:
+            return False, "No render output generated", {}
+        
+        # Return render paths
+        render_paths = {
+            f"render{i+1}": str(rf) for i, rf in enumerate(sorted(render_files))
+        }
+        return True, "", render_paths
+        
+    except subprocess.TimeoutExpired:
+        return False, "Execution timeout", {}
+    except Exception as e:
+        return False, str(e), {}
+
+
+def generate_candidate_codes(start_image_path: str, current_image_path: str, current_code: str,
+                             target_image_path: str, task_description: str,
+                             api_key: str, base_url: str, model: str = "gpt-4o",
+                             num_candidates: int = 4) -> List[str]:
+    """
+    Use GPT to generate multiple candidate codes to transform current image to target.
+    
+    Args:
+        start_image_path: Path to starting image
+        current_image_path: Path to current image
+        current_code: Current Blender Python code
+        target_image_path: Path to target image
+        task_description: Task description text
+        api_key: OpenAI API key
+        base_url: OpenAI base URL
+        model: Model name
+        num_candidates: Number of candidate codes to generate (3-4)
+        
+    Returns:
+        List of candidate code strings
+    """
+    try:
+        # Encode images
+        start_b64 = encode_image(start_image_path)
+        current_b64 = encode_image(current_image_path)
+        target_b64 = encode_image(target_image_path)
+        
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        
+        # Create messages
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert at writing Blender Python code to transform 3D scenes. Given a starting image, current image, current code, and target image, generate multiple candidate code solutions."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"""Task description: {task_description}
+
+You are given:
+1. Starting image (initial state)
+2. Current image (current state after applying current code)
+3. Current Blender Python code
+4. Target image (desired final state)
+
+Please generate {num_candidates} different candidate Blender Python code solutions that can transform the current image closer to the target image. Each candidate should be a complete, runnable Blender Python script.
+
+Current code:
+```python
+{current_code}
+```
+
+Please output {num_candidates} complete code solutions, separated by "===CANDIDATE_1===", "===CANDIDATE_2===", etc. Each code block should be complete and executable."""
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{start_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Starting image:"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{current_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Current image:"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{target_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Target image:"
+                    }
+                ]
+            }
+        ]
+        
+        # Make API call
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=4000,
+            temperature=0.7
+        )
+        
+        # Parse response to extract candidate codes
+        content = response.choices[0].message.content
+        candidates = []
+        
+        # Split by candidate markers
+        parts = content.split("===CANDIDATE_")
+        for i, part in enumerate(parts[1:], 1):  # Skip first empty part
+            # Extract code between markers
+            if "===" in part:
+                code = part.split("===", 1)[1]
+                # Remove markdown code blocks if present
+                code = code.replace("```python", "").replace("```", "").strip()
+                candidates.append(code)
+            else:
+                # Last candidate or no marker
+                code = part.strip()
+                code = code.replace("```python", "").replace("```", "").strip()
+                if code:
+                    candidates.append(code)
+        
+        # If no markers found, try to extract code blocks
+        if len(candidates) == 0:
+            import re
+            code_blocks = re.findall(r'```(?:python)?\n(.*?)\n```', content, re.DOTALL)
+            candidates = code_blocks[:num_candidates]
+        
+        # Ensure we have the right number of candidates
+        while len(candidates) < num_candidates and len(candidates) > 0:
+            candidates.append(candidates[-1])  # Duplicate last candidate if needed
+        
+        return candidates[:num_candidates]
+        
+    except Exception as e:
+        print(f"Error generating candidate codes: {e}")
+        # Return empty codes as fallback
+        return [current_code] * num_candidates
+
+
+def tournament_select_best(candidate_results: List[Dict], target_image_path: str,
+                           api_key: str, base_url: str, model: str = "gpt-4o") -> int:
+    """
+    Run tournament to select the best candidate using VLM comparison.
+    
+    Args:
+        candidate_results: List of dicts with keys 'render_path' (path to render1.png)
+        target_image_path: Path to target image
+        api_key: OpenAI API key
+        base_url: OpenAI base URL
+        model: Vision model name
+        
+    Returns:
+        Index of the winning candidate
+    """
+    if len(candidate_results) == 0:
+        return 0
+    
+    if len(candidate_results) == 1:
+        return 0
+    
+    # Tournament: keep pairing and comparing until one winner
+    current_candidates = list(range(len(candidate_results)))
+    
+    while len(current_candidates) > 1:
+        next_round = []
+        
+        # Pair up candidates
+        for i in range(0, len(current_candidates), 2):
+            if i + 1 < len(current_candidates):
+                idx1 = current_candidates[i]
+                idx2 = current_candidates[i + 1]
+                
+                img1_path = candidate_results[idx1]['render_path']
+                img2_path = candidate_results[idx2]['render_path']
+                
+                # Compare which is closer to target
+                winner = vlm_compare_images(
+                    img1_path, img2_path, target_image_path,
+                    api_key, base_url, model
+                )
+                
+                # Winner is 1 or 2, convert to index
+                winner_idx = idx1 if winner == 1 else idx2
+                next_round.append(winner_idx)
+            else:
+                # Odd number, last one gets bye
+                next_round.append(current_candidates[i])
+        
+        current_candidates = next_round
+    
+    return current_candidates[0]
+
+
+def run_iterative_alchemy(task_config: Dict, args) -> Dict:
+    """
+    Run iterative alchemy process: generate candidates -> tournament -> update -> repeat.
+    
+    Args:
+        task_config: Task configuration dictionary
+        args: Command line arguments
+        
+    Returns:
+        Dictionary with results
+    """
+    
+    task_name = task_config['task_name']
+    print(f"\n{'='*60}")
+    print(f"Running iterative alchemy for task: {task_name}")
+    print(f"{'='*60}")
+    
+    # Setup paths
+    output_dir = Path(args.output_dir) / task_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    script_save_dir = output_dir / "scripts"
+    render_save_dir = output_dir / "renders"
+    
+    # Get initial code
+    with open(task_config['init_code_path'], 'r') as f:
+        current_code = f.read()
+    
+    # Get image paths
+    start_image_dir = Path(task_config['init_image_path'])
+    target_image_dir = Path(task_config['target_image_path'])
+    
+    # Find render1.png files
+    start_images = list(start_image_dir.glob("render*.png"))
+    target_images = list(target_image_dir.glob("render*.png"))
+    
+    if not start_images or not target_images:
+        return {
+            "task_name": task_name,
+            "error": "Missing start or target images",
+            "success": False
+        }
+    
+    start_image_path = str(start_images[0])  # Use first render
+    target_image_path = str(target_images[0])  # Use first target
+    
+    # Initialize current image path (starts from initial image)
+    current_image_path = start_image_path
+    
+    # Copy blender file to output
+    shutil.copy(task_config['blender_file'], output_dir / "blender_file.blend")
+    blender_file = str(output_dir / "blender_file.blend")
+    
+    iteration_results = []
+    
+    # Iterative process
+    for iteration in range(args.max_iterations):
+        print(f"\n--- Iteration {iteration + 1}/{args.max_iterations} ---")
+        
+        # Generate candidate codes
+        print("Generating candidate codes...")
+        candidate_codes = generate_candidate_codes(
+            start_image_path=start_image_path,
+            current_image_path=current_image_path,
+            current_code=current_code,
+            target_image_path=target_image_path,
+            task_description=task_config.get('target_description', ''),
+            api_key=args.api_key,
+            base_url=args.openai_base_url,
+            model=args.vision_model,
+            num_candidates=args.num_candidates
+        )
+        
+        print(f"Generated {len(candidate_codes)} candidate codes")
+        
+        # Execute all candidate codes
+        candidate_results = []
+        for i, code in enumerate(candidate_codes):
+            print(f"  Executing candidate {i+1}/{len(candidate_codes)}...")
+            success, error_msg, render_paths = execute_blender_code(
+                blender_command=args.blender_command,
+                blender_file=blender_file,
+                blender_script=args.blender_script,
+                code=code,
+                script_save_dir=script_save_dir,
+                render_save_dir=render_save_dir,
+                count=iteration * args.num_candidates + i + 1,
+                gpu_devices=args.gpu_devices
+            )
+            
+            if success and render_paths:
+                # Find render1.png
+                render_path = render_paths.get('render1', list(render_paths.values())[0])
+                candidate_results.append({
+                    'code': code,
+                    'render_path': render_path,
+                    'index': i
+                })
+                print(f"    ✓ Candidate {i+1} executed successfully")
+            else:
+                print(f"    ✗ Candidate {i+1} failed: {error_msg}")
+        
+        if len(candidate_results) == 0:
+            print("No candidates executed successfully, stopping.")
+            break
+        
+        # Run tournament to select best
+        print(f"Running tournament with {len(candidate_results)} candidates...")
+        winner_idx = tournament_select_best(
+            candidate_results=candidate_results,
+            target_image_path=target_image_path,
+            api_key=args.api_key,
+            base_url=args.openai_base_url,
+            model=args.vision_model
+        )
+        
+        winner = candidate_results[winner_idx]
+        print(f"  Winner: Candidate {winner_idx + 1}")
+        
+        # Update current state
+        current_code = winner['code']
+        current_image_path = winner['render_path']
+        
+        # Calculate metrics for winner
+        winner_image = Image.open(current_image_path)
+        target_image = Image.open(target_image_path)
+        
+        clip_score = clip_similarity(winner_image, target_image)
+        pl_score = photometric_loss(winner_image, target_image)
+        
+        iteration_results.append({
+            'iteration': iteration + 1,
+            'winner_candidate': winner_idx + 1,
+            'n_clip': 1 - clip_score,
+            'pl': pl_score,
+            'winner_code': current_code
+        })
+        
+        print(f"  Metrics: n_clip={1-clip_score:.4f}, pl={pl_score:.4f}")
+        
+        # Check if we've reached target (optional early stopping)
+        if clip_score > args.target_similarity_threshold:
+            print(f"  Target similarity reached ({clip_score:.4f} > {args.target_similarity_threshold})")
+            break
+    
+    # Final metrics
+    final_image = Image.open(current_image_path)
+    target_image = Image.open(target_image_path)
+    final_clip = 1 - clip_similarity(final_image, target_image)
+    final_pl = photometric_loss(final_image, target_image)
+    
+    return {
+        "task_name": task_name,
+        "success": True,
+        "iterations": iteration_results,
+        "final_metrics": {
+            "n_clip": final_clip,
+            "pl": final_pl
+        },
+        "final_code": current_code,
+        "final_image_path": current_image_path
+    }
 
 
 def get_max_rounds_for_task(task_name: str) -> int:
@@ -613,11 +1122,30 @@ def run_tasks_parallel(tasks: List[Dict], args, max_workers: int = 4) -> Dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="BlenderGym Baseline Tournament Runner")
+    parser = argparse.ArgumentParser(description="BlenderGym Baseline Tournament Runner / Iterative Alchemy")
     
-    # Input parameters
-    parser.add_argument("--test-id", required=True, help="Test ID (e.g., gpt-4o-bestofn)")
-    parser.add_argument("--output-dir", default=None, help="Output directory for results (default: output/baseline/{test_id})")
+    # Mode selection
+    parser.add_argument("--mode", choices=['tournament', 'iterative'], default='tournament',
+                       help="Mode: 'tournament' for evaluating existing results, 'iterative' for iterative generation")
+    
+    # Input parameters (for tournament mode)
+    parser.add_argument("--test-id", default=None, help="Test ID (e.g., gpt-4o-bestofn) - required for tournament mode")
+    parser.add_argument("--output-dir", default=None, help="Output directory for results")
+    
+    # Input parameters (for iterative mode)
+    parser.add_argument("--dataset-path", default="data/blenderstudio", help="Path to BlenderStudio dataset (for iterative mode)")
+    parser.add_argument("--task", choices=['all', 'level1', 'level2', 'level3'], default='all', help="Task name (for iterative mode)")
+    parser.add_argument("--task-id", default=None, help="Specific task ID to run (for iterative mode)")
+    
+    # Iterative alchemy parameters
+    parser.add_argument("--max-iterations", type=int, default=10, help="Maximum number of iterations (for iterative mode)")
+    parser.add_argument("--num-candidates", type=int, default=4, help="Number of candidate codes to generate per iteration")
+    parser.add_argument("--target-similarity-threshold", type=float, default=0.95, help="CLIP similarity threshold for early stopping")
+    
+    # Blender parameters (for iterative mode)
+    parser.add_argument("--blender-command", default="utils/Infinigen/blender/blender", help="Blender command path")
+    parser.add_argument("--blender-script", default="data/blenderstudio/generator_script.py", help="Blender execution script")
+    parser.add_argument("--gpu-devices", default=None, help="GPU devices string (e.g., '0,1')")
     
     # VLM parameters
     parser.add_argument("--vision-model", default="gpt-4o", help="OpenAI vision model to use")
@@ -635,122 +1163,120 @@ def main():
         print("Error: OpenAI API key is required. Set OPENAI_API_KEY environment variable or use --api-key")
         sys.exit(1)
     
-    # Set up paths
-    input_dir = f"output/blendergym/{args.test_id}"
-    if args.output_dir:
-        output_dir = args.output_dir
-    else:
-        output_dir = f"output/baseline/{args.test_id}"
+    # Set GPU devices if not provided
+    if args.gpu_devices is None:
+        args.gpu_devices = os.getenv("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
     
-    print(f"Loading tasks from: {input_dir}")
-    tasks = load_tasks_from_output(input_dir)
-    
-    if not tasks:
-        print("No valid tasks found!")
-        sys.exit(1)
-    
-    # Filter tasks if specified
-    if args.task_filter:
-        tasks = [t for t in tasks if args.task_filter in t["task_name"]]
-        print(f"Filtered to {len(tasks)} tasks matching '{args.task_filter}'")
-    
-    if not tasks:
-        print("No tasks match the specified filters!")
-        sys.exit(1)
-    
-    print(f"Found {len(tasks)} tasks for tournament evaluation")
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Save args to json
-    with open(os.path.join(output_dir, "args.json"), "w") as f:
-        json.dump(convert_numpy_types(args.__dict__), f, indent=2)
-    
-    # Ensure CLIP is loaded
-    ensure_clip_loaded()
-    
-    # Run tournaments
-    results = run_tasks_parallel(tasks, args, max_workers=args.max_workers)
-    
-    # Save results
-    try: 
-        results_path = os.path.join(output_dir, "tournament_results.json")
+        if not args.output_dir:
+            args.output_dir = f"output/alchemy/{time.strftime('%Y%m%d_%H%M%S')}"
+        
+        # Load dataset
+        print(f"Loading BlenderStudio dataset from: {args.dataset_path}")
+        tasks = load_blenderstudio_dataset(args.dataset_path, args.task, args.task_id)
+        
+        if not tasks:
+            print("No valid tasks found!")
+            sys.exit(1)
+        
+        # Filter tasks if specified
+        if args.task_filter:
+            tasks = [t for t in tasks if args.task_filter in t["task_name"]]
+            print(f"Filtered to {len(tasks)} tasks matching '{args.task_filter}'")
+        
+        if not tasks:
+            print("No tasks match the specified filters!")
+            sys.exit(1)
+        
+        print(f"Found {len(tasks)} tasks for iterative alchemy")
+        
+        # Create output directory
+        os.makedirs(args.output_dir, exist_ok=True)
+        
+        # Save args to json
+        with open(os.path.join(args.output_dir, "args.json"), "w") as f:
+            json.dump(convert_numpy_types(args.__dict__), f, indent=2)
+        
+        # Save task list
+        with open(os.path.join(args.output_dir, "tasks.json"), "w") as f:
+            json.dump(tasks, f, indent=2)
+        
+        # Ensure CLIP is loaded
+        ensure_clip_loaded()
+        
+        # Run iterative alchemy for each task
+        print(f"\nStarting iterative alchemy evaluation with max {args.max_workers} workers...")
+        print(f"Total tasks: {len(tasks)}")
+        
+        start_time = time.time()
+        results = {
+            "tasks": [],
+            "summary": {
+                "total_tasks": len(tasks),
+                "successful_tasks": 0,
+                "failed_tasks": 0,
+                "execution_time": 0
+            }
+        }
+        
+        # Use ThreadPoolExecutor for parallel execution
+        with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+            # Submit all tasks
+            future_to_task = {
+                executor.submit(run_iterative_alchemy, task_config, args): task_config 
+                for task_config in tasks
+            }
+            
+            # Process completed tasks
+            for future in tqdm(as_completed(future_to_task), total=len(future_to_task), desc="Running alchemy"):
+                task_config = future_to_task[future]
+                try:
+                    result = future.result()
+                    results["tasks"].append(result)
+                    
+                    if result.get("success", False):
+                        results["summary"]["successful_tasks"] += 1
+                        print(f"✅ {result['task_name']} completed successfully")
+                    else:
+                        results["summary"]["failed_tasks"] += 1
+                        print(f"❌ {result['task_name']} failed: {result.get('error', 'Unknown error')}")
+                        
+                except Exception as e:
+                    results["summary"]["failed_tasks"] += 1
+                    error_result = {
+                        "task_name": task_config['task_name'],
+                        "error": str(e),
+                        "success": False
+                    }
+                    results["tasks"].append(error_result)
+                    print(f"❌ {task_config['task_name']} failed with exception: {e}")
+        
+        end_time = time.time()
+        results["summary"]["execution_time"] = end_time - start_time
+        
+        # Save results
+        results_path = os.path.join(args.output_dir, "alchemy_results.json")
         with open(results_path, "w") as f:
             json.dump(convert_numpy_types(results), f, indent=2)
-    except Exception as e:
-        results_txt_path = os.path.join(output_dir, "tournament_results.txt")
-        with open(results_txt_path, "w") as f:
-            f.write(str(results))
-    
-    # Calculate summary statistics
-    successful_tasks = results["tasks"]
-    if successful_tasks:
-        # Group by task type
-        task_types = {}
-        for task in successful_tasks:
-            if "error" not in task:
-                task_name = task["task_name"]
-                task_type = ''.join([c for c in task_name if not c.isdigit()])  # Extract task type
-                if task_type not in task_types:
-                    task_types[task_type] = []
-                task_types[task_type].append(task)
-        
-        # Calculate averages
-        summary_stats = {}
-        for task_type, type_tasks in task_types.items():
-            n_clip_values = [t["final_metrics"]["avg_n_clip"] for t in type_tasks]
-            pl_values = [t["final_metrics"]["avg_pl"] for t in type_tasks]
-            
-            # Count special cases
-            auto_wins = sum(1 for t in type_tasks if t.get("special_case") == "auto_win")
-            penalties = sum(1 for t in type_tasks if t.get("special_case") == "no_rounds")
-            tournaments = len(type_tasks) - auto_wins - penalties
-            
-            summary_stats[task_type] = {
-                "num_tasks": len(type_tasks),
-                "tournaments_run": tournaments,
-                "auto_wins": auto_wins,
-                "penalty_scores": penalties,
-                "avg_n_clip": sum(n_clip_values) / len(n_clip_values),
-                "avg_pl": sum(pl_values) / len(pl_values),
-                "best_n_clip": min(n_clip_values),
-                "worst_n_clip": max(n_clip_values),
-                "best_pl": min(pl_values),
-                "worst_pl": max(pl_values)
-            }
-        
-        # Save summary
-        summary_path = os.path.join(output_dir, "summary_stats.json")
-        with open(summary_path, "w") as f:
-            json.dump(convert_numpy_types(summary_stats), f, indent=2)
         
         # Print summary
         print(f"\n{'='*60}")
-        print("TOURNAMENT EVALUATION SUMMARY")
+        print("ITERATIVE ALCHEMY SUMMARY")
         print(f"{'='*60}")
         print(f"Total tasks: {results['summary']['total_tasks']}")
         print(f"Successful: {results['summary']['successful_tasks']}")
         print(f"Failed: {results['summary']['failed_tasks']}")
         print(f"Execution time: {results['summary']['execution_time']:.2f} seconds")
-        print(f"Results saved to: {output_dir}")
+        print(f"Results saved to: {args.output_dir}")
         
-        print(f"\nSummary Statistics:")
-        for task_type, stats in summary_stats.items():
-            print(f"\n{task_type.upper()}:")
-            print(f"  Tasks evaluated: {stats['num_tasks']}")
-            print(f"  Tournaments run: {stats['tournaments_run']}")
-            print(f"  Auto-wins: {stats['auto_wins']}")
-            print(f"  Penalty scores: {stats['penalty_scores']}")
-            print(f"  Average n_clip: {stats['avg_n_clip']:.4f}")
-            print(f"  Average pl: {stats['avg_pl']:.4f}")
-            print(f"  Best n_clip: {stats['best_n_clip']:.4f}")
-            print(f"  Worst n_clip: {stats['worst_n_clip']:.4f}")
-            print(f"  Best pl: {stats['best_pl']:.4f}")
-            print(f"  Worst pl: {stats['worst_pl']:.4f}")
+        # Calculate averages for successful tasks
+        successful_tasks = [t for t in results["tasks"] if t.get("success", False)]
+        if successful_tasks:
+            avg_n_clip = sum(t["final_metrics"]["n_clip"] for t in successful_tasks) / len(successful_tasks)
+            avg_pl = sum(t["final_metrics"]["pl"] for t in successful_tasks) / len(successful_tasks)
+            print(f"\nAverage metrics across successful tasks:")
+            print(f"  Average n_clip: {avg_n_clip:.4f}")
+            print(f"  Average pl: {avg_pl:.4f}")
     
-    else:
-        print("No successful tasks completed!")
 
 
 if __name__ == "__main__":
