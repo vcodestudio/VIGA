@@ -15,17 +15,14 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# Import API keys from runners directory
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from api_keys import OPENAI_API_KEY
 from PIL import Image
 import openai
 from tqdm import tqdm
 import tempfile
 
-
-
+# Import API keys from runners directory
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.common import get_image_base64, extract_code_pieces, build_client
 
 def encode_image(image_path: str) -> str:
     """
@@ -64,7 +61,7 @@ def vlm_compare_images(image1_path: str, image2_path: str, target_path: str,
         target_b64 = encode_image(target_path)
         
         # Initialize OpenAI client
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        client = build_client(model)
         
         # Create messages
         messages = [
@@ -110,12 +107,7 @@ def vlm_compare_images(image1_path: str, image2_path: str, target_path: str,
         ]
         
         # Make API call
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=10,
-            temperature=0.1
-        )
+        response = client.chat.completions.create(model=model, messages=messages)
         
         # Parse response
         result = response.choices[0].message.content.strip()
@@ -288,7 +280,7 @@ def execute_blender_code(blender_command: str, blender_file: str, blender_script
 
 def generate_candidate_codes(start_image_path: str, current_image_path: str, current_code: str,
                              target_image_path: str, task_description: str,
-                             api_key: str, base_url: str, model: str = "gpt-4o",
+                             model: str = "gpt-4o",
                              num_candidates: int = 4) -> List[str]:
     """
     Use GPT to generate multiple candidate codes to transform current image to target.
@@ -299,8 +291,6 @@ def generate_candidate_codes(start_image_path: str, current_image_path: str, cur
         current_code: Current Blender Python code
         target_image_path: Path to target image
         task_description: Task description text
-        api_key: OpenAI API key
-        base_url: OpenAI base URL
         model: Model name
         num_candidates: Number of candidate codes to generate (3-4)
         
@@ -312,10 +302,7 @@ def generate_candidate_codes(start_image_path: str, current_image_path: str, cur
         start_b64 = encode_image(start_image_path)
         current_b64 = encode_image(current_image_path)
         target_b64 = encode_image(target_image_path)
-        
-        # Initialize OpenAI client
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
-        
+        client = build_client(model)
         # Create messages
         messages = [
             {
@@ -379,12 +366,7 @@ Please output {num_candidates} complete code solutions, separated by "===CANDIDA
         ]
         
         # Make API call
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=4000,
-            temperature=0.7
-        )
+        response = client.chat.completions.create(model=model, messages=messages)
         
         # Parse response to extract candidate codes
         content = response.choices[0].message.content
@@ -425,15 +407,13 @@ Please output {num_candidates} complete code solutions, separated by "===CANDIDA
 
 
 def tournament_select_best(candidate_results: List[Dict], target_image_path: str,
-                           api_key: str, base_url: str, model: str = "gpt-4o") -> int:
+                           model: str = "gpt-4o") -> int:
     """
     Run tournament to select the best candidate using VLM comparison.
     
     Args:
         candidate_results: List of dicts with keys 'render_dir' (path to render directory)
         target_image_path: Path to target image
-        api_key: OpenAI API key
-        base_url: OpenAI base URL
         model: Vision model name
         
     Returns:
@@ -476,10 +456,7 @@ def tournament_select_best(candidate_results: List[Dict], target_image_path: str
                 img2_path = str(render2_files[0])
                 
                 # Compare which is closer to target
-                winner = vlm_compare_images(
-                    img1_path, img2_path, target_image_path,
-                    api_key, base_url, model
-                )
+                winner = vlm_compare_images(img1_path, img2_path, target_image_path, model)
                 
                 # Winner is 1 or 2, convert to index
                 winner_idx = idx1 if winner == 1 else idx2
@@ -559,9 +536,7 @@ def run_iterative_alchemy(task_config: Dict, args) -> Dict:
             current_code=current_code,
             target_image_path=target_image_path,
             task_description=task_config.get('target_description', ''),
-            api_key=args.api_key,
-            base_url=args.openai_base_url,
-            model=args.vision_model,
+            model=args.model,
             num_candidates=args.num_candidates
         )
         
@@ -612,9 +587,7 @@ def run_iterative_alchemy(task_config: Dict, args) -> Dict:
         winner_idx = tournament_select_best(
             candidate_results=candidate_results,
             target_image_path=target_image_path,
-            api_key=args.api_key,
-            base_url=args.openai_base_url,
-            model=args.vision_model
+            model=args.model
         )
         
         winner = candidate_results[winner_idx]
@@ -682,20 +655,13 @@ def main():
     parser.add_argument("--gpu-devices", default=None, help="GPU devices string (e.g., '0,1')")
     
     # VLM parameters
-    parser.add_argument("--vision-model", default="gpt-4o", help="OpenAI vision model to use")
-    parser.add_argument("--openai-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
-    parser.add_argument("--api-key", default=OPENAI_API_KEY, help="OpenAI API key")
+    parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model to use")
     
     # Execution parameters
     parser.add_argument("--max-workers", type=int, default=4, help="Maximum number of parallel workers")
     parser.add_argument("--task-filter", help="Filter tasks by name pattern")
     
     args = parser.parse_args()
-    
-    # Validate API key
-    if not args.api_key:
-        print("Error: OpenAI API key is required. Set OPENAI_API_KEY environment variable or use --api-key")
-        sys.exit(1)
     
     # Set GPU devices if not provided
     if args.gpu_devices is None:
