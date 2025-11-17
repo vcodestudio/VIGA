@@ -28,3 +28,5 @@
    - Call `get_better_object` to generate two **small decorative wall trees**.  
    - Place **Tree 1** on the **front wall**, slightly **to the right of the wall clock**.  
    - Place **Tree 2** further **rightward on the same wall**, near the **right-side upper area** of the room.
+
+# NOTE: Do not add any camera in the scene.
