@@ -152,14 +152,14 @@ def run_static_scene_task(task_config: Dict, args) -> tuple:
         "--init-code-path", task_config["init_code_path"],
         "--init-image-path", task_config["init_image_path"],
         "--clear-memory",
+        "--prompt-setting", args.prompt_setting,
+        "--init-setting", args.init_setting,
     ]
     
     if args.explicit_comp:
         cmd.extend(["--explicit-comp"])
     if args.gpu_devices:
         cmd.extend(["--gpu-devices", args.gpu_devices])
-    if args.with_prior:
-        cmd.extend(["--with-prior"])
     if "target_description" in task_config:
         cmd.extend(["--target-description", task_config["target_description"]])
 
@@ -259,7 +259,7 @@ def main():
     
     # Load dataset
     print(f"Loading static scene dataset from: {args.dataset_path}")
-    tasks = load_static_scene_dataset(args.dataset_path, args.task, args.setting, args.test_id)
+    tasks = load_static_scene_dataset(args.dataset_path, args.task, args.init_setting, args.test_id)
     
     if not tasks:
         print("No valid static scene tasks found in dataset!")
