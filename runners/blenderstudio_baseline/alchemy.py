@@ -479,7 +479,7 @@ def run_iterative_alchemy(task_config: Dict, args) -> Dict:
         Dictionary with results
     """
     
-    task_name = task_config['task_name']
+    task_name = "/".join(task_config['task_dir'].split('/')[-2:])
     print(f"\n{'='*60}")
     print(f"Running iterative alchemy for task: {task_name}")
     print(f"{'='*60}")
