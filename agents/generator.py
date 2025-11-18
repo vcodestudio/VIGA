@@ -61,7 +61,7 @@ class GeneratorAgent:
 
             # Generate response
             print("Generate response...")
-            responses = get_model_response(self.client, chat_args, self.config)
+            responses = get_model_response(self.client, chat_args, self.config.get("num_candidates", 4))
             message = responses[0].choices[0].message
             
             # Handle tool call
@@ -93,7 +93,6 @@ class GeneratorAgent:
                         self.memory.append({"role": "user", "content": f"Error executing tool: {e}. Please try again."})
                         self._save_memory()
                         continue
-                    
                 best_idx = tournament_select_best(tool_responses, self.config.get("target_image_path"), self.config.get("model"))
                 tool_response = tool_responses[best_idx]
                 if tool_response.get('require_verifier', False):

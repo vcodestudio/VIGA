@@ -9,19 +9,13 @@ import time
 from utils._api_keys import OPENAI_API_KEY, OPENAI_BASE_URL, CLAUDE_API_KEY, CLAUDE_BASE_URL, GEMINI_API_KEY, GEMINI_BASE_URL, QWEN_BASE_URL, MESHY_API_KEY, VA_API_KEY
 from pathlib import Path
 
-def get_model_response(client: OpenAI, chat_args: Dict, config: Dict):
+def get_model_response(client: OpenAI, chat_args: Dict, num_candidates: int):
     # repeat multiple time to avoid network errors
     # select the best candidate from the responses
     candidate_responses = []
-    for idx in range(config.get("num_candidates", 4)):
-        for i in range(3):
-            try:
-                response = client.chat.completions.create(**chat_args)
-                candidate_responses.append(response)
-                break
-            except Exception as e:
-                print(f"Error getting model response: {e}")
-                time.sleep(1)
+    for idx in range(num_candidates):
+        response = client.chat.completions.create(**chat_args)
+        candidate_responses.append(response)
     if len(candidate_responses) == 0:
         raise Exception("Failed to get model response")
     return candidate_responses
@@ -217,7 +211,15 @@ def vlm_compare_images(image1_path: str, image2_path: str, target_path: str, mod
         # Encode images
         image1_b64 = get_image_base64(image1_path)
         image2_b64 = get_image_base64(image2_path)
-        target_b64 = get_image_base64(target_path)
+        if os.path.isdir(target_path):
+            target_new_path = os.path.join(target_path, 'visprompt1.png')
+            if not os.path.exists(target_new_path):
+                target_new_path = os.path.join(target_path, 'style1.png')
+                if not os.path.exists(target_new_path):
+                    target_new_path = os.path.join(target_path, 'render1.png')
+        else:
+            target_new_path = target_path
+        target_b64 = get_image_base64(target_new_path)
         
         # Initialize OpenAI client
         client = build_client(model)
