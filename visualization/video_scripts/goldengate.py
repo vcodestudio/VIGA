@@ -10,8 +10,8 @@ except ImportError:
     )
 
 # ================== 可按需修改的参数 ==================
-FRAMES = 10         # 总帧数
-FPS = 10         # 帧率
+FRAMES = 300         # 总帧数
+FPS = 30         # 帧率
 START_POS = (50.0, 60.0, 10.0)     # 摄像机起点
 END_POS   = (0.0, 1.0, 10.0)   # 摄像机终点
 OUTPUT_PATH = "//goldengate.mp4"  # 相对当前 .blend 文件所在目录
