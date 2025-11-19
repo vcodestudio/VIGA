@@ -10,10 +10,10 @@ except ImportError:
     )
 
 # ================== 可按需修改的参数 ==================
-FRAMES = 80         # 总帧数
-FPS = 10            # 帧率
-START_POS = (45.0, 50.0, 10.0)     # 摄像机起点
-END_POS   = (-45.0, -50.0, 10.0)   # 摄像机终点
+FRAMES = 10         # 总帧数
+FPS = 10         # 帧率
+START_POS = (50.0, 60.0, 10.0)     # 摄像机起点
+END_POS   = (0.0, 1.0, 10.0)   # 摄像机终点
 OUTPUT_PATH = "//goldengate.mp4"  # 相对当前 .blend 文件所在目录
 # =====================================================
 
@@ -44,7 +44,7 @@ def enable_gpu_for_cycles():
 
     backend_chosen = None
     # ★ 首选 CUDA，再尝试 OPTIX
-    for backend in ("CUDA", "OPTIX"):
+    for backend in ("OPTIX", "CUDA"):
         try:
             cycles_prefs.compute_device_type = backend
             backend_chosen = backend
@@ -65,7 +65,7 @@ def enable_gpu_for_cycles():
 
     # 只启用 GPU 设备
     for dev in cycles_prefs.devices:
-        dev.use = (dev.type == "GPU" or dev.type == "CUDA")
+        dev.use = (dev.type == "GPU" or dev.type == backend_chosen)
         print(f"[GPU] {dev.type}: {dev.name}, use={dev.use}")
 
     # 场景层面指定使用 GPU
@@ -146,12 +146,17 @@ def setup_render(output_path, frames, fps):
 
     # 引擎（这里使用 Cycles，设备由 enable_gpu_for_cycles 控制）
     scene.render.engine = "CYCLES"
+    
+    scene.render.resolution_x = 1080
+    scene.render.resolution_y = 1080
+    scene.render.resolution_percentage = 100
+    scene.render.use_motion_blur = False
 
     scene.render.image_settings.file_format = "FFMPEG"
     ffmpeg = scene.render.ffmpeg
     ffmpeg.format = "MPEG4"
     ffmpeg.codec = "H264"
-    ffmpeg.constant_rate_factor = "MEDIUM"
+    ffmpeg.constant_rate_factor = "HIGH"
     ffmpeg.ffmpeg_preset = "GOOD"
 
     print(f"[INFO] Render setup done. Output: {output_path}")
