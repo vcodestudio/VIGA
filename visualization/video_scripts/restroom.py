@@ -10,11 +10,12 @@ except ImportError:
     )
 
 # ================== 可按需修改的参数 ==================
-FRAMES = 10         # 总帧数
-FPS = 1             # 帧率
+FRAMES = 300         # 总帧数
+FPS = 30            # 帧率
 
 START_POS = (-3.0, 1.0, 1.5)   # 摄像机起点
 END_POS   = ( 0.0, 0.0, 1.5)   # 摄像机终点
+CAMERA_LENS = 22.0
 
 # ★ 相机“相对运动方向”的偏转角度（绕世界 Z 轴）
 #   0 → 90 表示：一开始正对运动方向，最后偏转 90°（例如从朝 +X 转到朝 +Y）
@@ -90,6 +91,7 @@ def create_camera():
     scene = bpy.context.scene
 
     cam_data = bpy.data.cameras.new("TravelCamera")
+    cam_data.lens = CAMERA_LENS
     camera = bpy.data.objects.new("TravelCamera", cam_data)
     scene.collection.objects.link(camera)
 
@@ -140,7 +142,7 @@ def animate_linear_motion(camera, start_pos, end_pos, frames):
     end = Vector(end_pos)
 
     # 运动方向（水平向量），去掉 Z 分量，保证不会抬头/低头
-    direction_flat = Vector((end.x - start.x, end.y - start.y, 0.0))
+    direction_flat = Vector((end.x - start.x, 0.0, 0.0))
     if direction_flat.length == 0:
         print("[WARN] Start and end positions are identical in XY; no motion.")
         direction_flat = Vector((1.0, 0.0, 0.0))
