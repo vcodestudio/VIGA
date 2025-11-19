@@ -9,13 +9,21 @@ except ImportError:
     )
 
 # ================== 可按需修改的参数 ==================
-FRAMES = 80                 # 总帧数
-FPS = 10                  # 帧率
+FRAMES = 300                # 总帧数
+FPS = 30                    # 帧率
 RADIUS = 1.0                # 摄像机离中心的水平距离
-HEIGHT = 0.8               # 摄像机相对中心的高度偏移
+HEIGHT = 0.1                # 摄像机相对中心的高度偏移
 CENTER = (0.0, 0.0, 1.8)    # 环绕中心
 FOCAL_LENGTH = 20.0         # 摄像机焦距（mm），视角宽窄由此控制，常见值 24/35/50 等
 OUTPUT_PATH = "//bathroom.mp4"  # 相对 .blend 的输出路径
+
+# ★ 新增配置：控制旋转起始 / 终止角度（单位：度）
+# 例如：
+#   0 → 360   表示转一整圈
+#   0 → 180   表示只转半圈
+#   -90 → 90  表示从左侧 90° 转到右侧 90°
+START_ANGLE_DEG = 0.0       # 起始角度（度）
+END_ANGLE_DEG = 90.0       # 终止角度（度）
 # =====================================================
 
 
@@ -109,12 +117,41 @@ def create_camera_and_target(center):
     return camera
 
 
-def animate_turntable(camera, center, radius, height, frames):
-    """给摄像机做绕 center 一圈的动画（360°）。"""
+def animate_turntable(camera, center, radius, height, frames,
+                      start_angle_deg, end_angle_deg):
+    """
+    给摄像机做绕 center 的旋转动画。
+    支持指定起始角度和终止角度（单位：度），而不是固定 360°。
+
+    参数:
+        start_angle_deg: 起始角度（度）
+        end_angle_deg  : 终止角度（度）
+    """
     scene = bpy.context.scene
 
+    if frames <= 1:
+        # 只有 1 帧时，就放在起始位置
+        angle_rad = math.radians(start_angle_deg)
+        x = center[0] + radius * math.cos(angle_rad)
+        y = center[1] + radius * math.sin(angle_rad)
+        z = center[2] + height
+
+        scene.frame_set(0)
+        camera.location = (x, y, z)
+        camera.keyframe_insert(data_path="location", frame=0)
+        print("[INFO] Only 1 frame: set camera at start angle.")
+        return
+
+    angle_start = math.radians(start_angle_deg)
+    angle_end = math.radians(end_angle_deg)
+
+    # 总角度增量
+    angle_delta = angle_end - angle_start
+
     for f in range(frames):
-        angle = 2.0 * math.pi * (f / frames)
+        # 使用 (frames - 1) 让首尾刚好是起始/终止角
+        t = f / (frames - 1)
+        angle = angle_start + angle_delta * t
 
         x = center[0] + radius * math.cos(angle)
         y = center[1] + radius * math.sin(angle)
@@ -124,7 +161,9 @@ def animate_turntable(camera, center, radius, height, frames):
         camera.location = (x, y, z)
         camera.keyframe_insert(data_path="location", frame=f)
 
-    print("[INFO] Turntable keyframes inserted.")
+    print(
+        f"[INFO] Turntable keyframes inserted from {start_angle_deg}° to {end_angle_deg}°."
+    )
 
 
 def setup_render(output_path, frames, fps):
@@ -159,7 +198,18 @@ def main():
 
     clear_old_cameras()
     camera = create_camera_and_target(CENTER)
-    animate_turntable(camera, CENTER, RADIUS, HEIGHT, FRAMES)
+
+    # ★ 使用可配置的起始/终止角度
+    animate_turntable(
+        camera,
+        CENTER,
+        RADIUS,
+        HEIGHT,
+        FRAMES,
+        START_ANGLE_DEG,
+        END_ANGLE_DEG,
+    )
+
     setup_render(OUTPUT_PATH, FRAMES, FPS)
 
     print("[INFO] Start rendering animation...")
