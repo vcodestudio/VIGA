@@ -1,0 +1,3 @@
+[submodule "utils/infinigen"]
+	path = utils/infinigen
+	url = https://github.com/princeton-vl/Infinigen.git
