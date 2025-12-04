@@ -21,8 +21,6 @@ def main():
     state = proc.set_image(img)
     out = proc.set_text_prompt(state=state, prompt=args.object)
     masks = out["masks"]
-    if not masks:
-        raise SystemExit("no mask found")
     mask = masks[0]
     if hasattr(mask, "cpu"):
         mask = mask.cpu().numpy()
@@ -39,3 +37,4 @@ if __name__ == "__main__":
     main()
 
 
+# python tools/sam3_worker.py --image data/static_scene/christmas/target.png --object snowman --out output/test/sam3/snowman_mask.npy
