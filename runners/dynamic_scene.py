@@ -62,6 +62,8 @@ def load_dynamic_scene_dataset(base_path: str, task_name: str, test_id: Optional
             target_image_path = str(task_path / "target.png")
         elif (task_path / "target.jpg").exists():
             target_image_path = str(task_path / "target.jpg")
+        elif (task_path / "target.jpeg").exists():
+            target_image_path = str(task_path / "target.jpeg")
         elif (task_path / "target").exists() and (task_path / "target").is_dir():
             target_image_path = str(task_path / "target")
         

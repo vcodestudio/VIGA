@@ -59,6 +59,8 @@ def load_static_scene_dataset(base_path: str, task_name: str, setting: str, test
             target_image_path = str(task_path / "target.png")
         elif (task_path / "target.jpg").exists():
             target_image_path = str(task_path / "target.jpg")
+        elif (task_path / "target.jpeg").exists():
+            target_image_path = str(task_path / "target.jpeg")
         elif (task_path / "target").exists() and (task_path / "target").is_dir():
             target_image_path = str(task_path / "target")
         
