@@ -1,9 +1,10 @@
 [submodule "utils/infinigen"]
 	path = utils/infinigen
 	url = https://github.com/princeton-vl/Infinigen.git
-[submodule "utils/sam3d"]
-	path = utils/sam3d
-	url = https://github.com/facebookresearch/sam-3d-objects.git
 [submodule "utils/sam3"]
 	path = utils/sam3
 	url = https://github.com/facebookresearch/sam3.git
+[submodule "utils/sam3d"]
+	path = utils/sam3d
+	url = https://github.com/facebookresearch/sam-3d-objects.git
+	branch = main
