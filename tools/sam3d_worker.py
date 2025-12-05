@@ -4,6 +4,11 @@ from PIL import Image
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(os.path.join(ROOT, "utils", "sam3d", "notebook"))
 
+if "CONDA_PREFIX" not in os.environ:
+    python_bin = sys.executable
+    conda_env = os.path.dirname(os.path.dirname(python_bin))
+    os.environ["CONDA_PREFIX"] = conda_env
+
 from inference import Inference, load_image, load_mask
 
 

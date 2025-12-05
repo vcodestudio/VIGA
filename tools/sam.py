@@ -13,10 +13,9 @@ tool_configs = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "thought": {"type": "string", "description": "Think about the object you want to download. Consider the overall description of the scene and the detailed plan for scene construction."},
                     "object_name": {"type": "string", "description": "The name of the object to download. For example, 'chair', 'table', 'lamp', etc."},
                 },
-                "required": ["thought", "object_name"]
+                "required": ["object_name"]
             }
         }
     }
@@ -45,7 +44,7 @@ def initialize(args: dict) -> dict:
 
 
 @mcp.tool()
-def get_better_object(thought: str, object_name: str) -> dict:
+def get_better_object(object_name: str) -> dict:
     object_name = object_name.replace(' ', '_')
     object_name = object_name.replace('-', '_')
     if not _target_image or not _output_dir:
@@ -83,6 +82,7 @@ def get_better_object(thought: str, object_name: str) -> dict:
                 "--glb",
                 glb_path,
             ],
+            cwd=ROOT,
             check=True,
             text=True,
             capture_output=True,
@@ -90,8 +90,8 @@ def get_better_object(thought: str, object_name: str) -> dict:
         info = json.loads(r2.stdout.strip().splitlines()[-1])
         info["glb_path"] = info.get("glb_path") or glb_path
         return {"status": "success", "output": {"text": [f"Successfully generated asset, downloaded to: {info['glb_path']}", f"Asset information: {json.dumps(info)}"]}}
-    except Exception as e:
-        return {"status": "error", "output": {"text": [str(e)]}}
+    except subprocess.CalledProcessError as e:
+      return {"status": "error", "output": {"text": [e.stderr or str(e)]}}
 
 
 def main():
@@ -102,7 +102,7 @@ def main():
                 "output_dir": os.path.join(ROOT, "output", "test", "sam3"),
             }
         )
-        print(get_better_object("xxx", "house"))
+        print(get_better_object("house"))
     else:
         mcp.run()
 
