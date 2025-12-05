@@ -1,7 +1,7 @@
 import os, sys, json, subprocess
 from mcp.server.fastmcp import FastMCP
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils._path import path_to_cmd
+from utils.path import path_to_cmd
 
 # tool_configs for agent (only the function w/ @mcp.tools)
 tool_configs = [

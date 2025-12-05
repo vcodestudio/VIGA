@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
-from utils._path import path_to_cmd
+from utils.path import path_to_cmd
 
 class ServerHandle:
     def __init__(self, path: str):
