@@ -46,6 +46,8 @@ def initialize(args: dict) -> dict:
 
 @mcp.tool()
 def get_better_object(thought: str, object_name: str) -> dict:
+    object_name = object_name.replace(' ', '_')
+    object_name = object_name.replace('-', '_')
     if not _target_image or not _output_dir:
         return {"status": "error", "output": {"text": ["call initialize first"]}}
     mask_path = os.path.join(_output_dir, f"{object_name}_mask.npy")
