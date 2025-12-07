@@ -46,6 +46,7 @@ def initialize(args: dict) -> dict:
 
 @mcp.tool()
 def get_better_object(object_name: str) -> dict:
+    original_object_name = object_name
     object_name = object_name.replace(' ', '_')
     object_name = object_name.replace('-', '_')
     if not _target_image or not _output_dir:
@@ -61,7 +62,7 @@ def get_better_object(object_name: str) -> dict:
                 "--image",
                 _target_image,
                 "--object",
-                object_name,
+                original_object_name,
                 "--out",
                 mask_path,
             ],
