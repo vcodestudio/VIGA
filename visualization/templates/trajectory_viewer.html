@@ -72,7 +72,7 @@
         }
 
         .left-panel {
-            width: 50%;
+            width: 60%;
             background: #14161a;
             padding: 28px;
             overflow-y: auto;
@@ -81,7 +81,7 @@
         }
 
         .right-panel {
-            width: 50%;
+            width: 40%;
             background: #0a0a0a;
             display: flex;
             flex-direction: column;
@@ -90,7 +90,7 @@
         }
 
         .right-panel-top {
-            flex: 1;
+            flex: 0.8;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -99,12 +99,13 @@
         }
 
         .right-panel-bottom {
-            flex: 1;
+            flex: 1.2;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             position: relative;
+            min-height: 0; /* Ensure flex child can shrink */
         }
 
         .section {
@@ -174,12 +175,27 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 10px;
+            overflow: hidden;
         }
 
         .image-container img {
-            max-width: 100%;
-            max-height: 100%;
+            max-width: 70%;
+            max-height: 70%;
+            object-fit: contain;
+        }
+
+        /* Ensure bottom image container displays images at same size as top */
+        #image-container-bottom {
+            width: 100%;
+            height: 100%;
+        }
+
+        #image-container-bottom img {
+            max-width: 70%;
+            max-height: 70%;
+            width: auto;
+            height: auto;
             object-fit: contain;
         }
 
@@ -212,8 +228,10 @@
         }
 
         .video-container video {
-            max-width: 100%;
-            max-height: 100%;
+            max-width: 70%;
+            max-height: 70%;
+            width: auto;
+            height: auto;
             object-fit: contain;
         }
 
@@ -248,11 +266,11 @@
             cursor: not-allowed;
         }
 
-        .btn-integrate {
+        .btn-Investigate {
             background: #ffa500;
         }
 
-        .btn-integrate:hover:not(:disabled) {
+        .btn-Investigate:hover:not(:disabled) {
             background: #ff9500;
         }
 
@@ -342,7 +360,7 @@
                 </div>
             </div>
             <div class="controls">
-                <button class="btn btn-integrate" id="integrate-btn" onclick="pauseAtIntegration()" disabled>Integrate</button>
+                <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()" disabled>Investigate</button>
                 <button class="btn btn-resume" id="resume-btn" onclick="resume()" style="display: none;">Resume</button>
             </div>
         </div>
@@ -461,20 +479,20 @@
                 showBottomLoading();
 
                 // Reset buttons
-                document.getElementById('integrate-btn').disabled = true;
-                document.getElementById('integrate-btn').style.display = 'block';
+                document.getElementById('Investigate-btn').disabled = true;
+                document.getElementById('Investigate-btn').style.display = 'block';
                 document.getElementById('resume-btn').style.display = 'none';
                 isPaused = false;
 
                 // Type thought character by character
                 await typeThought(step.thought);
 
-                // Display code with syntax highlighting (after thought is done)
-                displayCode(step.code);
+                // Display code line by line (after thought is done)
+                await displayCode(step.code);
                 codeGenerated = true;
 
-                // Enable integrate button after code is displayed
-                document.getElementById('integrate-btn').disabled = false;
+                // Enable Investigate button after code is displayed
+                document.getElementById('Investigate-btn').disabled = false;
 
                 // Wait 1 second after code, then load image
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -487,13 +505,13 @@
                 }
                 imageLoaded = true;
 
-                // Auto advance after 5 seconds (unless paused)
+                // Auto advance after 3 seconds (unless paused)
                 if (!isPaused) {
                     autoAdvanceTimeout = setTimeout(() => {
                         if (currentStepIndex < totalSteps - 1 && !isPaused) {
                             loadStep(currentStepIndex + 1);
                         }
-                    }, 5000);
+                    }, 3000);
                 }
             } catch (error) {
                 console.error('Error loading step:', error);
@@ -539,7 +557,8 @@
                 thoughtEl.textContent += text[i];
                 thoughtEl.appendChild(cursor);
                 
-                const delay = (text[i] === ' ' || text[i] === '\n') ? 10 : 30;
+                // Typing speed: 10ms for spaces/newlines, 25ms for other characters
+                const delay = (text[i] === ' ' || text[i] === '\n') ? 10 : 25;
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
 
@@ -547,17 +566,42 @@
             isTyping = false;
         }
 
-        function displayCode(code) {
+        async function displayCode(code) {
             const codeEl = document.getElementById('code-content');
             codeEl.innerHTML = '';
+            
+            // Create DOM structure once
             const pre = document.createElement('pre');
             const codeBlock = document.createElement('code');
             codeBlock.className = 'language-python';
-            codeBlock.textContent = code;
             pre.appendChild(codeBlock);
             codeEl.appendChild(pre);
             
-            hljs.highlightElement(codeBlock);
+            // Split code into lines
+            const lines = code.split('\n');
+            let accumulatedCode = '';
+            
+            // Display code line by line without recreating DOM
+            for (let i = 0; i < lines.length; i++) {
+                if (isPaused) break; // Allow interruption
+                
+                // Add current line
+                if (i > 0) {
+                    accumulatedCode += '\n';
+                }
+                accumulatedCode += lines[i];
+                
+                // Update text content directly (no DOM recreation to avoid flickering)
+                codeBlock.textContent = accumulatedCode;
+                
+                // Delay between lines
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            // Final highlight only once at the end (avoids flickering)
+            if (!isPaused) {
+                hljs.highlightElement(codeBlock);
+            }
         }
 
         async function loadImage(stepIndex, position) {
@@ -596,22 +640,22 @@
                 clearTimeout(autoAdvanceTimeout);
                 autoAdvanceTimeout = null;
             }
-            document.getElementById('integrate-btn').style.display = 'none';
+            document.getElementById('Investigate-btn').style.display = 'none';
             document.getElementById('resume-btn').style.display = 'block';
         }
 
         function resume() {
             isPaused = false;
-            document.getElementById('integrate-btn').style.display = 'block';
+            document.getElementById('Investigate-btn').style.display = 'block';
             document.getElementById('resume-btn').style.display = 'none';
             
-            // If code and image are both loaded, auto advance in 5 seconds
+            // If code and image are both loaded, auto advance in 3 seconds
             if (codeGenerated && imageLoaded) {
                 autoAdvanceTimeout = setTimeout(() => {
                     if (currentStepIndex < totalSteps - 1 && !isPaused) {
                         loadStep(currentStepIndex + 1);
                     }
-                }, 5000);
+                }, 3000);
             } else {
                 // Otherwise, continue with current step loading
                 loadStep(currentStepIndex);
