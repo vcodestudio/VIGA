@@ -90,16 +90,17 @@
         }
 
         .right-panel-top {
-            flex: 0.8;
+            flex: 1.0;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
             border-bottom: 2px solid #464650;
+            min-height: 0; /* Prevent layout shift */
         }
 
         .right-panel-bottom {
-            flex: 1.2;
+            flex: 1.0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -172,6 +173,8 @@
         .image-container {
             max-width: 100%;
             max-height: 100%;
+            width: 100%;
+            height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -460,23 +463,19 @@
             }
 
             try {
-                // If not the first step, load previous step image to top first
-                if (stepIndex > 0) {
-                    await loadPreviousStepImage(stepIndex - 1);
-                } else {
-                    // Clear top image for first step
-                    document.getElementById('image-container-top').innerHTML = '';
-                }
+                // Clear all content first to maintain consistent layout
+                document.getElementById('thought-content').innerHTML = '';
+                document.getElementById('code-content').innerHTML = '';
+                document.getElementById('image-container-top').innerHTML = '';
+                showBottomLoading();
 
                 const response = await fetch(`/api/step/${stepIndex}`);
                 const step = await response.json();
 
-                // Clear current content
-                document.getElementById('thought-content').innerHTML = '';
-                document.getElementById('code-content').innerHTML = '';
-                
-                // Show loading in bottom panel
-                showBottomLoading();
+                // If not the first step, load previous step image to top
+                if (stepIndex > 0) {
+                    await loadPreviousStepImage(stepIndex - 1);
+                }
 
                 // Reset buttons
                 document.getElementById('Investigate-btn').disabled = true;
