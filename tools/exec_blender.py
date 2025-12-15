@@ -11,7 +11,7 @@ import logging
 from typing import Tuple, Dict
 from mcp.server.fastmcp import FastMCP
 import json
-from tools.blender_script_generators import generate_scene_info_script
+from blender_script_generators import generate_scene_info_script
 
 execute_and_evaluate_tool = {
     "type": "function",

@@ -330,7 +330,7 @@
 <body>
     <!-- Entry Page -->
     <div id="entry-page">
-        <h1 class="entry-title">Select a Trajectory to View</h1>
+        <h1 class="entry-title">Select a Picture to Start From</h1>
         <div class="preview-grid" id="preview-grid"></div>
     </div>
 
@@ -358,7 +358,7 @@
                 <div class="image-container" id="image-container-bottom">
                     <div class="loading-container">
                         <img src="https://i.stack.imgur.com/ATB3o.gif" alt="Loading" class="loading-gif" id="loading-gif">
-                        <div class="loading-text">Loading...</div>
+                        <div class="loading-text">Generating...</div>
                     </div>
                 </div>
             </div>
@@ -402,14 +402,37 @@
                     img.src = `${item.image_url}?t=${Date.now()}`;
                     img.alt = item.is_target ? (item.scene_name || 'Target Image') : `Step ${item.step_index}`;
                     div.appendChild(img);
-                    // For target images, start from step 0, otherwise use the step_index
-                    div.onclick = () => startFromStep(item.is_target ? 0 : item.step_index);
+                    // For target images, load trajectory first, then start from step 0
+                    if (item.is_target && item.scene_name) {
+                        div.onclick = () => startFromScene(item.scene_name);
+                    } else {
+                        div.onclick = () => startFromStep(item.is_target ? 0 : item.step_index);
+                    }
                     grid.appendChild(div);
                 });
             } catch (error) {
                 console.error('Error loading preview images:', error);
                 document.getElementById('preview-grid').innerHTML = 
                     '<div style="color: #ff4444;">Error loading preview images</div>';
+            }
+        }
+
+        async function startFromScene(sceneName) {
+            // Load trajectory for the selected scene
+            try {
+                const response = await fetch(`/api/load-trajectory/${sceneName}`);
+                const data = await response.json();
+                if (data.success) {
+                    selectedStartIndex = 0;
+                    document.getElementById('entry-page').style.display = 'none';
+                    document.getElementById('main-container').style.display = 'flex';
+                    init();
+                } else {
+                    alert(`Error loading trajectory: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error loading trajectory:', error);
+                alert(`Error loading trajectory: ${error.message}`);
             }
         }
 
@@ -536,7 +559,7 @@
             container.innerHTML = `
                 <div class="loading-container">
                     <img src="https://i.stack.imgur.com/ATB3o.gif" alt="Loading" class="loading-gif">
-                    <div class="loading-text">Loading...</div>
+                    <div class="loading-text">Generating...</div>
                 </div>
             `;
         }

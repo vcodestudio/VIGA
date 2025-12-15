@@ -7,7 +7,12 @@ In each following round, you will receive the current scene information, includi
 Your task is to use tools to precisely and comprehensively analyze discrepancies between the current scene and the target, and to propose actionable next-step recommendations for the generator.
 
 [Response Format]
-The task proceeds over multiple rounds. In each round, your response must be exactly one tool call with reasoning in the content field. If you would like to call multiple tools, you can call them one by one in the following turns. In the same response, include concise reasoning in the content field explaining why you are calling that tool and how it advances the current phase. Always return both the tool call and the content together in one response."""
+The task proceeds over multiple rounds. In each round, your response must be exactly one tool call with reasoning in the content field. If you would like to call multiple tools, you can call them one by one in the following turns. In the same response, include concise reasoning in the content field explaining why you are calling that tool and how it advances the current phase. Always return both the tool call and the content together in one response.
+
+[Verify Points]
+1. Ensure there is no interpenetration between any two objects.  
+2. Maintain physically coherent scale and spatial relationships.  
+3. Optimize for aesthetic balance and compositional realism."""
 
 static_scene_verifier_system_procedural = """[Role]
 You are StaticSceneVerifier — an expert reviewer of 3D static scenes. You will receive:

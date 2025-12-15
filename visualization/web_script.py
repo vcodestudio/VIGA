@@ -41,24 +41,71 @@ except ImportError:
     pass
 
 # Global state
-STEPS_DATA: List[Dict] = []
+STEPS_DATA: List[Dict] = []  # Current active trajectory
 BASE_PATH: str = ""
 RENDERS_DIR: Path = None
 IMAGE_PATH: str = ""
 VIDEO_PATH: str = ""
 
+# Scene to trajectory path mapping
+SCENE_TRAJECTORY_MAP = {
+    "goldengate8": "output/static_scene/demo/20251030_033307/goldengate8",
+    "christmas1": "output/static_scene/demo/20251028_133713/christmas1",
+    "restroom5": "output/static_scene/demo/20251017_133317/restroom5",
+    "whitehouse9": "output/static_scene/demo/20251030_121357/whitehouse9",
+    "house11": "output/static_scene/demo/20251030_121641/house11",
+    "cake15": "output/static_scene/demo/20251031_084509/cake15",
+    "bathroom20": "output/static_scene/demo/20251030_121643/bathroom20",
+    "glass24": "output/static_scene/demo/20251030_121642/glass24",
+    "blueroom26": "output/static_scene/demo/20251205_133154/blueroom",
+    "bedroom32": "output/static_scene/demo/20251214_043022/bedroom32"
+}
 
-def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool = False):
-    """Parse trajectory file and extract steps, same logic as video_script.py"""
+# Preloaded trajectories for all scenes
+PRELOADED_TRAJECTORIES: Dict[str, Dict] = {}
+
+
+def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool = False, return_data: bool = False):
+    """Parse trajectory file and extract steps, same logic as video_script.py
+    
+    Args:
+        traj_path: Path to trajectory file
+        animation: Whether this is an animation trajectory
+        fix_camera: Whether to use fixed camera renders
+        return_data: If True, return parsed data instead of modifying global STEPS_DATA
+    
+    Returns:
+        If return_data is True, returns dict with steps_data, renders_dir, image_path, video_path
+        Otherwise, modifies global STEPS_DATA and returns None
+    """
     global STEPS_DATA, RENDERS_DIR, IMAGE_PATH, VIDEO_PATH
     
     traj = json.loads(Path(traj_path).read_text(encoding="utf-8"))
-    RENDERS_DIR = Path(traj_path).parent / "renders"
+    renders_dir = Path(traj_path).parent / "renders"
+    
+    if return_data:
+        steps_data = []
+        image_path = ""
+        video_path = ""
+    else:
+        STEPS_DATA = []
+        RENDERS_DIR = renders_dir
+        IMAGE_PATH = ""
+        VIDEO_PATH = ""
+        steps_data = STEPS_DATA
     
     if fix_camera:
-        IMAGE_PATH = os.path.dirname(traj_path) + '/video/renders'
+        image_path_val = os.path.dirname(traj_path) + '/video/renders'
+        if return_data:
+            image_path = image_path_val
+        else:
+            IMAGE_PATH = image_path_val
     if animation:
-        VIDEO_PATH = os.path.dirname(traj_path) + '/video/renders'
+        video_path_val = os.path.dirname(traj_path) + '/video/renders'
+        if return_data:
+            video_path = video_path_val
+        else:
+            VIDEO_PATH = video_path_val
     
     code_count = 0
     count = 0
@@ -83,7 +130,7 @@ def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool =
             continue
         
         step_data = {
-            "step_index": len(STEPS_DATA),
+            "step_index": len(steps_data),
             "code_count": code_count,
             "thought": thought,
             "code": code,
@@ -96,14 +143,14 @@ def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool =
         
         if animation:
             # Check for video file
-            video_dir = os.path.join(VIDEO_PATH, f'{code_count}')
+            video_dir = os.path.join(video_path_val if return_data else VIDEO_PATH, f'{code_count}')
             video_file = os.path.join(video_dir, 'Camera_Main.mp4')
             if os.path.exists(video_file):
                 step_data["video_path"] = video_file
                 step_data["image_path"] = None  # Use video instead
         elif fix_camera:
             # Use fixed camera renders
-            right_img_path = os.path.join(IMAGE_PATH, f'{code_count}.png')
+            right_img_path = os.path.join(image_path_val if return_data else IMAGE_PATH, f'{code_count}.png')
             if os.path.exists(right_img_path):
                 step_data["image_path"] = right_img_path
         else:
@@ -115,9 +162,9 @@ def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool =
                 continue
             if 'Image loaded from local path: ' not in user_message['content'][2]['text']:
                 continue
-            image_path = user_message['content'][2]['text'].split("Image loaded from local path: ")[1]
-            image_name = image_path.split("/renders/")[-1]
-            right_img_path = os.path.join(str(RENDERS_DIR), image_name)
+            img_path = user_message['content'][2]['text'].split("Image loaded from local path: ")[1]
+            image_name = img_path.split("/renders/")[-1]
+            right_img_path = os.path.join(str(renders_dir), image_name)
             right_img_path = os.path.abspath(right_img_path)  # 转换为绝对路径并规范化
             if os.path.exists(right_img_path):
                 step_data["image_path"] = right_img_path
@@ -132,19 +179,27 @@ def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool =
                 blend_path = os.path.join(os.path.dirname(traj_path), 'renders', f'{code_count}', 'state.blend')
         else:
             # For normal trajectory, blend file is in renders/{code_count}/state.blend
-            blend_path = os.path.join(RENDERS_DIR, f'{code_count}', 'state.blend')
+            blend_path = os.path.join(str(renders_dir), f'{code_count}', 'state.blend')
             if not os.path.exists(blend_path):
                 # Try parent renders directory
-                blend_path = os.path.join(RENDERS_DIR.parent, 'renders', f'{code_count}', 'state.blend')
+                blend_path = os.path.join(renders_dir.parent, 'renders', f'{code_count}', 'state.blend')
         
         if os.path.exists(blend_path):
             step_data["blend_path"] = blend_path
         
         # Only add step if it has image or video
         if step_data["image_path"] or step_data["video_path"]:
-            STEPS_DATA.append(step_data)
+            steps_data.append(step_data)
     
-    print(f"Parsed {len(STEPS_DATA)} steps from trajectory")
+    if return_data:
+        return {
+            "steps_data": steps_data,
+            "renders_dir": renders_dir,
+            "image_path": image_path if fix_camera else "",
+            "video_path": video_path if animation else ""
+        }
+    else:
+        print(f"Parsed {len(STEPS_DATA)} steps from trajectory")
 
 
 @app.route('/')
@@ -208,6 +263,82 @@ def get_target_image(scene_name):
     image_dir = os.path.dirname(target_path)
     image_file = os.path.basename(target_path)
     return send_from_directory(image_dir, image_file)
+
+
+def find_trajectory_file(base_path):
+    """Find generator_memory.json in base_path or its subdirectories"""
+    if not os.path.isdir(base_path):
+        return None
+    
+    # Check if generator_memory.json is directly in base_path
+    traj_path = os.path.join(base_path, 'generator_memory.json')
+    if os.path.exists(traj_path):
+        return traj_path
+    
+    # Look in subdirectories
+    for task in os.listdir(base_path):
+        task_path = os.path.join(base_path, task)
+        if os.path.isdir(task_path):
+            traj_path = os.path.join(task_path, 'generator_memory.json')
+            if os.path.exists(traj_path):
+                return traj_path
+    
+    return None
+
+
+def preload_all_trajectories():
+    """Preload all trajectories for all scenes"""
+    global PRELOADED_TRAJECTORIES
+    
+    print("Preloading all trajectories...")
+    for scene_name, trajectory_path in SCENE_TRAJECTORY_MAP.items():
+        if trajectory_path is None:
+            continue
+        
+        base_path = trajectory_path
+        traj_path = find_trajectory_file(base_path)
+        
+        if traj_path and os.path.exists(traj_path):
+            try:
+                print(f"  Loading {scene_name} from {traj_path}")
+                parsed_data = parse_trajectory(traj_path, animation=False, fix_camera=False, return_data=True)
+                PRELOADED_TRAJECTORIES[scene_name] = {
+                    "steps_data": parsed_data["steps_data"],
+                    "base_path": base_path,
+                    "renders_dir": parsed_data["renders_dir"],
+                    "image_path": parsed_data["image_path"],
+                    "video_path": parsed_data["video_path"]
+                }
+                print(f"  Loaded {len(parsed_data['steps_data'])} steps for {scene_name}")
+            except Exception as e:
+                print(f"  Error loading {scene_name}: {e}")
+        else:
+            print(f"  Warning: Could not find trajectory for {scene_name} at {base_path}")
+    
+    print(f"Preloaded {len(PRELOADED_TRAJECTORIES)} trajectories")
+
+
+@app.route('/api/load-trajectory/<scene_name>')
+def load_trajectory(scene_name):
+    """Load trajectory for a specific scene from preloaded data"""
+    global STEPS_DATA, BASE_PATH, RENDERS_DIR, IMAGE_PATH, VIDEO_PATH
+    
+    # Check if trajectory is preloaded
+    if scene_name in PRELOADED_TRAJECTORIES:
+        preloaded = PRELOADED_TRAJECTORIES[scene_name]
+        STEPS_DATA = preloaded["steps_data"]
+        BASE_PATH = preloaded["base_path"]
+        RENDERS_DIR = preloaded["renders_dir"]
+        IMAGE_PATH = preloaded["image_path"]
+        VIDEO_PATH = preloaded["video_path"]
+        
+        return jsonify({
+            "success": True,
+            "total_steps": len(STEPS_DATA),
+            "scene_name": scene_name
+        })
+    else:
+        return jsonify({"error": f"Trajectory not found for scene: {scene_name}"}), 404
 
 
 @app.route('/api/steps')
@@ -341,16 +472,30 @@ def main():
             traj_path = os.path.join(task_path, 'generator_memory.json')
             break
     
-    if not traj_path or not os.path.exists(traj_path):
-        print(f"Error: Could not find generator_memory.json in {base_path}")
-        return
+    # Preload all trajectories first
+    preload_all_trajectories()
     
-    print(f"Loading trajectory from: {traj_path}")
-    parse_trajectory(traj_path, animation=args.animation, fix_camera=args.fix_camera)
-    
-    if len(STEPS_DATA) == 0:
-        print("Warning: No steps found in trajectory")
-        return
+    # Load default trajectory (goldengate8) as initial active trajectory
+    if "goldengate8" in PRELOADED_TRAJECTORIES:
+        preloaded = PRELOADED_TRAJECTORIES["goldengate8"]
+        STEPS_DATA = preloaded["steps_data"]
+        BASE_PATH = preloaded["base_path"]
+        RENDERS_DIR = preloaded["renders_dir"]
+        IMAGE_PATH = preloaded["image_path"]
+        VIDEO_PATH = preloaded["video_path"]
+        print(f"Loaded default trajectory (goldengate8) with {len(STEPS_DATA)} steps")
+    else:
+        # Fallback to old method if goldengate8 not preloaded
+        if not traj_path or not os.path.exists(traj_path):
+            print(f"Error: Could not find generator_memory.json in {base_path}")
+            return
+        
+        print(f"Loading trajectory from: {traj_path}")
+        parse_trajectory(traj_path, animation=args.animation, fix_camera=args.fix_camera)
+        
+        if len(STEPS_DATA) == 0:
+            print("Warning: No steps found in trajectory")
+            return
     
     print(f"Starting web server on http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=True)
