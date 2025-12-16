@@ -58,7 +58,8 @@ SCENE_TRAJECTORY_MAP = {
     "bathroom20": "output/static_scene/demo/20251030_121643/bathroom20",
     "glass24": "output/static_scene/demo/20251030_121642/glass24",
     "blueroom26": "output/static_scene/demo/20251205_133154/blueroom",
-    "bedroom32": "output/static_scene/demo/20251214_043022/bedroom32"
+    "bedroom32": "output/static_scene/demo/20251214_043022/bedroom32",
+    "kitchen34": "output/static_scene/demo/20251214_043030/kitchen34"
 }
 
 # Preloaded trajectories for all scenes
@@ -216,7 +217,7 @@ def index():
 
 @app.route('/api/preview-images')
 def get_preview_images():
-    """Get preview images for entry page (6 target images)"""
+    """Get preview images for entry page (7 target images)"""
     preview_images = []
     
     # List of target images to display (scene name, file extension)
@@ -226,7 +227,8 @@ def get_preview_images():
         ("bathroom20", "png"),
         ("glass24", "png"),
         ("blueroom26", "jpeg"),
-        ("bedroom32", "png")
+        ("bedroom32", "png"),
+        ("kitchen34", "png")
     ]
     
     # Add all target images
