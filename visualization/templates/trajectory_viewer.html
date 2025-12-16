@@ -388,7 +388,7 @@
                 </div>
             </div>
             <div class="controls">
-                <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()">Investigate</button>
+                <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()" disabled>Investigate</button>
                 <button class="btn btn-resume" id="resume-btn" onclick="resume()" style="display: none;">Resume</button>
                 <button class="btn" id="download-blender-btn" onclick="downloadBlenderFile()">Download Project</button>
             </div>
@@ -548,6 +548,7 @@
                 }
 
                 // Reset buttons
+                document.getElementById('Investigate-btn').disabled = true;
                 document.getElementById('Investigate-btn').style.display = 'block';
                 document.getElementById('resume-btn').style.display = 'none';
                 // Update download blender button state
@@ -560,6 +561,9 @@
                 // Display code line by line (after thought is done)
                 await displayCode(step.code);
                 codeGenerated = true;
+
+                // Enable Investigate button after code is displayed
+                document.getElementById('Investigate-btn').disabled = false;
 
                 // Wait 1 second after code, then load image
                 await new Promise(resolve => setTimeout(resolve, 1000));
