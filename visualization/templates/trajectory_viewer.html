@@ -77,9 +77,9 @@
 
         .preview-grid {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(8, 1fr);
             gap: 20px;
-            max-width: 1400px;
+            max-width: 1600px;
             width: 100%;
         }
 
@@ -242,6 +242,12 @@
         }
 
         .image-container img {
+            max-width: 70%;
+            max-height: 70%;
+            object-fit: contain;
+        }
+
+        .image-container video {
             max-width: 70%;
             max-height: 70%;
             object-fit: contain;
@@ -670,7 +676,9 @@
             try {
                 const response = await fetch(`/api/step/${stepIndex}`);
                 const step = await response.json();
-                if (step.has_image) {
+                if (step.has_video) {
+                    await loadVideo(stepIndex, 'top');
+                } else if (step.has_image) {
                     await loadImage(stepIndex, 'top');
                 }
             } catch (error) {

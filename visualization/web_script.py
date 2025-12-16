@@ -59,8 +59,12 @@ SCENE_TRAJECTORY_MAP = {
     "glass24": "output/static_scene/demo/20251030_121642/glass24",
     "blueroom26": "output/static_scene/demo/20251205_133154/blueroom",
     "bedroom32": "output/static_scene/demo/20251214_043022/bedroom32",
-    "kitchen34": "output/static_scene/demo/20251214_043030/kitchen34"
+    "kitchen34": "output/static_scene/demo/20251214_043030/kitchen34",
+    "table3": "output/static_scene/demo/20251015_140859/table3"
 }
+
+# Dynamic scenes that use video (.mp4) instead of images (.png)
+DYNAMIC_SCENES = {"table3"}
 
 # Preloaded trajectories for all scenes
 PRELOADED_TRAJECTORIES: Dict[str, Dict] = {}
@@ -149,10 +153,13 @@ def parse_trajectory(traj_path: str, animation: bool = False, fix_camera: bool =
         }
         
         if animation:
-            # Check for video file
-            video_dir = os.path.join(video_path_val if return_data else VIDEO_PATH, f'{code_count}')
+            # Check for video file - first try renders/{code_count}, then video/renders/{code_count}
+            video_dir = os.path.join(str(renders_dir), f'{code_count}')
             video_file = os.path.join(video_dir, 'Camera_Main.mp4')
+            # Set to absolute path
+            video_file = os.path.abspath(video_file)
             if os.path.exists(video_file):
+                print(f"Video file found: {video_file}")
                 step_data["video_path"] = video_file
                 step_data["image_path"] = None  # Use video instead
         elif fix_camera:
@@ -217,29 +224,36 @@ def index():
 
 @app.route('/api/preview-images')
 def get_preview_images():
-    """Get preview images for entry page (7 target images)"""
+    """Get preview images for entry page (8 target images)"""
     preview_images = []
     
-    # List of target images to display (scene name, file extension)
+    # List of target images to display (scene name, file extension, is_dynamic)
+    # is_dynamic means it's in data/dynamic_scene instead of data/static_scene
     target_images = [
-        ("restroom5", "png"),
-        ("house11", "png"),
-        ("bathroom20", "png"),
-        ("glass24", "png"),
-        ("blueroom26", "jpeg"),
-        ("bedroom32", "png"),
-        ("kitchen34", "png")
+        ("restroom5", "png", False),
+        ("house11", "png", False),
+        ("bathroom20", "png", False),
+        ("glass24", "png", False),
+        ("blueroom26", "jpeg", False),
+        ("bedroom32", "png", False),
+        ("kitchen34", "png", False),
+        ("table3", "png", True)  # Dynamic scene - target image in data/dynamic_scene
     ]
     
     # Add all target images
-    for idx, (scene_name, ext) in enumerate(target_images):
-        target_path = os.path.abspath(f'data/static_scene/{scene_name}/target.{ext}')
+    for idx, (scene_name, ext, is_dynamic) in enumerate(target_images):
+        if is_dynamic:
+            target_path = os.path.abspath(f'data/dynamic_scene/{scene_name}/target.{ext}')
+        else:
+            target_path = os.path.abspath(f'data/static_scene/{scene_name}/target.{ext}')
+        
         if os.path.exists(target_path):
             preview_images.append({
                 "step_index": -1 - idx,  # Special negative index for target images
                 "image_url": f"/api/target-image/{scene_name}",
                 "is_target": True,
-                "scene_name": scene_name
+                "scene_name": scene_name,
+                "is_dynamic": is_dynamic
             })
     
     return jsonify({"images": preview_images})
@@ -254,14 +268,18 @@ def get_target_image(scene_name):
         if not os.path.exists(target_path):
             target_path = os.path.join(USER_UPLOAD_DIR, "target.jpeg")
     else:
-        # Try different file extensions
+        # Try different file extensions and directories
         possible_extensions = ['png', 'jpeg', 'jpg']
         target_path = None
         
-        for ext in possible_extensions:
-            path = os.path.abspath(f'data/static_scene/{scene_name}/target.{ext}')
-            if os.path.exists(path):
-                target_path = path
+        # Check static_scene first, then dynamic_scene
+        for base_dir in ['data/static_scene', 'data/dynamic_scene']:
+            for ext in possible_extensions:
+                path = os.path.abspath(f'{base_dir}/{scene_name}/target.{ext}')
+                if os.path.exists(path):
+                    target_path = path
+                    break
+            if target_path:
                 break
     
     if not target_path or not os.path.exists(target_path):
@@ -308,20 +326,27 @@ def preload_all_trajectories():
         base_path = trajectory_path
         traj_path = find_trajectory_file(base_path)
         
+        # Check if this is a dynamic scene (uses video instead of images)
+        is_dynamic = scene_name in DYNAMIC_SCENES
+        
         if traj_path and os.path.exists(traj_path):
             try:
-                print(f"  Loading {scene_name} from {traj_path}")
-                parsed_data = parse_trajectory(traj_path, animation=False, fix_camera=False, return_data=True)
+                print(f"  Loading {scene_name} from {traj_path} (dynamic={is_dynamic})")
+                # For dynamic scenes, use animation=True to load video files
+                parsed_data = parse_trajectory(traj_path, animation=is_dynamic, fix_camera=False, return_data=True)
                 PRELOADED_TRAJECTORIES[scene_name] = {
                     "steps_data": parsed_data["steps_data"],
                     "base_path": base_path,
                     "renders_dir": parsed_data["renders_dir"],
                     "image_path": parsed_data["image_path"],
-                    "video_path": parsed_data["video_path"]
+                    "video_path": parsed_data["video_path"],
+                    "is_dynamic": is_dynamic
                 }
                 print(f"  Loaded {len(parsed_data['steps_data'])} steps for {scene_name}")
             except Exception as e:
                 print(f"  Error loading {scene_name}: {e}")
+                import traceback
+                traceback.print_exc()
         else:
             print(f"  Warning: Could not find trajectory for {scene_name} at {base_path}")
     
@@ -422,15 +447,19 @@ def get_image(step_index):
 @app.route('/api/video/<int:step_index>')
 def get_video(step_index):
     """Serve video file"""
+    print(f"[DEBUG] /api/video: step_index={step_index}, total_steps={len(STEPS_DATA)}")
     if step_index < 0 or step_index >= len(STEPS_DATA):
+        print(f"[DEBUG] /api/video: step_index out of range")
         return jsonify({"error": "Step not found"}), 404
     
     step = STEPS_DATA[step_index]
-    if not step["video_path"] or not os.path.exists(step["video_path"]):
+    video_path = step.get("video_path")
+    print(f"[DEBUG] /api/video: video_path={video_path}, exists={os.path.exists(video_path) if video_path else False}")
+    if not video_path or not os.path.exists(video_path):
         return jsonify({"error": "Video not found"}), 404
     
-    video_dir = os.path.dirname(step["video_path"])
-    video_file = os.path.basename(step["video_path"])
+    video_dir = os.path.dirname(video_path)
+    video_file = os.path.basename(video_path)
     return send_from_directory(video_dir, video_file)
 
 
