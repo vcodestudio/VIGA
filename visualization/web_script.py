@@ -49,12 +49,8 @@ VIDEO_PATH: str = ""
 
 # Scene to trajectory path mapping
 SCENE_TRAJECTORY_MAP = {
-    "goldengate8": "output/static_scene/demo/20251030_033307/goldengate8",
-    "christmas1": "output/static_scene/demo/20251028_133713/christmas1",
     "restroom5": "output/static_scene/demo/20251017_133317/restroom5",
-    "whitehouse9": "output/static_scene/demo/20251030_121357/whitehouse9",
     "house11": "output/static_scene/demo/20251030_121641/house11",
-    "cake15": "output/static_scene/demo/20251031_084509/cake15",
     "bathroom20": "output/static_scene/demo/20251030_121643/bathroom20",
     "glass24": "output/static_scene/demo/20251030_121642/glass24",
     "blueroom26": "output/static_scene/demo/20251205_133154/blueroom",
@@ -210,17 +206,13 @@ def index():
 
 @app.route('/api/preview-images')
 def get_preview_images():
-    """Get preview images for entry page (10 target images)"""
+    """Get preview images for entry page (6 target images)"""
     preview_images = []
     
     # List of target images to display (scene name, file extension)
     target_images = [
-        ("goldengate8", "png"),
-        ("christmas1", "png"),
         ("restroom5", "png"),
-        ("whitehouse9", "png"),
         ("house11", "png"),
-        ("cake15", "png"),
         ("bathroom20", "png"),
         ("glass24", "png"),
         ("blueroom26", "jpeg"),
@@ -428,74 +420,60 @@ def get_video(step_index):
 def get_blend(step_index):
     """Serve Blender file (for potential 3D interaction)"""
     if step_index < 0 or step_index >= len(STEPS_DATA):
+        print(f"[DEBUG] /api/blend: invalid step_index={step_index}, total_steps={len(STEPS_DATA)}")
         return jsonify({"error": "Step not found"}), 404
     
     step = STEPS_DATA[step_index]
-    if not step["blend_path"] or not os.path.exists(step["blend_path"]):
+    blend_path = step.get("blend_path")
+
+    # 如果预解析阶段没找到 blend 文件，或者路径无效，则根据当前渲染图片目录重新推断
+    if not blend_path or not os.path.exists(blend_path):
+        image_path = step.get("image_path")
+        if image_path:
+            # 确保为字符串
+            image_path = str(image_path)
+            candidate_blend = os.path.join(os.path.dirname(image_path), "state.blend")
+            print(f"[DEBUG] /api/blend: step={step_index}, image_path={image_path}, candidate_blend={candidate_blend}")
+            if os.path.exists(candidate_blend):
+                blend_path = candidate_blend
+                # 缓存回步骤数据，后续请求可直接使用
+                step["blend_path"] = blend_path
+
+    if not blend_path or not os.path.exists(blend_path):
+        print(f"[DEBUG] /api/blend: blend not found for step={step_index}, blend_path={blend_path}")
         return jsonify({"error": "Blend file not found"}), 404
     
-    blend_dir = os.path.dirname(step["blend_path"])
-    blend_file = os.path.basename(step["blend_path"])
+    # 确保路径为绝对字符串路径
+    blend_path = os.path.abspath(str(blend_path))
+    blend_dir = os.path.dirname(blend_path)
+    blend_file = os.path.basename(blend_path)
+    print(f"[DEBUG] /api/blend: sending blend for step={step_index}, path={blend_path}")
     return send_from_directory(blend_dir, blend_file, as_attachment=True)
-
 
 def main():
     global BASE_PATH
     
     ap = argparse.ArgumentParser()
-    ap.add_argument("--name", type=str, default="20251028_133713")
     ap.add_argument("--port", type=int, default=5000)
     ap.add_argument("--host", type=str, default="0.0.0.0")
-    ap.add_argument("--fix_camera", action="store_true", help="固定相机位置和方向")
-    ap.add_argument("--animation", action="store_true", help="从video_path加载MP4文件并拼接（与fix_camera相同逻辑）")
     args = ap.parse_args()
-    
-    # Determine base path (same logic as video_script.py)
-    if args.animation:
-        if os.path.exists(f'output/dynamic_scene/demo/{args.name}'):
-            base_path = f'output/dynamic_scene/demo/{args.name}'
-        else:
-            base_path = f'output/dynamic_scene/{args.name}'
-    else:
-        if os.path.exists(f'output/static_scene/demo/{args.name}'):
-            base_path = f'output/static_scene/demo/{args.name}'
-        else:
-            base_path = f'output/static_scene/{args.name}'
-    
-    BASE_PATH = base_path
-    
-    # Find trajectory file
-    traj_path = ''
-    for task in os.listdir(base_path):
-        task_path = os.path.join(base_path, task)
-        if os.path.isdir(task_path) and os.path.exists(os.path.join(task_path, 'generator_memory.json')):
-            traj_path = os.path.join(task_path, 'generator_memory.json')
-            break
     
     # Preload all trajectories first
     preload_all_trajectories()
     
-    # Load default trajectory (goldengate8) as initial active trajectory
-    if "goldengate8" in PRELOADED_TRAJECTORIES:
-        preloaded = PRELOADED_TRAJECTORIES["goldengate8"]
+    # Load the first available preloaded trajectory as initial active trajectory
+    if PRELOADED_TRAJECTORIES:
+        first_scene = next(iter(PRELOADED_TRAJECTORIES.keys()))
+        preloaded = PRELOADED_TRAJECTORIES[first_scene]
         STEPS_DATA = preloaded["steps_data"]
         BASE_PATH = preloaded["base_path"]
         RENDERS_DIR = preloaded["renders_dir"]
         IMAGE_PATH = preloaded["image_path"]
         VIDEO_PATH = preloaded["video_path"]
-        print(f"Loaded default trajectory (goldengate8) with {len(STEPS_DATA)} steps")
+        print(f"Loaded default trajectory ({first_scene}) with {len(STEPS_DATA)} steps")
     else:
-        # Fallback to old method if goldengate8 not preloaded
-        if not traj_path or not os.path.exists(traj_path):
-            print(f"Error: Could not find generator_memory.json in {base_path}")
-            return
-        
-        print(f"Loading trajectory from: {traj_path}")
-        parse_trajectory(traj_path, animation=args.animation, fix_camera=args.fix_camera)
-        
-        if len(STEPS_DATA) == 0:
-            print("Warning: No steps found in trajectory")
-            return
+        print("Error: No trajectories could be preloaded from SCENE_TRAJECTORY_MAP.")
+        return
     
     print(f"Starting web server on http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=True)

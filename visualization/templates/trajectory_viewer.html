@@ -38,7 +38,7 @@
 
         .preview-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(6, 1fr);
             gap: 20px;
             max-width: 1200px;
             width: 100%;
@@ -268,13 +268,6 @@
             gap: 15px;
         }
 
-        .download-blender-btn {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            z-index: 10;
-        }
-
         .btn {
             background: #4a9eff;
             color: white;
@@ -397,8 +390,6 @@
             <div class="controls">
                 <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()" disabled>Investigate</button>
                 <button class="btn btn-resume" id="resume-btn" onclick="resume()" style="display: none;">Resume</button>
-            </div>
-            <div class="download-blender-btn">
                 <button class="btn" id="download-blender-btn" onclick="downloadBlenderFile()" disabled>Download Blender</button>
             </div>
         </div>
@@ -506,7 +497,6 @@
                 
                 if (totalSteps > 0) {
                     currentStepIndex = selectedStartIndex - 1; // Will be incremented in loadStep
-                    updateStepIndicator();
                     // Auto-start first step
                     loadStep(selectedStartIndex);
                 } else {
@@ -517,10 +507,14 @@
                 document.getElementById('thought-content').textContent = 'Error loading trajectory data.';
             }
         }
-
-        function updateStepIndicator() {
+        
+        function updateStepIndicator(step) {
+            // 使用轨迹中的 code_count 作为累积步数计数器
+            const stepNumber = step && typeof step.code_count === 'number'
+                ? step.code_count
+                : (currentStepIndex + 1);
             document.getElementById('step-indicator').textContent = 
-                `Step ${currentStepIndex + 1}`;
+                `Step ${stepNumber}`;
         }
 
         async function loadStep(stepIndex) {
@@ -529,7 +523,6 @@
             }
 
             currentStepIndex = stepIndex;
-            updateStepIndicator();
             codeGenerated = false;
             imageLoaded = false;
 
@@ -549,6 +542,8 @@
 
                 const response = await fetch(`/api/step/${stepIndex}`);
                 const step = await response.json();
+                // 更新右上角步数指示（使用原始 code_count）
+                updateStepIndicator(step);
 
                 // If not the first step, load previous step image to top
                 if (stepIndex > 0) {
@@ -561,7 +556,7 @@
                 document.getElementById('resume-btn').style.display = 'none';
                 // Update download blender button state
                 currentStepHasBlend = step.has_blend || false;
-                document.getElementById('download-blender-btn').disabled = !currentStepHasBlend;
+                document.getElementById('download-blender-btn').disabled = true; // 与 Investigate 同步，稍后一起放开
                 isPaused = false;
 
                 // Type thought character by character
@@ -573,6 +568,8 @@
 
                 // Enable Investigate button after code is displayed
                 document.getElementById('Investigate-btn').disabled = false;
+                // Investigate 可点时，Download Blender 也根据是否有 blend 同步可点
+                document.getElementById('download-blender-btn').disabled = !currentStepHasBlend;
 
                 // Wait 1 second after code, then load image
                 await new Promise(resolve => setTimeout(resolve, 1000));
