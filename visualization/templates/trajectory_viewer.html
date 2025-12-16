@@ -268,6 +268,13 @@
             gap: 15px;
         }
 
+        .download-blender-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+
         .btn {
             background: #4a9eff;
             color: white;
@@ -391,6 +398,9 @@
                 <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()" disabled>Investigate</button>
                 <button class="btn btn-resume" id="resume-btn" onclick="resume()" style="display: none;">Resume</button>
             </div>
+            <div class="download-blender-btn">
+                <button class="btn" id="download-blender-btn" onclick="downloadBlenderFile()" disabled>Download Blender</button>
+            </div>
         </div>
     </div>
 
@@ -405,6 +415,7 @@
         let codeGenerated = false;
         let imageLoaded = false;
         let typingTimeout = null;
+        let currentStepHasBlend = false;
 
         // Entry page initialization
         async function initEntryPage() {
@@ -548,6 +559,9 @@
                 document.getElementById('Investigate-btn').disabled = true;
                 document.getElementById('Investigate-btn').style.display = 'block';
                 document.getElementById('resume-btn').style.display = 'none';
+                // Update download blender button state
+                currentStepHasBlend = step.has_blend || false;
+                document.getElementById('download-blender-btn').disabled = !currentStepHasBlend;
                 isPaused = false;
 
                 // Type thought character by character
@@ -726,6 +740,20 @@
                 // Otherwise, continue with current step loading
                 loadStep(currentStepIndex);
             }
+        }
+
+        function downloadBlenderFile() {
+            if (currentStepIndex < 0 || currentStepIndex >= totalSteps || !currentStepHasBlend) {
+                return;
+            }
+            
+            // Create a temporary anchor element to trigger download
+            const link = document.createElement('a');
+            link.href = `/api/blend/${currentStepIndex}`;
+            link.download = `state_step_${currentStepIndex + 1}.blend`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // Initialize entry page on load

@@ -87,9 +87,8 @@ class Executor:
         # File operations
         with open(code_file, "w") as f:
             f.write(code)
-        os.makedirs(render_file, exist_ok=True)
-        for img in os.listdir(render_file):
-            os.remove(os.path.join(render_file, img))
+        if not os.path.exists(render_file):
+            return {"status": "error"}
             
         # Execute Blender
         success, stdout, stderr = self._execute_blender(str(code_file), str(render_file))
@@ -294,12 +293,12 @@ def main():
     # 构建路径
     base_path = Path(f"output/static_scene/demo/{args.name}/")
     for dir in os.listdir(base_path):
-        if os.path.isdir(dir):
-            base_path = base_path / dir
+        if os.path.isdir(base_path / dir):
+            base_path = os.path.join(base_path, dir)
             os.makedirs(base_path, exist_ok=True)
-        break
+            break
     
-    scripts_dir = os.path.dirname(base_path) + "/scripts"    
+    scripts_dir = base_path + "/scripts"    
     if not os.path.exists(scripts_dir):
         logging.error(f"Scripts directory not found: {scripts_dir}")
         return
@@ -308,7 +307,7 @@ def main():
     if args.blender_save is None:
         args.blender_save = str(base_path)
     if args.output_dir is None:
-        args.output_dir = str(base_path / "renders")
+        args.output_dir = base_path + "/renders"
     render_dir = Path(args.output_dir)
     
     blender_save_dir = Path(args.blender_save)
@@ -350,7 +349,7 @@ def main():
         # 执行脚本并保存 .blend 文件
         result = temp_executor.execute(code)
         if result["status"] != "success":
-            logging.error(f"[Step {step_num}] Execution failed: {result['output'].get('text', ['Unknown error'])}")
+            logging.error(f"[Step {step_num}] Execution failed")
             # 即使失败也继续，但跳过渲染
             continue
     
