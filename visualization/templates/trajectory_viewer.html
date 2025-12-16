@@ -72,7 +72,7 @@
         }
 
         .left-panel {
-            width: 60%;
+            width: 50%;
             background: #14161a;
             padding: 28px;
             overflow-y: auto;
@@ -81,7 +81,7 @@
         }
 
         .right-panel {
-            width: 40%;
+            width: 50%;
             background: #0a0a0a;
             display: flex;
             flex-direction: column;
@@ -92,11 +92,31 @@
         .right-panel-top {
             flex: 1.0;
             display: flex;
+            flex-direction: row;
             align-items: center;
             justify-content: center;
             position: relative;
             border-bottom: 2px solid #464650;
             min-height: 0; /* Prevent layout shift */
+        }
+
+        .right-panel-top-left {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-right: 2px solid #464650;
+            padding: 10px;
+        }
+
+        .right-panel-top-right {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
         }
 
         .right-panel-bottom {
@@ -352,7 +372,12 @@
         <div class="right-panel">
             <div class="step-indicator" id="step-indicator">Step 0</div>
             <div class="right-panel-top">
-                <div class="image-container" id="image-container-top"></div>
+                <div class="right-panel-top-left">
+                    <div class="image-container" id="image-container-original"></div>
+                </div>
+                <div class="right-panel-top-right">
+                    <div class="image-container" id="image-container-top"></div>
+                </div>
             </div>
             <div class="right-panel-bottom">
                 <div class="image-container" id="image-container-bottom">
@@ -423,6 +448,11 @@
                 const response = await fetch(`/api/load-trajectory/${sceneName}`);
                 const data = await response.json();
                 if (data.success) {
+                    // Store the original target image URL
+                    originalTargetImageUrl = `/api/target-image/${sceneName}?t=${Date.now()}`;
+                    // Load and display the original target image in the left side of top panel
+                    loadOriginalTargetImage();
+                    
                     selectedStartIndex = 0;
                     document.getElementById('entry-page').style.display = 'none';
                     document.getElementById('main-container').style.display = 'flex';
@@ -434,6 +464,18 @@
                 console.error('Error loading trajectory:', error);
                 alert(`Error loading trajectory: ${error.message}`);
             }
+        }
+
+        function loadOriginalTargetImage() {
+            if (!originalTargetImageUrl) return;
+            const container = document.getElementById('image-container-original');
+            container.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = originalTargetImageUrl;
+            img.onerror = () => {
+                container.innerHTML = '<div class="loading">Original image not available</div>';
+            };
+            container.appendChild(img);
         }
 
         function startFromStep(stepIndex) {
@@ -491,6 +533,7 @@
                 document.getElementById('thought-content').innerHTML = '';
                 document.getElementById('code-content').innerHTML = '';
                 document.getElementById('image-container-top').innerHTML = '';
+                // Keep original target image visible (don't clear image-container-original)
                 showBottomLoading();
 
                 const response = await fetch(`/api/step/${stepIndex}`);
