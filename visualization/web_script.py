@@ -476,36 +476,101 @@ def find_new_output_directories():
     
     current_dirs = set()
     new_dirs = []
+    current_time = time.time()
     
-    # Scan for directories (format: output/static_scene/demo/TIMESTAMP/TASKNAME or output/static_scene/useful/TIMESTAMP/TASKNAME)
-    for subdir in ['demo', 'useful']:
-        subdir_path = os.path.join(OUTPUT_BASE_DIR, subdir)
-        if not os.path.exists(subdir_path):
+    # Scan for directories in multiple patterns:
+    # 1. output/static_scene/TIMESTAMP/TASKNAME (directly under static_scene)
+    # 2. output/static_scene/demo/TIMESTAMP/TASKNAME
+    # 3. output/static_scene/useful/TIMESTAMP/TASKNAME
+    
+    scan_paths = [
+        OUTPUT_BASE_DIR,  # Direct timestamp directories
+        os.path.join(OUTPUT_BASE_DIR, 'demo'),
+        os.path.join(OUTPUT_BASE_DIR, 'useful')
+    ]
+    
+    for base_path in scan_paths:
+        if not os.path.exists(base_path):
             continue
         
-        for timestamp_dir in os.listdir(subdir_path):
-            timestamp_path = os.path.join(subdir_path, timestamp_dir)
-            if not os.path.isdir(timestamp_path):
+        # Check if this is a direct timestamp directory or a subdirectory
+        for item in os.listdir(base_path):
+            item_path = os.path.join(base_path, item)
+            if not os.path.isdir(item_path):
                 continue
             
-            for task_dir in os.listdir(timestamp_path):
-                task_path = os.path.join(timestamp_path, task_dir)
-                if not os.path.isdir(task_path):
+            # If base_path is OUTPUT_BASE_DIR, item is a timestamp directory
+            # Otherwise, item might be a timestamp directory or a subdirectory
+            if base_path == OUTPUT_BASE_DIR:
+                # This is a timestamp directory, look for task directories inside
+                timestamp_path = item_path
+                try:
+                    for task_dir in os.listdir(timestamp_path):
+                        task_path = os.path.join(timestamp_path, task_dir)
+                        if not os.path.isdir(task_path):
+                            continue
+                        _check_and_add_directory(task_path, current_dirs, new_dirs, current_time)
+                except (OSError, PermissionError) as e:
+                    print(f"[SCAN] Error scanning {timestamp_path}: {e}")
                     continue
-                
-                full_path = os.path.abspath(task_path)
-                current_dirs.add(full_path)
-                
-                if full_path not in KNOWN_OUTPUT_DIRS:
-                    # Check if generator_memory.json exists
-                    traj_file = os.path.join(task_path, 'generator_memory.json')
-                    if os.path.exists(traj_file):
-                        new_dirs.append(full_path)
+            else:
+                # This might be a timestamp directory in demo/useful
+                # Check if it contains task directories or is itself a task directory
+                try:
+                    # Try to list contents - if it contains directories that look like tasks, it's a timestamp dir
+                    contents = os.listdir(item_path)
+                    has_task_dirs = any(os.path.isdir(os.path.join(item_path, c)) for c in contents)
+                    
+                    if has_task_dirs:
+                        # This is a timestamp directory, scan for task directories
+                        timestamp_path = item_path
+                        for task_dir in contents:
+                            task_path = os.path.join(timestamp_path, task_dir)
+                            if os.path.isdir(task_path):
+                                _check_and_add_directory(task_path, current_dirs, new_dirs, current_time)
+                    else:
+                        # This might be a task directory itself
+                        _check_and_add_directory(item_path, current_dirs, new_dirs, current_time)
+                except (OSError, PermissionError) as e:
+                    print(f"[SCAN] Error scanning {item_path}: {e}")
+                    continue
     
     # Update known directories
     KNOWN_OUTPUT_DIRS.update(current_dirs)
     
     return new_dirs
+
+
+def _check_and_add_directory(task_path, current_dirs, new_dirs, current_time):
+    """Helper function to check and add a directory if it's new and has trajectory file"""
+    full_path = os.path.abspath(task_path)
+    current_dirs.add(full_path)
+    
+    # Check if this is a new directory or has been recently modified
+    traj_file = os.path.join(task_path, 'generator_memory.json')
+    
+    if full_path not in KNOWN_OUTPUT_DIRS:
+        # New directory - check if it has generator_memory.json
+        if os.path.exists(traj_file):
+            new_dirs.append(full_path)
+            print(f"[SCAN] Found new directory: {full_path}")
+    else:
+        # Known directory - check if generator_memory.json was recently modified (within last 5 minutes)
+        # This handles the case where the file is being written or updated
+        if os.path.exists(traj_file):
+            try:
+                file_mtime = os.path.getmtime(traj_file)
+                time_since_mod = current_time - file_mtime
+                # If file was modified in the last 5 minutes, consider it as potentially new content
+                if time_since_mod < 300:  # 5 minutes
+                    # Check if directory was created recently (within 10 minutes)
+                    dir_mtime = os.path.getmtime(task_path)
+                    time_since_creation = current_time - dir_mtime
+                    if time_since_creation < 600:  # 10 minutes
+                        new_dirs.append(full_path)
+                        print(f"[SCAN] Found recently modified directory: {full_path} (modified {time_since_mod:.1f}s ago)")
+            except (OSError, PermissionError) as e:
+                print(f"[SCAN] Error checking {traj_file}: {e}")
 
 
 def monitor_user_task(task_id, output_dir):
@@ -600,7 +665,7 @@ def start_task():
 
 source ~/.bashrc
 cd /mnt/data/users/shaofengyin/AgenticVerifier
-/mnt/home/shaofengyin19260817/anaconda3/envs/agent/bin/python runners/static_scene.py --task=user --model=gpt-5 --generator-tools=tools/exec_blender.py,tools/generator_base.py,tools/initialize_plan.py
+/mnt/home/shaofengyin19260817/anaconda3/envs/agent/bin/python runners/static_scene.py --task=user --model=gpt-5 --generator-tools=tools/exec_blender.py,tools/generator_base.py,tools/initialize_plan.py --verifier-tools=tools/verifier_base.py
 """
         
         # Save script to temporary location
@@ -645,33 +710,46 @@ cd /mnt/data/users/shaofengyin/AgenticVerifier
                 # Look for new directories
                 new_dirs = find_new_output_directories()
                 for new_dir in new_dirs:
-                    # Check if this directory was created after task started (within 10 minutes)
-                    # and contains 'user' in the task name or is in useful/ directory
-                    dir_mtime = os.path.getmtime(new_dir)
-                    time_since_creation = time.time() - dir_mtime
-                    
-                    # Check if directory was created recently (within 10 minutes) and contains user task
-                    if (time_since_creation < 600 and 
-                        ('user' in new_dir.lower() or 'useful' in new_dir.lower())):
-                        # Verify it's actually a user task by checking if it's in useful/ or has user in name
+                    try:
+                        # Check if this directory was created after task started (within 15 minutes)
+                        dir_mtime = os.path.getmtime(new_dir)
+                        time_since_creation = time.time() - dir_mtime
+                        time_since_start = time.time() - start_time
+                        
+                        # Check if directory was created recently (within 15 minutes)
+                        # and contains 'user' in the path
                         task_name = os.path.basename(new_dir)
-                        if 'user' in task_name.lower() or 'useful' in new_dir.lower():
-                            ACTIVE_MONITORING[task_id]["output_dir"] = new_dir
-                            ACTIVE_MONITORING[task_id]["status"] = "running"
+                        dir_lower = new_dir.lower()
+                        
+                        # Match if:
+                        # 1. Directory was created within 15 minutes
+                        # 2. Task name is 'user' or path contains 'user'
+                        if (time_since_creation < 900 and  # 15 minutes
+                            ('user' in task_name.lower() or 'user' in dir_lower)):
+                            # Verify it has generator_memory.json or renders directory
+                            traj_file = os.path.join(new_dir, 'generator_memory.json')
+                            renders_dir = os.path.join(new_dir, 'renders')
                             
-                            # Start monitoring thread
-                            monitor_thread = threading.Thread(
-                                target=monitor_user_task,
-                                args=(task_id, new_dir),
-                                daemon=True
-                            )
-                            monitor_thread.start()
-                            ACTIVE_MONITORING[task_id]["monitoring_thread"] = monitor_thread
-                            print(f"[MONITOR] Found output directory for {task_id}: {new_dir}")
-                            return
+                            if os.path.exists(traj_file) or os.path.exists(renders_dir):
+                                ACTIVE_MONITORING[task_id]["output_dir"] = new_dir
+                                ACTIVE_MONITORING[task_id]["status"] = "running"
+                                
+                                # Start monitoring thread
+                                monitor_thread = threading.Thread(
+                                    target=monitor_user_task,
+                                    args=(task_id, new_dir),
+                                    daemon=True
+                                )
+                                monitor_thread.start()
+                                ACTIVE_MONITORING[task_id]["monitoring_thread"] = monitor_thread
+                                print(f"[MONITOR] Found output directory for {task_id}: {new_dir}")
+                                return
+                    except Exception as e:
+                        print(f"[MONITOR] Error checking directory {new_dir}: {e}")
+                        continue
                 
-                time.sleep(5)
-                waited += 5
+                time.sleep(3)  # Check every 3 seconds
+                waited += 3
             
             if task_id in ACTIVE_MONITORING:
                 ACTIVE_MONITORING[task_id]["status"] = "failed"
@@ -702,11 +780,26 @@ def check_new_steps(task_id):
     output_dir = task_info.get("output_dir")
     
     if not output_dir or not os.path.exists(output_dir):
-        return jsonify({
-            "has_new": False,
-            "status": task_info.get("status", "unknown"),
-            "message": "Output directory not found yet"
-        })
+        # Try to find the directory again
+        new_dirs = find_new_output_directories()
+        for new_dir in new_dirs:
+            task_name = os.path.basename(new_dir)
+            if 'user' in task_name.lower() or 'user' in new_dir.lower():
+                # Check if this might be our task
+                traj_file = os.path.join(new_dir, 'generator_memory.json')
+                if os.path.exists(traj_file) or os.path.exists(os.path.join(new_dir, 'renders')):
+                    output_dir = new_dir
+                    task_info["output_dir"] = output_dir
+                    task_info["status"] = "running"
+                    print(f"[CHECK] Found output directory for {task_id}: {output_dir}")
+                    break
+        
+        if not output_dir or not os.path.exists(output_dir):
+            return jsonify({
+                "has_new": False,
+                "status": task_info.get("status", "unknown"),
+                "message": "Output directory not found yet"
+            })
     
     traj_file = os.path.join(output_dir, 'generator_memory.json')
     if not os.path.exists(traj_file):
@@ -723,6 +816,9 @@ def check_new_steps(task_id):
         
         has_new = current_step_count > last_step_count
         
+        if has_new:
+            print(f"[CHECK] Task {task_id}: Found {current_step_count} steps (was {last_step_count})")
+        
         return jsonify({
             "has_new": has_new,
             "current_steps": current_step_count,
@@ -731,6 +827,9 @@ def check_new_steps(task_id):
             "output_dir": output_dir
         })
     except Exception as e:
+        print(f"[CHECK] Error checking steps for {task_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "has_new": False,
             "status": "error",
@@ -787,16 +886,53 @@ def main():
     
     # Initialize known output directories
     if os.path.exists(OUTPUT_BASE_DIR):
-        for subdir in ['demo', 'useful']:
-            subdir_path = os.path.join(OUTPUT_BASE_DIR, subdir)
-            if os.path.exists(subdir_path):
-                for timestamp_dir in os.listdir(subdir_path):
-                    timestamp_path = os.path.join(subdir_path, timestamp_dir)
-                    if os.path.isdir(timestamp_path):
-                        for task_dir in os.listdir(timestamp_path):
-                            task_path = os.path.join(timestamp_path, task_dir)
-                            if os.path.isdir(task_path):
-                                KNOWN_OUTPUT_DIRS.add(os.path.abspath(task_path))
+        # Scan all possible directory structures
+        scan_paths = [
+            OUTPUT_BASE_DIR,  # Direct timestamp directories
+            os.path.join(OUTPUT_BASE_DIR, 'demo'),
+            os.path.join(OUTPUT_BASE_DIR, 'useful')
+        ]
+        
+        for base_path in scan_paths:
+            if not os.path.exists(base_path):
+                continue
+            
+            try:
+                for item in os.listdir(base_path):
+                    item_path = os.path.join(base_path, item)
+                    if not os.path.isdir(item_path):
+                        continue
+                    
+                    if base_path == OUTPUT_BASE_DIR:
+                        # This is a timestamp directory, look for task directories inside
+                        try:
+                            for task_dir in os.listdir(item_path):
+                                task_path = os.path.join(item_path, task_dir)
+                                if os.path.isdir(task_path):
+                                    KNOWN_OUTPUT_DIRS.add(os.path.abspath(task_path))
+                        except (OSError, PermissionError):
+                            continue
+                    else:
+                        # This might be a timestamp directory in demo/useful
+                        try:
+                            contents = os.listdir(item_path)
+                            has_task_dirs = any(os.path.isdir(os.path.join(item_path, c)) for c in contents)
+                            
+                            if has_task_dirs:
+                                # This is a timestamp directory, scan for task directories
+                                for task_dir in contents:
+                                    task_path = os.path.join(item_path, task_dir)
+                                    if os.path.isdir(task_path):
+                                        KNOWN_OUTPUT_DIRS.add(os.path.abspath(task_path))
+                            else:
+                                # This might be a task directory itself
+                                if os.path.isdir(item_path):
+                                    KNOWN_OUTPUT_DIRS.add(os.path.abspath(item_path))
+                        except (OSError, PermissionError):
+                            continue
+            except (OSError, PermissionError) as e:
+                print(f"[INIT] Error scanning {base_path}: {e}")
+                continue
     
     print(f"Initialized {len(KNOWN_OUTPUT_DIRS)} known output directories")
     
