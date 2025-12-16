@@ -388,15 +388,16 @@
                 </div>
             </div>
             <div class="controls">
-                <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()" disabled>Investigate</button>
+                <button class="btn btn-Investigate" id="Investigate-btn" onclick="pauseAtIntegration()">Investigate</button>
                 <button class="btn btn-resume" id="resume-btn" onclick="resume()" style="display: none;">Resume</button>
-                <button class="btn" id="download-blender-btn" onclick="downloadBlenderFile()" disabled>Download Project</button>
+                <button class="btn" id="download-blender-btn" onclick="downloadBlenderFile()">Download Project</button>
             </div>
         </div>
     </div>
 
     <script>
-        let currentStepIndex = -1;
+        let currentStepIndex = -1; // 累加计数器，用于显示 Step 数字
+        let currentStepDataIndex = -1; // 当前加载的数据索引（用于从后端获取数据）
         let totalSteps = 0;
         let stepsData = [];
         let isTyping = false;
@@ -496,7 +497,8 @@
                 stepsData = data.steps;
                 
                 if (totalSteps > 0) {
-                    currentStepIndex = selectedStartIndex - 1; // Will be incremented in loadStep
+                    currentStepIndex = -1; // 初始化为 -1，每次显示图片后递增
+                    updateStepIndicator(); // 初始化显示 Step 0
                     // Auto-start first step
                     loadStep(selectedStartIndex);
                 } else {
@@ -508,13 +510,10 @@
             }
         }
         
-        function updateStepIndicator(step) {
-            // 使用轨迹中的 code_count 作为累积步数计数器
-            const stepNumber = step && typeof step.code_count === 'number'
-                ? step.code_count
-                : (currentStepIndex + 1);
+        function updateStepIndicator() {
+            // 使用累加计数器 currentStepIndex + 1 作为显示的步数
             document.getElementById('step-indicator').textContent = 
-                `Step ${stepNumber}`;
+                `Step ${currentStepIndex + 1}`;
         }
 
         async function loadStep(stepIndex) {
@@ -522,7 +521,7 @@
                 return;
             }
 
-            currentStepIndex = stepIndex;
+            currentStepDataIndex = stepIndex; // 保存当前的数据索引
             codeGenerated = false;
             imageLoaded = false;
 
@@ -542,8 +541,6 @@
 
                 const response = await fetch(`/api/step/${stepIndex}`);
                 const step = await response.json();
-                // 更新右上角步数指示（使用原始 code_count）
-                updateStepIndicator(step);
 
                 // If not the first step, load previous step image to top
                 if (stepIndex > 0) {
@@ -551,12 +548,10 @@
                 }
 
                 // Reset buttons
-                document.getElementById('Investigate-btn').disabled = true;
                 document.getElementById('Investigate-btn').style.display = 'block';
                 document.getElementById('resume-btn').style.display = 'none';
                 // Update download blender button state
                 currentStepHasBlend = step.has_blend || false;
-                document.getElementById('download-blender-btn').disabled = true; // 与 Investigate 同步，稍后一起放开
                 isPaused = false;
 
                 // Type thought character by character
@@ -565,11 +560,6 @@
                 // Display code line by line (after thought is done)
                 await displayCode(step.code);
                 codeGenerated = true;
-
-                // Enable Investigate button after code is displayed
-                document.getElementById('Investigate-btn').disabled = false;
-                // Investigate 可点时，Download Blender 也根据是否有 blend 同步可点
-                document.getElementById('download-blender-btn').disabled = !currentStepHasBlend;
 
                 // Wait 1 second after code, then load image
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -581,12 +571,16 @@
                     await loadImage(stepIndex, 'bottom');
                 }
                 imageLoaded = true;
+                
+                // 每次显示图片后，递增累加计数器并更新步数指示
+                currentStepIndex += 1;
+                updateStepIndicator();
 
                 // Auto advance after 3 seconds (unless paused)
                 if (!isPaused) {
                     autoAdvanceTimeout = setTimeout(() => {
-                        if (currentStepIndex < totalSteps - 1 && !isPaused) {
-                            loadStep(currentStepIndex + 1);
+                        if (stepIndex < totalSteps - 1 && !isPaused) {
+                            loadStep(stepIndex + 1);
                         }
                     }, 3000);
                 }
@@ -729,24 +723,24 @@
             // If code and image are both loaded, auto advance in 3 seconds
             if (codeGenerated && imageLoaded) {
                 autoAdvanceTimeout = setTimeout(() => {
-                    if (currentStepIndex < totalSteps - 1 && !isPaused) {
-                        loadStep(currentStepIndex + 1);
+                    if (currentStepDataIndex < totalSteps - 1 && !isPaused) {
+                        loadStep(currentStepDataIndex + 1);
                     }
                 }, 3000);
             } else {
                 // Otherwise, continue with current step loading
-                loadStep(currentStepIndex);
+                loadStep(currentStepDataIndex);
             }
         }
 
         function downloadBlenderFile() {
-            if (currentStepIndex < 0 || currentStepIndex >= totalSteps || !currentStepHasBlend) {
+            if (currentStepDataIndex < 0 || currentStepDataIndex >= totalSteps || !currentStepHasBlend) {
                 return;
             }
             
             // Create a temporary anchor element to trigger download
             const link = document.createElement('a');
-            link.href = `/api/blend/${currentStepIndex}`;
+            link.href = `/api/blend/${currentStepDataIndex}`;
             link.download = `state_step_${currentStepIndex + 1}.blend`;
             document.body.appendChild(link);
             link.click();
