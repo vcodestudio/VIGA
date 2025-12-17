@@ -1,7 +1,8 @@
 import os, sys, argparse, json
-from PIL import Image
 import numpy as np
 import torch
+from pytorch3d.transforms import quaternion_to_matrix, Transform3d
+from inference import Inference, load_image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(os.path.join(ROOT, "utils", "sam3d", "notebook"))
@@ -12,8 +13,28 @@ if "CONDA_PREFIX" not in os.environ:
     conda_env = os.path.dirname(os.path.dirname(python_bin))
     os.environ["CONDA_PREFIX"] = conda_env
 
-from inference import Inference, load_image, load_mask
+R_yup_to_zup = torch.tensor([[-1,0,0],[0,0,1],[0,1,0]], dtype=torch.float32)
+R_flip_z = torch.tensor([[1,0,0],[0,1,0],[0,0,-1]], dtype=torch.float32)
+R_pytorch3d_to_cam = torch.tensor([[-1,0,0],[0,-1,0],[0,0,1]], dtype=torch.float32)
 
+def transform_mesh_vertices(vertices, rotation, translation, scale):
+    if isinstance(vertices, np.ndarray):
+        vertices = torch.tensor(vertices, dtype=torch.float32)
+
+    vertices = vertices.unsqueeze(0)  #  batch dimension [1, N, 3]
+    vertices = vertices @ R_flip_z.to(vertices.device) 
+    vertices = vertices @ R_yup_to_zup.to(vertices.device)
+    R_mat = quaternion_to_matrix(rotation.to(vertices.device))
+    tfm = Transform3d(dtype=vertices.dtype, device=vertices.device)
+    tfm = (
+        tfm.scale(scale)
+           .rotate(R_mat)
+           .translate(translation[0], translation[1], translation[2])
+    )
+    vertices_world = tfm.transform_points(vertices)
+    vertices_world = vertices_world @ R_pytorch3d_to_cam.to(vertices_world.device)
+    
+    return vertices_world[0]  # remove batch dimension
 
 def main():
     p = argparse.ArgumentParser()
@@ -26,82 +47,27 @@ def main():
     inference = Inference(args.config, compile=False)
     image = load_image(args.image)
     # args.mask 现在是 .npy 文件路径，直接加载为 numpy 数组
-    import numpy as np
+    
     mask = np.load(args.mask)
     mask = mask > 0
     output = inference(image, mask, seed=42)
     # output.keys: ['6drotation_normalized', 'scale', 'shape', 'translation', 'translation_scale', 'coords_original', 'coords', 'downsample_factor', 'rotation', 'mesh', 'gaussian', 'glb', 'gs', 'pointmap', 'pointmap_colors']
     # convert tensor to list
     
-    glb = output.get("glb")
-    if glb is not None and hasattr(glb, "export"):
-        os.makedirs(os.path.dirname(args.glb), exist_ok=True)
-        glb.export(args.glb)
-    
-    # 提取变换信息
-    translation = None
-    if "translation" in output:
-        trans_tensor = output["translation"]
-        # reshape to 3
-        trans_tensor = trans_tensor.reshape(3)
-        if hasattr(trans_tensor, "cpu"):
-            translation = trans_tensor.cpu().numpy().tolist()
-        elif hasattr(trans_tensor, "numpy"):
-            translation = trans_tensor.numpy().tolist()
-        else:
-            translation = trans_tensor.tolist() if hasattr(trans_tensor, "tolist") else trans_tensor
-    
-    # 提取 rotation（四元数格式 w, x, y, z）
-    rotation_quaternion = None
-    if "rotation" in output:
-        rot_tensor = output["rotation"]
-        # reshape to 4
-        rot_tensor = rot_tensor.reshape(4)
-        if hasattr(rot_tensor, "cpu"):
-            rot_np = rot_tensor.cpu().numpy()
-        elif hasattr(rot_tensor, "numpy"):
-            rot_np = rot_tensor.numpy()
-        else:
-            rot_np = rot_tensor
-        # 直接输出四元数 [w, x, y, z] 格式
-        rotation_quaternion = rot_np.tolist()
-    
-    translation_scale = None
-    if "translation_scale" in output:
-        scale_tensor = output["translation_scale"]
-        # reshape to 1
-        scale_tensor = scale_tensor.reshape(1)
-        if hasattr(scale_tensor, "cpu"):
-            translation_scale = scale_tensor.cpu().numpy().tolist()
-        elif hasattr(scale_tensor, "numpy"):
-            translation_scale = scale_tensor.numpy().tolist()
-        else:
-            translation_scale = scale_tensor.tolist() if hasattr(scale_tensor, "tolist") else scale_tensor
-    
-    scale = None
-    if "scale" in output:
-        scale_tensor = output["scale"]
-        # reshape to 3x1
-        scale_tensor = scale_tensor.reshape(3)
-        if hasattr(scale_tensor, "cpu"):
-            scale = scale_tensor.cpu().numpy().tolist()
-        elif hasattr(scale_tensor, "numpy"):
-            scale = scale_tensor.numpy().tolist()
-        else:
-            scale = scale_tensor.tolist() if hasattr(scale_tensor, "tolist") else scale_tensor
-    
-    print(
-        json.dumps(
-            {
-                "glb_path": args.glb,
-                "translation": translation,
-                "translation_scale": translation_scale,
-                "rotation": rotation_quaternion,  # 四元数格式 [w, x, y, z]
-                "scale": scale,
-            }
-        )
-    )
+    mesh = output["glb"]
+    vertices = mesh.vertices
 
+    S = output["scale"][0].cpu().float()
+    T = output["translation"][0].cpu().float()
+    R = output["rotation"].squeeze().cpu().float()
+    
+    vertices_transformed = transform_mesh_vertices(vertices, R, T, S)
+    mesh.vertices = vertices_transformed.cpu().numpy().astype(np.float32)
+
+    os.makedirs(os.path.dirname(args.glb), exist_ok=True)
+    mesh.export(args.glb)
+    
+    print(json.dumps({"glb_path": args.glb, "translation": T.tolist(), "rotation": R.tolist(), "scale": S.tolist()}))
 
 if __name__ == "__main__":
     main()
