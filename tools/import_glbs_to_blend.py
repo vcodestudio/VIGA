@@ -204,7 +204,7 @@ def import_glb_with_transform(glb_path, translation, translation_scale, rotation
     else:
         # Blender 的 Quaternion 使用 (w, x, y, z) 格式
         quat_raw = Quaternion((float(rotation_quaternion[0]), float(rotation_quaternion[1]), 
-                              float(rotation_quaternion[2]), float(rotation_quaternion[3])))
+                          float(rotation_quaternion[2]), float(rotation_quaternion[3])))
     
     # 4. 获取坐标系统修正矩阵
     M_fix = get_coordinate_fix_matrix()

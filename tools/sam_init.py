@@ -23,6 +23,7 @@ tool_configs = [
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SAM_WORKER = os.path.join(os.path.dirname(__file__), "sam_worker.py")
 SAM3D_WORKER = os.path.join(os.path.dirname(__file__), "sam3d_worker.py")
+IMPORT_SCRIPT = os.path.join(os.path.dirname(__file__), "import_glbs_to_blend.py")
 
 mcp = FastMCP("sam-init")
 _target_image = _output_dir = _sam3_cfg = _blender_command = None
@@ -50,6 +51,60 @@ def initialize(args: dict) -> dict:
     return {"status": "success", "output": {"text": ["sam init initialized"], "tool_configs": tool_configs}}
 
 
+def process_single_object(idx, mask, object_name):
+    """
+    处理单个物体的 SAM-3D 重建
+    返回 (object_name, glb_path, transform_info) 或 None
+    """
+    global _target_image, _output_dir, _sam3_cfg, _sam3d_env_bin
+    
+    object_dir = os.path.join(_output_dir, object_name)
+    os.makedirs(object_dir, exist_ok=True)
+    
+    mask_path = os.path.join(object_dir, "mask.npy")
+    np.save(mask_path, mask)
+    
+    glb_path = os.path.join(object_dir, f"{object_name}.glb")
+    
+    try:
+        r = subprocess.run(
+            [
+                _sam3d_env_bin,
+                SAM3D_WORKER,
+                "--image", _target_image,
+                "--mask", mask_path,
+                "--config", _sam3_cfg,
+                "--out", glb_path,
+            ],
+            cwd=ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        
+        # 解析 SAM3D worker 的输出获取变换信息
+        result = json.loads(r.stdout.strip().splitlines()[-1])
+        if result.get("status") != "success":
+            print(f"[SAM_INIT] Failed to reconstruct {object_name}: {result.get('message', 'Unknown error')}")
+            return None
+        
+        transform_info = {
+            "glb": glb_path,
+            "translation": result.get("translation"),
+            "translation_scale": result.get("translation_scale"),
+            "rotation": result.get("rotation"),
+            "scale": result.get("scale", 1.0),
+        }
+        
+        print(f"[SAM_INIT] Successfully reconstructed {object_name}")
+        return (object_name, glb_path, transform_info)
+        
+    except subprocess.CalledProcessError as e:
+        print(f"[SAM_INIT] Error reconstructing {object_name}: {e.stderr}")
+        return None
+    except Exception as e:
+        print(f"[SAM_INIT] Error reconstructing {object_name}: {e}")
+        return None
 
 
 @mcp.tool()
@@ -111,78 +166,65 @@ def reconstruct_full_scene() -> dict:
         else:
             print(f"[SAM_INIT] Warning: Object names mapping file not found: {object_names_json_path}, using default names")
         
-        print(f"[SAM_INIT] Step 2: Reconstructing {len(masks)} objects with SAM-3D and combining into scene...")
+        print(f"[SAM_INIT] Step 2: Reconstructing {len(masks)} objects with SAM-3D...")
         
-        # 保存所有 masks 到文件
-        mask_paths = []
-        object_names = []
+        # Step 3: 逐个处理每个物体
+        all_transforms = []
+        success_count = 0
+        
         for idx, mask in enumerate(masks):
-            # 获取物体名称（如果可用，否则使用默认名称）
+            # 获取物体名称
             if object_mapping and idx < len(object_mapping):
                 object_name = object_mapping[idx]
             else:
                 object_name = f"object_{idx}"
             
-            mask_path = os.path.join(_output_dir, f"{object_name}.npy")
-            np.save(mask_path, mask)
-            mask_paths.append(mask_path)
-            object_names.append(object_name)
+            result = process_single_object(idx, mask, object_name)
+            if result:
+                object_name, glb_path, transform_info = result
+                all_transforms.append(transform_info)
+                success_count += 1
         
-        # Step 3: 使用新的 sam3d_worker.py 一次性处理所有 masks 并生成 .blend 文件
+        if success_count == 0:
+            return {"status": "error", "output": {"text": ["Failed to reconstruct any objects"]}}
+        
+        # Step 4: 保存变换信息到 JSON
+        transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
+        with open(transforms_json_path, 'w') as f:
+            json.dump(all_transforms, f, indent=2)
+        print(f"[SAM_INIT] Saved transforms to: {transforms_json_path}")
+        
+        # Step 5: 使用 Blender 导入所有 GLB 文件并保存为 .blend
         blend_path = os.path.join(_output_dir, "scene.blend")
+        blender_cmd = os.path.join(ROOT, _blender_command)
         
-        # 设置 Blender 命令环境变量（如果未设置）
-        env = os.environ.copy()
-        if _blender_command and "BLENDER_CMD" not in env:
-            env["BLENDER_CMD"] = _blender_command
-        
-        # 运行 SAM-3D worker 处理所有 masks
-        cmd = [
-            _sam3d_env_bin,
-            SAM3D_WORKER,
-            "--image",
-            _target_image,
-            "--masks",
-        ] + mask_paths + [
-            "--config",
-            _sam3_cfg,
-            "--blend",
-            blend_path,
-        ]
-        
-        if object_names:
-            cmd.extend(["--object-names"] + object_names)
-        
-        r = subprocess.run(
-            cmd,
+        print(f"[SAM_INIT] Step 3: Importing {success_count} GLB files into Blender...")
+        subprocess.run(
+            [
+                blender_cmd,
+                "-b",
+                "-P", IMPORT_SCRIPT,
+                "--",
+                transforms_json_path,
+                blend_path,
+            ],
             cwd=ROOT,
             check=True,
             text=True,
             capture_output=True,
-            env=env,
         )
-        
-        # 解析输出
-        try:
-            result = json.loads(r.stdout.strip().splitlines()[-1])
-            if result.get("status") != "success":
-                return {"status": "error", "output": {"text": [f"Failed to generate scene: {result.get('message', 'Unknown error')}"]}}
-        except json.JSONDecodeError:
-            # If output is not JSON, check if blend file was created
-            if not os.path.exists(blend_path):
-                return {"status": "error", "output": {"text": ["Failed to generate scene: No output received"]}}
         
         return {
             "status": "success",
             "output": {
                 "text": [
-                    f"Successfully reconstructed {len(masks)} objects",
+                    f"Successfully reconstructed {success_count}/{len(masks)} objects",
                     f"Blender scene saved to: {blend_path}",
                     f"Total masks detected: {len(masks)}"
                 ],
                 "data": {
                     "blend_path": blend_path,
-                    "num_objects": len(masks),
+                    "num_objects": success_count,
                     "num_masks": len(masks),
                 }
             }
@@ -199,8 +241,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         initialize(
             {
-                "target_image_path": "data/static_scene/items19/target.png",
-                "output_dir": os.path.join(ROOT, "output", "test", "items19"),
+                "target_image_path": "data/static_scene/christmas1/target.png",
+                "output_dir": os.path.join(ROOT, "output", "test", "christmas1"),
                 "blender_command": "utils/infinigen/blender/blender",
             }
         )

@@ -476,6 +476,8 @@ def get_blend(step_index):
     # 如果预解析阶段没找到 blend 文件，或者路径无效，则根据当前渲染图片目录重新推断
     if not blend_path or not os.path.exists(blend_path):
         image_path = step.get("image_path")
+        if not image_path:
+            image_path = step.get("video_path")
         if image_path:
             # 确保为字符串
             image_path = str(image_path)
