@@ -109,29 +109,9 @@ def process_single_object(args_tuple):
         info = json.loads(r.stdout.strip().splitlines()[-1])
         glb_path_value = info.get("glb_path")
         if glb_path_value:
-            # 修复 GLB 文件的贴图问题
-            # subprocess.run(
-            #     [
-            #         _blender_command,
-            #         "-b",
-            #         "-P",
-            #         "tools/fix_glb.py",
-            #         "--",
-            #         glb_path_value,
-            #         glb_path_value,
-            #     ],
-            #     cwd=ROOT,
-            #     check=True,
-            #     text=True,
-            #     capture_output=True,
-            # )
-            # 构建变换信息
             object_transform = {
                 "glb_path": glb_path_value,
-                "translation": info.get("translation"),
-                "translation_scale": info.get("translation_scale", 1.0),
-                "rotation": info.get("rotation"),  # 四元数 [w, x, y, z]
-                "scale": info.get("scale", 1.0),
+                "transform_matrix": info.get("transform_matrix"),
             }
             # 保存 info 到 json
             with open(os.path.join(_output_dir, f"{object_name}.json"), 'w') as f:
@@ -318,10 +298,11 @@ def reconstruct_full_scene() -> dict:
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        task = sys.argv[2]
         initialize(
             {
-                "target_image_path": "data/static_scene/christmas1/target.png",
-                "output_dir": os.path.join(ROOT, "output", "test", "christmas1"),
+                "target_image_path": f"data/static_scene/{task}/target.png",
+                "output_dir": os.path.join(ROOT, "output", "test", task),
                 "blender_command": "utils/infinigen/blender/blender",
             }
         )

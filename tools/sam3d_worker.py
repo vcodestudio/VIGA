@@ -17,6 +17,7 @@ if "CONDA_PREFIX" not in os.environ:
 R_yup_to_zup = torch.tensor([[-1,0,0],[0,0,1],[0,1,0]], dtype=torch.float32)
 R_flip_z = torch.tensor([[1,0,0],[0,1,0],[0,0,-1]], dtype=torch.float32)
 R_pytorch3d_to_cam = torch.tensor([[-1,0,0],[0,-1,0],[0,0,1]], dtype=torch.float32)
+R_flip_y = torch.tensor([[1,0,0],[0,-1,0],[0,0,1]], dtype=torch.float32)  # 翻转Y轴以修正上下颠倒
 
 def transform_mesh_vertices(vertices, rotation, translation, scale):
     if isinstance(vertices, np.ndarray):
@@ -34,6 +35,7 @@ def transform_mesh_vertices(vertices, rotation, translation, scale):
     )
     vertices_world = tfm.transform_points(vertices)
     vertices_world = vertices_world @ R_pytorch3d_to_cam.to(vertices_world.device)
+    vertices_world = vertices_world @ R_flip_y.to(vertices_world.device)  # 翻转Y轴以修正上下颠倒
     
     return vertices_world[0]  # remove batch dimension
 
