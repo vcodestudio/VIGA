@@ -43,6 +43,18 @@ class GeneratorAgent:
             Dict containing the generated code, metadata, and verifier flag
         """
         print("\n=== Running generator agent ===\n")
+
+        # 如果 generator 的工具集合中包含 sam_init.py，对应的 MCP server，
+        # 则在对话正式开始前默认调用一次 sam-init 的 reconstruct_full_scene，
+        # 以便预先重建初始 3D 场景。
+        try:
+            if any("sam_init.py" in server for server in self.tool_client.tool_servers):
+                print("=== Auto-calling sam_init.reconstruct_full_scene to initialize scene ===")
+                _ = await self.tool_client.call_tool("reconstruct_full_scene", {})
+                print("=== sam_init.reconstruct_full_scene finished ===")
+        except Exception as e:
+            print(f"Warning: auto sam_init reconstruct_full_scene failed: {e}")
+
         for i in range(self.config.get("max_rounds")):
             print(f"=== Round {i} ===\n")
             

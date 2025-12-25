@@ -27,14 +27,14 @@ SAM3D_WORKER = os.path.join(os.path.dirname(__file__), "sam3d_worker.py")
 IMPORT_SCRIPT = os.path.join(os.path.dirname(__file__), "import_glbs_to_blend.py")
 
 mcp = FastMCP("sam-init")
-_target_image = _output_dir = _sam3_cfg = _blender_command = None
+_target_image = _output_dir = _sam3_cfg = _blender_command = _blender_file = None
 _sam_env_bin = path_to_cmd["tools/sam_worker.py"]
 _sam3d_env_bin = path_to_cmd.get("tools/sam3d_worker.py")
 
 
 @mcp.tool()
 def initialize(args: dict) -> dict:
-    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin
+    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _blender_file
     _target_image = args["target_image_path"]
     _output_dir = args.get("output_dir") + "/sam_init"
     if os.path.exists(_output_dir):
@@ -44,6 +44,8 @@ def initialize(args: dict) -> dict:
         ROOT, "utils", "sam3d", "checkpoints", "hf", "pipeline.yaml"
     )
     _blender_command = args.get("blender_command") or "utils/infinigen/blender/blender"
+    # 记录传入的 blender_file 参数，用于后续重建时直接写入到该路径
+    _blender_file = args.get("blender_file")
     
     # 尝试获取 sam_worker.py 的 python 路径
     # 如果没有配置，使用 sam3d 的环境（假设它们可能在同一环境）
@@ -144,7 +146,7 @@ def reconstruct_full_scene() -> dict:
     2. 对每个物体使用 SAM-3D 重建
     3. 将所有物体导入 Blender 并保存为 .blend 文件
     """
-    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _sam3d_env_bin
+    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _sam3d_env_bin, _blender_file
     
     if not _target_image or not _output_dir:
         return {"status": "error", "output": {"text": ["call initialize first"]}}
@@ -245,7 +247,9 @@ def reconstruct_full_scene() -> dict:
         
         # Step 3: 将所有 GLB 导入 Blender 并保存为 .blend 文件
         print(f"[SAM_INIT] Step 3: Importing {len(glb_paths)} objects into Blender...")
-        blend_path = os.path.join(_output_dir, "scene.blend")
+        # 如果在 initialize 中提供了 blender_file，则直接写入到该路径
+        # 否则默认写入到输出目录下的 scene.blend
+        blend_path = _blender_file or os.path.join(_output_dir, "scene.blend")
         
         # 保存位置信息到 JSON 文件
         transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
@@ -275,9 +279,7 @@ def reconstruct_full_scene() -> dict:
             "status": "success",
             "output": {
                 "text": [
-                    f"Successfully reconstructed {len(glb_paths)} objects",
-                    f"Blender scene saved to: {blend_path}",
-                    f"Total masks detected: {len(masks)}"
+                    f"Successfully reconstructed {len(glb_paths)} objects, Blender scene saved to: {blend_path}",
                 ],
                 "data": {
                     "blend_path": blend_path,

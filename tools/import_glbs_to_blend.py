@@ -44,8 +44,11 @@ def setup_camera():
     direction = Vector((0.0, -1.0, 0.0))
     up = Vector((0.0, 0.0, 1.0))
     camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler('XYZ')
-
-    print(f"[INFO] Camera setup complete: location={camera.location}")
+    
+    # 设置相机焦距（lens），较小的值会产生更广的视野，观察范围更大
+    camera.data.lens = 32  # 使用广角镜头（18mm）以增大观察范围
+    
+    print(f"[INFO] Camera setup complete: location={camera.location}, lens={camera.data.lens}mm")
 
 # ----------------- 设置环境光 -----------------
 def setup_lighting():
@@ -76,6 +79,32 @@ def setup_lighting():
         sun.data.angle = 0.261799
     
     print(f"[INFO] Lighting setup complete")
+
+# ----------------- 设置渲染参数 -----------------
+def setup_render():
+    """Setup render settings (resolution, engine, etc.), matching generator_script."""
+    scene = bpy.context.scene
+    
+    # 渲染引擎与设备设置（与 generator_script 保持一致）
+    scene.render.engine = 'CYCLES'
+    try:
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        prefs.compute_device_type = 'CUDA'  # 如有需要，可改为 'OPTIX' 或 'HIP' 等
+        prefs.get_devices()
+        for device in prefs.devices:
+            if device.type == 'GPU' and not device.use:
+                device.use = True
+        scene.cycles.device = 'GPU'
+    except Exception as e:
+        print(f"[WARN] Failed to configure GPU rendering: {e}")
+    
+    # 分辨率设置为正方形（512x512），与 generator_script 一致
+    scene.render.resolution_x = 512
+    scene.render.resolution_y = 512
+    
+    # 采样数与颜色模式（与 generator_script 一致）
+    scene.cycles.samples = 512
+    scene.render.image_settings.color_mode = 'RGB'
 
 # ----------------- 导入 glb -----------------
 def import_glb(glb_path, name_prefix=""):
@@ -142,6 +171,7 @@ def main():
     clear_scene()
     setup_camera()
     setup_lighting()
+    setup_render()
     
     success_count = 0
     for idx, obj_data in enumerate(objects_data):
