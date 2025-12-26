@@ -47,6 +47,7 @@ def main():
     p.add_argument("--mask", required=True)
     p.add_argument("--config", required=True)
     p.add_argument("--glb", required=True)
+    p.add_argument("--info", required=False, help="Path to save JSON output file (instead of printing to stdout)")
     args = p.parse_args()
 
     inference = Inference(args.config, compile=False)
@@ -72,7 +73,22 @@ def main():
     os.makedirs(os.path.dirname(args.glb), exist_ok=True)
     mesh.export(args.glb)
     
-    print(json.dumps({"glb_path": args.glb, "translation": T.tolist(), "rotation": R.tolist(), "scale": S.tolist()}))
+    # 准备要保存的数据
+    translation_data = {
+        "glb_path": args.glb,
+        "translation": T.tolist(),
+        "rotation": R.tolist(),
+        "scale": S.tolist()
+    }
+    
+    # 如果提供了 --info 参数，写入文件；否则保持向后兼容，输出到 stdout
+    if args.info:
+        os.makedirs(os.path.dirname(args.info), exist_ok=True)
+        with open(args.info, 'w') as f:
+            json.dump(translation_data, f, indent=2)
+    else:
+        # 向后兼容：如果没有 --info，仍然输出到 stdout
+        print(json.dumps(translation_data))
 
 if __name__ == "__main__":
     main()
