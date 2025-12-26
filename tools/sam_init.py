@@ -353,7 +353,7 @@ def reconstruct_full_scene() -> dict:
         # 使用线程池并行处理
         glb_paths = []
         object_transforms = []  # 存储每个物体的位置信息
-        max_workers = min(2, len(tasks))  # 限制并发数，避免资源耗尽
+        max_workers = min(1, len(tasks))  # 限制并发数，避免资源耗尽
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
