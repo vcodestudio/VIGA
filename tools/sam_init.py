@@ -389,6 +389,7 @@ def reconstruct_full_scene() -> dict:
             blend_path,  # 输出 .blend 文件路径
         ]
         
+        log(f"[SAM_INIT] Deleting .blend1 files in {_output_dir}")
         # 将可能多出的.blend1文件删除
         for file in os.listdir(_output_dir):
             if file.endswith(".blend1"):
