@@ -12,8 +12,9 @@ except ImportError:
 # ================== 可按需修改的参数 ==================
 FRAMES = 10         # 总帧数
 FPS = 1         # 帧率
-START_POS = (0.0, -30.0, 0.0)     # 摄像机起点
-END_POS   = (0.0, -12.0, 0.0)   # 摄像机终点
+START_POS = (0.0, -40.0, -20.0)     # 摄像机起点
+END_POS   = (0.0, -40.0, 32.0)   # 摄像机终点
+TARGET_POS = (0.0, 0.0, 6.0)     # 摄像机始终对准的目标点
 OUTPUT_PATH = "//whitehouse.mp4"  # 相对当前 .blend 文件所在目录
 # =====================================================
 
@@ -96,22 +97,16 @@ def create_camera():
     return camera
 
 
-def animate_linear_motion(camera, start_pos, end_pos, frames):
+def animate_arc_rotation(camera, start_pos, end_pos, target_pos, frames):
     """
-    让摄像机从 start_pos 直线运动到 end_pos，
-    且视角始终沿运动方向。
+    让摄像机从 start_pos 沿圆弧旋转到 end_pos，
+    摄像机始终对准 target_pos 点。
     """
     scene = bpy.context.scene
 
     start = Vector(start_pos)
     end = Vector(end_pos)
-
-    # 运动方向向量（终点 - 起点）
-    direction = (end - start).normalized()
-
-    # 摄像机在 Blender 中默认是沿 -Z 轴看向前方，
-    # 因此让 -Z 轴对齐到运动方向 direction。
-    base_quat = direction.to_track_quat('-Z', 'Y')
+    target = Vector(target_pos)
 
     for f in range(frames):
         # t 从 0 到 1，均匀插值
@@ -120,17 +115,24 @@ def animate_linear_motion(camera, start_pos, end_pos, frames):
         else:
             t = 0.0
 
-        # 线性插值位置
+        # 线性插值位置（摄像机沿直线从起点到终点）
         pos = start.lerp(end, t)
+
+        # 计算从摄像机位置指向目标点的方向
+        direction_to_target = (target - pos).normalized()
+
+        # 使用 to_track_quat 让摄像机朝向目标点
+        # '-Z' 是摄像机的默认朝向轴，'Y' 是上方向
+        quat = direction_to_target.to_track_quat('-Z', 'Y')
 
         scene.frame_set(f)
         camera.location = pos
-        camera.rotation_euler = base_quat.to_euler()
+        camera.rotation_euler = quat.to_euler()
 
         camera.keyframe_insert(data_path="location", frame=f)
         camera.keyframe_insert(data_path="rotation_euler", frame=f)
 
-    print("[INFO] Linear motion keyframes (location + rotation) inserted.")
+    print("[INFO] Arc rotation keyframes (location + rotation) inserted.")
 
 
 def setup_render(output_path, frames, fps):
@@ -170,7 +172,7 @@ def main():
 
     clear_old_cameras()
     camera = create_camera()
-    animate_linear_motion(camera, START_POS, END_POS, FRAMES)
+    animate_arc_rotation(camera, START_POS, END_POS, TARGET_POS, FRAMES)
     setup_render(OUTPUT_PATH, FRAMES, FPS)
 
     print("[INFO] Start rendering animation...")
