@@ -154,11 +154,13 @@ class PromptBuilder:
         i = 0
         while i < len(reverse_memory):
             if reverse_memory[i]['role'] == 'tool' and reverse_memory[i]['name'] == 'undo-last-step':
-                # If role == user, skip 2+3=5 steps
+                # Skip the undo operation and its related messages
+                # If role == user exists, skip 2+3=5 steps, otherwise skip 4 steps
                 if reverse_memory[i+2]['role'] == 'user':
                     i += 5
                 else:
                     i += 4
+                continue  # Re-check the new position from the top of the loop
             if i >= len(reverse_memory):
                 break
             chat_memory.append(reverse_memory[i])
