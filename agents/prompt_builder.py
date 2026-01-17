@@ -156,7 +156,7 @@ class PromptBuilder:
             if reverse_memory[i]['role'] == 'tool' and reverse_memory[i]['name'] == 'undo-last-step':
                 # Skip the undo operation and its related messages
                 # If role == user exists, skip 2+3=5 steps, otherwise skip 4 steps
-                if reverse_memory[i+2]['role'] == 'user':
+                if i + 2 < len(reverse_memory) and reverse_memory[i+2]['role'] == 'user':
                     i += 5
                 else:
                     i += 4
