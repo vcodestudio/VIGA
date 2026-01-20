@@ -70,15 +70,15 @@ class GeneratorAgent:
         """
         print("\n=== Running generator agent ===\n")
 
-        # If sam_init.py is in the tool servers, auto-call reconstruct_full_scene
+        # If init.py is in the tool servers, auto-call reconstruct_full_scene
         # to initialize the 3D scene before the conversation begins.
         try:
-            if any("sam_init.py" in server for server in self.tool_client.tool_servers):
-                print("=== Auto-calling sam_init.reconstruct_full_scene to initialize scene ===")
+            if any("init.py" in server for server in self.tool_client.tool_servers):
+                print("=== Auto-calling init.reconstruct_full_scene to initialize scene ===")
                 _ = await self.tool_client.call_tool("reconstruct_full_scene", {})
-                print("=== sam_init.reconstruct_full_scene finished ===")
+                print("=== init.reconstruct_full_scene finished ===")
         except Exception as e:
-            print(f"Warning: auto sam_init reconstruct_full_scene failed: {e}")
+            print(f"Warning: auto init reconstruct_full_scene failed: {e}")
 
         for i in range(self.config.get("max_rounds")):
             print(f"=== Round {i} ===\n")

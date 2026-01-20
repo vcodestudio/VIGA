@@ -122,6 +122,7 @@ iniconfig==2.3.0
 inquirerpy==0.3.4
 isodate==0.7.2
 isoduration==20.11.0
+joblib==1.5.2
 json5==0.12.1
 jsonlines==4.0.0
 jsonpickle==3.0.4

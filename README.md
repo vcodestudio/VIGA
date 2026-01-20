@@ -62,6 +62,8 @@ You need [Conda](https://docs.conda.io/en/latest/miniconda.html) installed. For 
 ```bash
 git clone https://github.com/Fugtemypt123/VIGA-release.git && cd VIGA-release
 git submodule update --init --recursive
+# download sam module
+wget -P utils/third_party/sam https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 ```
 
 ### Create conda environments
@@ -75,7 +77,7 @@ pip install -r requirements/requirement_agent.txt
 conda create -n blender python=3.11 -y && conda activate blender
 pip install -r requirements/requirement_blender.txt
 cd utils/third_party/infinigen
-INFINIGEN_MINIMAL_INSTALL=True bash scripts/install/interactive_blender.sh
+INFINIGEN_MINIMAL_INSTALL=True bash scripts/install/interactive_blender.sh # You can ignore the errors as long as you can see `utils/third_party/infinigen/blender`
 
 conda create -n sam python=3.10 -y && conda activate sam
 pip install -r requirements/requirement_sam.txt

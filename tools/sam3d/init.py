@@ -16,8 +16,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from mcp.server.fastmcp import FastMCP
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.path import path_to_cmd
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from utils._path import path_to_cmd
 
 # Tool configurations for the agent (empty as tools are auto-discovered)
 tool_configs: List[Dict[str, object]] = []
