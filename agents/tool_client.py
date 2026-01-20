@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from utils.path import path_to_cmd
+from utils._path import path_to_cmd
 
 class ServerHandle:
     """Async wrapper for a single MCP server connection via stdio.

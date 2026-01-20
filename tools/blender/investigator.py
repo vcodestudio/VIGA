@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from tools.blender.investigator_core import Investigator3D
+from investigator_core import Investigator3D
 
 # Tool configuration for agent
 tool_configs: List[Dict[str, object]] = [
