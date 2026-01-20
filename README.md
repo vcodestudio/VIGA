@@ -41,8 +41,8 @@ The agent maintains an evolving contextual memory with plans, code diffs, and re
 
 | Mode | Description | Output |
 |------|-------------|--------|
-| [BlenderGym](https://github.com/richard-guyunqi/BlenderGym-Open) | Single-step 3D graphics editing | Blender Python |
 | [BlenderBench](https://huggingface.co/datasets/DietCoke4671/blenderbench) | Multi-step 3D graphics editing (Level 1-3) | Blender Python |
+| [BlenderGym](https://github.com/richard-guyunqi/BlenderGym-Open) | Single-step 3D graphics editing | Blender Python |
 | [SlideBench](https://github.com/para-lost/AutoPresent) | 2D slide/document layout synthesis | PowerPoint |
 | Custom Static Scene | Single-view 3D reconstruction | Blender scene |
 | Custom Dynamic Scene | 4D dynamic scene with physics | Blender animation |
@@ -91,6 +91,14 @@ cp utils/_api_keys.py.example utils/_api_keys.py
 ```
 
 Edit `utils/_api_keys.py` and add your `OPENAI_API_KEY` and `MESHY_API_KEY`.
+
+### Configure environment paths
+
+```bash
+cp utils/_path.py.example utils/_path.py
+```
+
+Edit `utils/_path.py` to set your conda installation path. By default, it points to `~/anaconda3/envs`. Update the `CONDA_BASE` variable or set the `VIGA_CONDA_BASE` environment variable to match your conda environments location.
 
 ## 2. Usage: Run the agent
 

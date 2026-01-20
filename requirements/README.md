@@ -100,3 +100,12 @@ python -c "import pptx; print('OK')"
 | CUDA not found | Run `nvidia-smi`, reinstall PyTorch with correct CUDA |
 | PPTX conversion fails | Reinstall LibreOffice |
 | Wrong Python path | Update `_path.py` with `which python` output |
+
+## Reference to Original Repositories
+
+If you encounter installation issues, please refer to the original repositories:
+
+- **Blender environment**: [BlenderGym](https://blendergym.github.io/) | [GitHub](https://github.com/para-lost/AutoPresent)
+- **PPTX environment**: [AutoPresent](https://github.com/para-lost/AutoPresent)
+- **SAM (Segment Anything Model)**: [Meta AI SAM](https://segment-anything.com/) | [GitHub](https://github.com/facebookresearch/segment-anything) | [SAM 2](https://ai.meta.com/sam2/)
+- **vLLM**: [vLLM Official Site](https://vllm.ai/) | [GitHub](https://github.com/vllm-project/vllm)
