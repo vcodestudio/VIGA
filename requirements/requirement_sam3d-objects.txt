@@ -69,7 +69,6 @@ decord==0.6.0
 defusedxml==0.7.1
 Deprecated==1.3.1
 deprecation==2.1.0
-diff_gaussian_rasterization @ git+https://github.com/graphdeco-inria/diff-gaussian-rasterization.git@59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d
 dill==0.4.0
 dnspython==2.8.0
 docker==7.1.0
@@ -215,7 +214,6 @@ notebook==7.5.0
 notebook_shim==0.2.4
 numba==0.62.1
 numpy==1.26.4
-nvdiffrast @ git+https://github.com/NVlabs/nvdiffrast.git@253ac4fcea7de5f396371124af597e6cc957bfae
 nvidia-cublas-cu12==12.1.3.1
 nvidia-cuda-cupti-cu12==12.1.105
 nvidia-cuda-nvcc-cu12==12.1.105
@@ -336,8 +334,8 @@ safehttpx==0.1.7
 safetensors==0.7.0
 sagemaker==2.242.0
 sagemaker-core==1.0.69
-# Editable install for sam3d_objects (install from utils/sam3d)
--e ./utils/sam3d
+# Editable install for sam3d_objects (install from utils/third_party/sam3d)
+-e ./utils/third_party/sam3d
 schema==0.7.8
 scikit-image==0.23.1
 scikit-learn==1.7.2
@@ -383,10 +381,6 @@ tokenizers==0.15.2
 toml==0.10.2
 tomli==2.0.1
 tomlkit==0.13.3
-torch==2.5.1+cu121
-torchaudio==2.5.1+cu121
-torchmetrics==1.8.2
-torchvision==0.20.1+cu121
 tornado==6.5.2
 tqdm==4.67.1
 trailrunner==1.4.0

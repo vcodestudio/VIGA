@@ -79,7 +79,7 @@ conda create -n sam python=3.10 -y && conda activate sam
 pip install -r requirements/requirement_sam.txt
 
 conda create -n sam3d python=3.11 -y && conda activate sam3d
-pip install -r requirements/requirement_sam3d-objects.txt
+./requirements/install_sam3d.sh
 ```
 
 See [Requirements](requirements/README.md) for additional options.
