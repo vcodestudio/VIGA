@@ -62,6 +62,8 @@ You need [Conda](https://docs.conda.io/en/latest/miniconda.html) installed. For 
 ```bash
 git clone https://github.com/Fugtemypt123/VIGA-release.git && cd VIGA-release
 git submodule update --init --recursive
+cd utils/third_party/infinigen
+INFINIGEN_MINIMAL_INSTALL=True bash scripts/install/interactive_blender.sh
 ```
 
 ### Create conda environments
