@@ -13,3 +13,13 @@ pip install psutil==7.1.3 --no-build-isolation
 pip install flash-attn==2.8.3 --no-build-isolation
 pip install kaolin==0.17.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.5.1_cu121.html
 pip install -r requirements/requirement_sam3d-objects.txt --no-deps
+pip install 'huggingface-hub[cli]<1.0'
+cd utils/third_party/sam3d
+TAG=hf
+hf download \
+  --repo-type model \
+  --local-dir checkpoints/${TAG}-download \
+  --max-workers 1 \
+  facebook/sam-3d-objects
+mv checkpoints/${TAG}-download/checkpoints checkpoints/${TAG}
+rm -rf checkpoints/${TAG}-download
