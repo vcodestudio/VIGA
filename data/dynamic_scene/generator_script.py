@@ -6,19 +6,24 @@ import sys
 if __name__ == "__main__":
 
     # ---- Command line arguments ----
-    code_fpath = sys.argv[6]  # Path to scene generation/editing code
-    if len(sys.argv) > 7:
-        rendering_dir = sys.argv[7]  # Rendering output directory
-    else:
-        rendering_dir = None
-    if len(sys.argv) > 8:
-        save_blend = sys.argv[8]  # Optional: path to save .blend file
-    else:
-        save_blend = None
+    # Parse arguments after '--' separator to handle variable number of Blender flags
+    try:
+        separator_idx = sys.argv.index('--')
+        args_after_separator = sys.argv[separator_idx + 1:]
+        code_fpath = args_after_separator[0]  # Path to scene generation/editing code
+        rendering_dir = args_after_separator[1] if len(args_after_separator) > 1 else None  # Rendering output directory
+        save_blend = args_after_separator[2] if len(args_after_separator) > 2 else None  # Optional: path to save .blend file
+    except (ValueError, IndexError):
+        raise ValueError("Usage: blender --background [flags] -- code.py [render_dir] [save_blend]")
 
     # ---- Execute external code to build scene ----
     with open(code_fpath, "r", encoding="utf-8") as f:
         code = f.read()
+    
+    # Remove non-printable characters before execution to prevent SyntaxError
+    import re
+    code = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\uAC00-\uD7A3]', '', code)
+    
     try:
         exec(code)
     except Exception as e:
@@ -28,6 +33,9 @@ if __name__ == "__main__":
         print("[INFO] No rendering directory provided, skipping rendering.")
         exit(0)
 
+    # Convert rendering_dir to absolute path to ensure correct file location
+    rendering_dir = os.path.abspath(rendering_dir)
+    
     bpy.context.scene.render.engine = 'CYCLES'
     try:
         prefs = bpy.context.preferences.addons['cycles'].preferences
@@ -85,10 +93,13 @@ if __name__ == "__main__":
             # Filename: CameraName_fXXXX.png
             scene.render.filepath = os.path.join(rendering_dir, f"{cam.name}_f{f:04d}.png")
             print(f"[RENDER] {cam.name} @ frame {f} -> {scene.render.filepath}")
-            bpy.ops.render.render(write_still=True)
+            # Use EXEC_DEFAULT explicitly for Blender 5 headless rendering compatibility
+            bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
     # ---- Optional: save .blend ----
     if save_blend:
+        # Convert save_blend to absolute path to ensure correct file location
+        save_blend = os.path.abspath(save_blend)
         bpy.context.preferences.filepaths.save_version = 0
         bpy.ops.wm.save_as_mainfile(filepath=save_blend)
         print(f"[INFO] Saved blend to: {save_blend}")

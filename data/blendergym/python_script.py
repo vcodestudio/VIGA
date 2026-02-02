@@ -55,7 +55,8 @@ if __name__ == "__main__":
         bpy.context.scene.camera = bpy.data.objects['Camera1']
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = os.path.join(rendering_dir, 'render1.png')
-        bpy.ops.render.render(write_still=True)
+        # Use EXEC_DEFAULT explicitly for Blender 5 headless rendering compatibility
+        bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
     # Save the blend file
     if save_blend:

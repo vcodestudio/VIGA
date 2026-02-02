@@ -160,7 +160,9 @@ class ExternalToolClient:
         if not server_path:
             raise RuntimeError(f"Tool {tool_name} not found in any server.")
         handle = self.handles[server_path]
+        logging.info(f"Calling tool {tool_name} on server {server_path}")
         result = await handle.call_tool(tool_name, tool_args)
+        logging.info(f"Tool {tool_name} returned result")
         result = json.loads(result.content[0].text)
         return result['output']
 

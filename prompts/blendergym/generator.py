@@ -1,15 +1,15 @@
 """BlenderGym generator prompts (tool-driven)"""
 import os
 
-with open(os.path.join(os.path.dirname(__file__), 'examples', 'blendshape.txt'), 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'examples', 'blendshape.txt'), 'r', encoding='utf-8') as f:
   blendshape_example = f.read()
-with open(os.path.join(os.path.dirname(__file__), 'examples', 'geometry.txt'), 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'examples', 'geometry.txt'), 'r', encoding='utf-8') as f:
   geometry_example = f.read()
-with open(os.path.join(os.path.dirname(__file__), 'examples', 'lighting.txt'), 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'examples', 'lighting.txt'), 'r', encoding='utf-8') as f:
   lighting_example = f.read()
-with open(os.path.join(os.path.dirname(__file__), 'examples', 'material.txt'), 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'examples', 'material.txt'), 'r', encoding='utf-8') as f:
   material_example = f.read()
-with open(os.path.join(os.path.dirname(__file__), 'examples', 'placement.txt'), 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), 'examples', 'placement.txt'), 'r', encoding='utf-8') as f:
   placement_example = f.read()
 
 blendergym_generator_system = """[Role]

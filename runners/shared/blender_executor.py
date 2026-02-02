@@ -49,16 +49,26 @@ def execute_blender_code(
         # Execute Blender
         cmd = [
             blender_command,
-            "--background", blender_file,
+            "--background",
+            "--factory-startup",  # Use factory settings to avoid addon conflicts
+            blender_file,
             "--python", blender_script,
             "--", tmp_code_path, str(render_dir)
         ]
 
+        env = os.environ.copy()
         if gpu_devices:
-            env = os.environ.copy()
             env["CUDA_VISIBLE_DEVICES"] = gpu_devices
-        else:
-            env = None
+        
+        # Ban blender audio error
+        env['AL_LIB_LOGLEVEL'] = '0'
+        
+        # Additional environment variables for Blender 5 headless rendering
+        import platform
+        if platform.system() != 'Windows':
+            # Linux/Unix systems
+            env['LIBGL_ALWAYS_SOFTWARE'] = '0'
+            env['MESA_GL_VERSION_OVERRIDE'] = '3.3'
 
         result = subprocess.run(
             cmd,

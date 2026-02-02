@@ -46,6 +46,10 @@ class GeneratorAgent:
         self.init_chat_args: Dict[str, Any] = {}
         if 'gpt' in self.config.get("model") and not self.config.get("no_tools"):
             self.init_chat_args['parallel_tool_calls'] = False
+        # Set minimal reasoning effort for Gemini models to improve speed
+        # Note: Reasoning cannot be completely disabled for Gemini 3 models
+        if 'gemini' in self.config.get("model").lower():
+            self.init_chat_args['reasoning_effort'] = "minimal"
 
         # Initialize tool client
         self.tool_client = ExternalToolClient(self.config.get("generator_tools"), self.config)
@@ -60,7 +64,25 @@ class GeneratorAgent:
         # Initialize system prompt
         self.prompt_builder = PromptBuilder(self.client, self.config)
         self.system_prompt = self.prompt_builder.build_prompt("generator", "system")
-        self.memory.extend(self.system_prompt)
+        
+        # Check if resuming from existing memory
+        resume_memory_path = self.config.get("resume_memory")
+        if resume_memory_path and os.path.exists(resume_memory_path):
+            print(f"Loading existing memory from: {resume_memory_path}")
+            with open(resume_memory_path, "r", encoding="utf-8") as f:
+                self.memory = json.load(f)
+            # Extract init_plan if it exists in memory
+            for msg in self.memory:
+                if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                    for content in msg["content"]:
+                        if isinstance(content, dict) and content.get("type") == "text":
+                            text = content.get("text", "")
+                            if text.startswith("Initial plan:"):
+                                self.init_plan = text.replace("Initial plan:", "").strip()
+                                break
+            print(f"  Loaded {len(self.memory)} memory entries")
+        else:
+            self.memory.extend(self.system_prompt)
 
     async def run(self) -> None:
         """Run the generator agent loop to produce and refine code.
@@ -140,7 +162,7 @@ class GeneratorAgent:
                     
                 tool_response = await self.tool_client.call_tool(tool_name, tool_arguments)
                 if tool_name == "get_better_object":
-                    with open(self.config.get("output_dir") + f"/_tool_call.json", "w") as f:
+                    with open(self.config.get("output_dir") + f"/_tool_call.json", "w", encoding="utf-8") as f:
                         json.dump({'name': tool_name, 'arguments': tool_arguments, 'response': tool_response}, f, indent=4, ensure_ascii=False)
                 
                 # If the tool is execute_and_evaluate, run the verifier
@@ -229,7 +251,7 @@ class GeneratorAgent:
     def _save_memory(self) -> None:
         """Save the conversation memory to a JSON file in the output directory."""
         output_file = self.config.get("output_dir") + "/generator_memory.json"
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json.dump(self.memory, f, indent=4, ensure_ascii=False)
     
     async def cleanup(self) -> None:

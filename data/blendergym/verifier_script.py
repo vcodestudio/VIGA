@@ -4,15 +4,15 @@ import os
 import sys
 
 if __name__ == "__main__":
-    code_fpath = sys.argv[6]  # Path to the code file
-    if len(sys.argv) > 7:
-        rendering_dir = sys.argv[7] # Path to save the rendering from camera1
-    else:
-        rendering_dir = None
-    if len(sys.argv) > 8:
-        save_blend = sys.argv[8] # Path to save the blend file
-    else:
-        save_blend = None
+    # Parse arguments after '--' separator to handle variable number of Blender flags
+    try:
+        separator_idx = sys.argv.index('--')
+        args_after_separator = sys.argv[separator_idx + 1:]
+        code_fpath = args_after_separator[0]  # Path to the code file
+        rendering_dir = args_after_separator[1] if len(args_after_separator) > 1 else None  # Path to save the rendering
+        save_blend = args_after_separator[2] if len(args_after_separator) > 2 else None  # Path to save the blend file
+    except (ValueError, IndexError):
+        raise ValueError("Usage: blender --background [flags] -- code.py [render_dir] [save_blend]")
 
     with open(code_fpath, "r") as f:
         code = f.read()

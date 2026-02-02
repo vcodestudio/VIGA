@@ -113,23 +113,58 @@ def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[
         Tuple of (task_name, success, error_message)
     """
     task_name = task_config["task_name"]
-    print(f"Running static scene task: {task_name}")
+    is_resume = hasattr(args, 'resume') and args.resume
     
-    # Create output directory
-    os.makedirs(task_config["output_dir"], exist_ok=True)
-
-    # Create an empty blender file inside output_dir for build-from-scratch flows
-    created_blender_file = os.path.join(task_config["output_dir"], "blender_file.blend")
-    # copy the blender file to the output directory
-    if os.path.exists(args.blender_file):
-        shutil.copy(args.blender_file, created_blender_file)
+    if is_resume:
+        # Resume mode: use the existing directory directly (no copying)
+        resume_dir = Path(args.resume)
+        task_config["output_dir"] = str(resume_dir)  # Use existing directory
+        print(f"Resuming static scene task: {task_name} in {resume_dir}")
+        
+        # Find the latest state.blend in renders folder to use as starting point
+        renders_dir = resume_dir / "renders"
+        existing_blend = None
+        if renders_dir.exists():
+            render_subdirs = sorted([d for d in renders_dir.iterdir() if d.is_dir()], key=lambda x: int(x.name) if x.name.isdigit() else 0, reverse=True)
+            for subdir in render_subdirs:
+                state_blend = subdir / "state.blend"
+                if state_blend.exists():
+                    existing_blend = str(state_blend)
+                    break
+        
+        if existing_blend:
+            # Copy latest state.blend to blender_file.blend for continuation
+            created_blender_file = str(resume_dir / "blender_file.blend")
+            shutil.copy(existing_blend, created_blender_file)
+            print(f"  Using latest state: {existing_blend}")
+        else:
+            # Use existing blender_file.blend
+            created_blender_file = str(resume_dir / "blender_file.blend")
+            if not Path(created_blender_file).exists():
+                print(f"  Warning: No blend file found in {resume_dir}, starting fresh")
+                is_resume = False
+            else:
+                print(f"  Using existing blend file: {created_blender_file}")
     else:
-        # Create a new blender file
-        create_empty_blend_cmd = (
-            f"{args.blender_command} --background --factory-startup "
-            f"--python-expr \"import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.save_mainfile(filepath='" + created_blender_file + "')\""
-        )
-        subprocess.run(create_empty_blend_cmd, shell=True, check=True)
+        print(f"Running static scene task: {task_name}")
+    
+    # Create output directory (only for new runs)
+    os.makedirs(task_config["output_dir"], exist_ok=True)
+    
+    if not is_resume:
+        # Create an empty blender file inside output_dir for build-from-scratch flows
+        created_blender_file = os.path.join(task_config["output_dir"], "blender_file.blend")
+        # copy the blender file to the output directory
+        if os.path.exists(args.blender_file):
+            shutil.copy(args.blender_file, created_blender_file)
+        else:
+            # Create a new blender file - use forward slashes for cross-platform compatibility
+            created_blender_file_escaped = created_blender_file.replace("\\", "/")
+            create_empty_blend_cmd = (
+                f'"{args.blender_command}" --background --factory-startup '
+                f'--python-expr "import bpy; bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.save_mainfile(filepath=\'{created_blender_file_escaped}\')"'
+            )
+            subprocess.run(create_empty_blend_cmd, shell=True, check=True)
     
     # Build main.py command
     cmd = [
@@ -154,10 +189,17 @@ def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[
         "--assets-dir", task_config["assets_dir"],
         "--init-code-path", task_config["init_code_path"],
         "--init-image-path", task_config["init_image_path"],
-        "--clear-memory",
         "--prompt-setting", args.prompt_setting,
         "--init-setting", args.init_setting,
+        "--render-engine", args.render_engine,
     ]
+    
+    # Add resume flag or clear-memory flag
+    memory_path = Path(task_config["output_dir"]) / "generator_memory.json"
+    if is_resume and memory_path.exists():
+        cmd.extend(["--resume-memory", str(memory_path)])
+    else:
+        cmd.extend(["--clear-memory"])
     
     if args.explicit_comp:
         cmd.extend(["--explicit-comp"])
@@ -242,17 +284,17 @@ def main() -> None:
     
     # Main.py parameters
     parser.add_argument("--max-rounds", type=int, default=100, help="Maximum number of interaction rounds")
-    parser.add_argument("--model", default="gpt-5", help="OpenAI vision model to use")
+    parser.add_argument("--model", default="gemini-3-flash-preview", help="OpenAI vision model to use")
     parser.add_argument("--memory-length", type=int, default=12, help="Memory length")
     
     # Blender parameters
-    parser.add_argument("--blender-command", default="utils/third_party/infinigen/blender/blender", help="Blender command path")
+    parser.add_argument("--blender-command", default=r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe", help="Blender command path")
     parser.add_argument("--blender-file", default="data/static_scene/empty_scene.blend", help="Empty blender file for static scenes")
     parser.add_argument("--blender-script", default="data/static_scene/generator_script.py", help="Blender execution script")
     parser.add_argument("--blender-save", default=f"data/static_scene/empty_scene.blend", help="Save blender file")
     
     # Tool server scripts (comma-separated)
-    parser.add_argument("--generator-tools", default="tools/blender/exec.py,tools/generator_base.py,tools/assets/meshy.py,tools/initialize_plan.py", help="Comma-separated list of generator tool server scripts")
+    parser.add_argument("--generator-tools", default="tools/blender/exec.py,tools/generator_base.py,tools/initialize_plan.py", help="Comma-separated list of generator tool server scripts")
     parser.add_argument("--verifier-tools", default="tools/blender/investigator.py,tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
     
     # Execution parameters
@@ -264,6 +306,8 @@ def main() -> None:
     parser.add_argument("--text-only", action="store_true", help="Only use text as reference")
     parser.add_argument("--init-setting", choices=["none", "minimal", "reasonable"], default="none", help="Setting for the static scene task")
     parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset"], default="none", help="Setting for the prompt")
+    parser.add_argument("--render-engine", default="eevee", choices=["eevee", "cycles", "workbench"], help="Render engine (eevee=fast, cycles=quality, workbench=fastest). Default: eevee")
+    parser.add_argument("--resume", help="Path to previous output directory to resume from (e.g., output/static_scene/20260202_134219/test)")
     
     args = parser.parse_args()
     
@@ -279,11 +323,16 @@ def main() -> None:
     for task in tasks:
         print(f"  - {task['task_name']}: {task['target_image_path']}")
     
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    with open(args.output_dir + "/args.json", "w") as f:
-        json.dump(args.__dict__, f, indent=4, ensure_ascii=False)
+    # For resume mode, use the parent directory of the resume path
+    if args.resume:
+        # Extract parent directory from resume path (e.g., output/static_scene/20260202_141422/test -> output/static_scene/20260202_141422)
+        args.output_dir = str(Path(args.resume).parent)
+        print(f"Resume mode: using existing output directory {args.output_dir}")
+    else:
+        # Create output directory only for new runs
+        os.makedirs(args.output_dir, exist_ok=True)
+        with open(args.output_dir + "/args.json", "w") as f:
+            json.dump(args.__dict__, f, indent=4, ensure_ascii=False)
     
     # Run tasks
     start_time = time.time()

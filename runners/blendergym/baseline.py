@@ -130,7 +130,9 @@ def run_blendergym_task(task_config: Dict, args: argparse.Namespace) -> Tuple[st
         
     cmd = [
         "utils/third_party/infinigen/blender/blender",
-        "--background", task_config['blender_file'],
+        "--background",
+        "--factory-startup",  # Use factory settings to avoid addon conflicts
+        task_config['blender_file'],
         "--python", "data/blendergym/generator_script.py",
         "--", os.path.join(output_base, f"{output_name}.py"), os.path.join(output_base, f"{output_name}")
     ]

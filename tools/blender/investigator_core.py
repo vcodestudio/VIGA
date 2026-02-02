@@ -50,7 +50,8 @@ class Executor:
         script_save: str,
         render_save: str,
         blender_save: Optional[str] = None,
-        gpu_devices: Optional[str] = None
+        gpu_devices: Optional[str] = None,
+        render_engine: Optional[str] = None
     ) -> None:
         """Initialize the executor.
 
@@ -62,6 +63,7 @@ class Executor:
             render_save: Directory for rendered images.
             blender_save: Optional path to save modified Blender files.
             gpu_devices: Optional CUDA device specification.
+            render_engine: Render engine to use (eevee, cycles, workbench).
         """
         self.blender_command = blender_command
         self.blender_file = blender_file
@@ -71,6 +73,7 @@ class Executor:
         self.render_path = Path(render_save)
         self.blender_save = blender_save
         self.gpu_devices = gpu_devices
+        self.render_engine = render_engine or "eevee"
         self.count = 0
 
         self.script_path.mkdir(parents=True, exist_ok=True)
@@ -103,14 +106,23 @@ class Executor:
         Returns:
             Dictionary with status and output (images or error text).
         """
+        # Quote paths that may contain spaces
+        blender_cmd_quoted = f'"{self.blender_command}"'
+        blender_file_quoted = f'"{self.blender_file}"'
+        blender_script_quoted = f'"{self.blender_script}"'
+        code_file_quoted = f'"{str(code_file)}"'
+        run_dir_quoted = f'"{str(run_dir)}"'
+        
         cmd = [
-            self.blender_command,
-            "--background", self.blender_file,
-            "--python", self.blender_script,
-            "--", str(code_file), str(run_dir)
+            blender_cmd_quoted,
+            "--background",
+            "--factory-startup",  # Use factory settings to avoid addon conflicts
+            blender_file_quoted,
+            "--python", blender_script_quoted,
+            "--", code_file_quoted, run_dir_quoted
         ]
         if self.blender_save:
-            cmd.append(self.blender_save)
+            cmd.append(f'"{self.blender_save}"')
 
         env = os.environ.copy()
         if self.gpu_devices:
@@ -118,15 +130,60 @@ class Executor:
 
         # Ban blender audio error
         env['AL_LIB_LOGLEVEL'] = '0'
+        
+        # Additional environment variables for Blender 5 headless rendering
+        # Windows-specific: Use hardware acceleration if available
+        import platform
+        if platform.system() == 'Windows':
+            # Windows doesn't use MESA, so skip MESA_GL_VERSION_OVERRIDE
+            pass
+        else:
+            # Linux/Unix systems
+            env['LIBGL_ALWAYS_SOFTWARE'] = '0'
+            env['MESA_GL_VERSION_OVERRIDE'] = '3.3'
 
         try:
             # Propagate render directory to scripts
             env["RENDER_DIR"] = str(run_dir)
-            proc = subprocess.run(" ".join(cmd), shell=True, check=True, capture_output=True, text=True, env=env)
+            env["RENDER_ENGINE"] = self.render_engine.upper()
+            
+            # Use Popen with temp files to avoid Windows subprocess hanging issue
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='_stdout.txt', encoding='utf-8') as stdout_file, \
+                 tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='_stderr.txt', encoding='utf-8') as stderr_file:
+                stdout_path = stdout_file.name
+                stderr_path = stderr_file.name
+            
+            with open(stdout_path, 'w', encoding='utf-8') as stdout_f, \
+                 open(stderr_path, 'w', encoding='utf-8') as stderr_f:
+                proc = subprocess.Popen(" ".join(cmd), shell=True, stdin=subprocess.DEVNULL, stdout=stdout_f, stderr=stderr_f, env=env)
+                try:
+                    proc.wait(timeout=300)  # 5 minute timeout
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    logging.error("Blender process timed out after 5 minutes")
+                    raise subprocess.CalledProcessError(-1, " ".join(cmd), "Timeout", "Process killed after 5 minute timeout")
+            
+            with open(stdout_path, 'r', encoding='utf-8', errors='ignore') as f:
+                out = f.read()
+            with open(stderr_path, 'r', encoding='utf-8', errors='ignore') as f:
+                err = f.read()
+            
+            # Cleanup temp files
+            try:
+                os.unlink(stdout_path)
+                os.unlink(stderr_path)
+            except:
+                pass
+            
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, " ".join(cmd), out, err)
+            
             imgs = sorted([str(p) for p in run_dir.glob("*") if p.suffix.lower() in [".png", ".jpg", ".jpeg"]])
             # If no image output
             if not os.path.exists(f"{self.base}/tmp/camera_info.json"):
-                return {"status": "success", "output": {"text": [proc.stdout]}}
+                return {"status": "success", "output": {"text": [out]}}
             # If image output
             with open(f"{self.base}/tmp/camera_info.json", "r") as f:
                 camera_info = json.load(f)
@@ -135,8 +192,8 @@ class Executor:
                     camera['rotation'] = [round(x, 2) for x in camera['rotation']]
             return {"status": "success", "output": {"image": imgs, "text": ["Camera parameters: " + str(camera) for camera in camera_info]}}
         except subprocess.CalledProcessError as e:
-            logging.error(f"Blender failed: {e.stderr}")
-            return {"status": "error", "output": {"text": [e.stderr or e.stdout]}}
+            logging.error(f"Blender failed: {e.stderr if hasattr(e, 'stderr') else ''}")
+            return {"status": "error", "output": {"text": [e.stderr if hasattr(e, 'stderr') else e.stdout if hasattr(e, 'stdout') else str(e)]}}
 
     def execute(self, full_code: str) -> Dict[str, Any]:
         """Execute Blender code and return results.
@@ -185,7 +242,8 @@ class Investigator3D:
         blender_path: str,
         blender_command: str,
         blender_script: str,
-        gpu_devices: str
+        gpu_devices: str,
+        render_engine: str = "eevee"
     ) -> None:
         """Initialize the 3D investigator.
 
@@ -195,6 +253,7 @@ class Investigator3D:
             blender_command: Command to invoke Blender.
             blender_script: Path to the execution script.
             gpu_devices: CUDA device specification.
+            render_engine: Render engine to use (eevee, cycles, workbench).
         """
         self.blender_file = blender_path
         self.blender_command = blender_command
@@ -210,7 +269,8 @@ class Investigator3D:
             script_save=str(self.base / "scripts"),
             render_save=str(self.base / "renders"),
             blender_save=str(self.base / "current_scene.blend"),
-            gpu_devices=gpu_devices
+            gpu_devices=gpu_devices,
+            render_engine=render_engine
         )
 
         # Camera state variables

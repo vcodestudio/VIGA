@@ -1,9 +1,9 @@
 """Static scene generator prompts (tool-driven)"""
 
-with open("prompts/static_scene/procedural.txt", "r") as f:
+with open("prompts/static_scene/procedural.txt", "r", encoding="utf-8") as f:
     procedural_instruct = f.read()
     
-with open("prompts/static_scene/scene_graph.txt", "r") as f:
+with open("prompts/static_scene/scene_graph.txt", "r", encoding="utf-8") as f:
     scene_graph = f.read()
 
 static_scene_generator_system = f"""[Role]

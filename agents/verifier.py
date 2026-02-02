@@ -45,6 +45,10 @@ class VerifierAgent:
         self.init_chat_args: Dict[str, Any] = {}
         if 'gpt' in self.config.get("model") and not self.config.get("no_tools"):
             self.init_chat_args['parallel_tool_calls'] = False
+        # Set minimal reasoning effort for Gemini models to improve speed
+        # Note: Reasoning cannot be completely disabled for Gemini 3 models
+        if 'gemini' in self.config.get("model").lower():
+            self.init_chat_args['reasoning_effort'] = "minimal"
 
         # Initialize tool client
         self.tool_client = ExternalToolClient(self.config.get("verifier_tools"), self.config)
@@ -208,7 +212,7 @@ class VerifierAgent:
     def _save_memory(self) -> None:
         """Save the persistent memory to a JSON file in the output directory."""
         output_file = self.config.get("output_dir") + "/verifier_memory.json"
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json.dump(self.saved_memory, f, indent=4, ensure_ascii=False)
 
     async def cleanup(self) -> None:

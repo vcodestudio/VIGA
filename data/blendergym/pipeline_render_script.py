@@ -5,15 +5,15 @@ import sys
 
 if __name__ == "__main__":
 
-    code_fpath = sys.argv[6]  # Path to the code file
-    if len(sys.argv) > 7:
-        rendering_dir = sys.argv[7] # Path to save the rendering from camera1
-    else:
-        rendering_dir = None
-    if len(sys.argv) > 8:
-        save_blend = sys.argv[8] # Path to save the blend file
-    else:
-        save_blend = None
+    # Parse arguments after '--' separator to handle variable number of Blender flags
+    try:
+        separator_idx = sys.argv.index('--')
+        args_after_separator = sys.argv[separator_idx + 1:]
+        code_fpath = args_after_separator[0]  # Path to the code file
+        rendering_dir = args_after_separator[1] if len(args_after_separator) > 1 else None  # Path to save the rendering
+        save_blend = args_after_separator[2] if len(args_after_separator) > 2 else None  # Path to save the blend file
+    except (ValueError, IndexError):
+        raise ValueError("Usage: blender --background [flags] -- code.py [render_dir] [save_blend]")
     
     # Enable GPU rendering
     bpy.context.scene.render.engine = 'CYCLES'
@@ -48,20 +48,27 @@ if __name__ == "__main__":
 
     # Render from camera1
     if 'Camera1' in bpy.data.objects and rendering_dir:
+        # Convert rendering_dir to absolute path to ensure correct file location
+        rendering_dir = os.path.abspath(rendering_dir)
+        os.makedirs(rendering_dir, exist_ok=True)
         bpy.context.scene.camera = bpy.data.objects['Camera1']
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = os.path.join(rendering_dir, 'render1.png')
-        bpy.ops.render.render(write_still=True)
+        # Use EXEC_DEFAULT explicitly for Blender 5 headless rendering compatibility
+        bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
     # Render from camera2 (not used in hard tasks)
     if 'Camera2' in bpy.data.objects:
         bpy.context.scene.camera = bpy.data.objects['Camera2']
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = os.path.join(rendering_dir, 'render2.png')
-        bpy.ops.render.render(write_still=True)
+        # Use EXEC_DEFAULT explicitly for Blender 5 headless rendering compatibility
+        bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
     # Save the blend file
     if save_blend:
+        # Convert save_blend to absolute path to ensure correct file location
+        save_blend = os.path.abspath(save_blend)
         # Set the save version to 0
         bpy.context.preferences.filepaths.save_version = 0
         # Save the blend file

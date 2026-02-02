@@ -16,8 +16,14 @@ except Exception:
 
 if __name__ == "__main__":
 
-    code_fpath = sys.argv[6]  # Path to the code file
-    rendering_dir = sys.argv[7] # Path to save the rendering from camera1
+    # Parse arguments after '--' separator to handle variable number of Blender flags
+    try:
+        separator_idx = sys.argv.index('--')
+        args_after_separator = sys.argv[separator_idx + 1:]
+        code_fpath = args_after_separator[0]  # Path to the code file
+        rendering_dir = args_after_separator[1]  # Path to save the rendering from camera1
+    except (ValueError, IndexError):
+        raise ValueError("Usage: blender --background [flags] -- code.py render_dir")
 
     # Enable GPU rendering
     bpy.context.scene.render.engine = 'CYCLES'
@@ -52,10 +58,14 @@ if __name__ == "__main__":
 
     # Render from camera1
     if 'Camera1' in bpy.data.objects:
+        # Convert rendering_dir to absolute path to ensure correct file location
+        rendering_dir = os.path.abspath(rendering_dir)
+        os.makedirs(rendering_dir, exist_ok=True)
         bpy.context.scene.camera = bpy.data.objects['Camera1']
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = os.path.join(rendering_dir, 'render1.png')
-        bpy.ops.render.render(write_still=True)
+        # Use EXEC_DEFAULT explicitly for Blender 5 headless rendering compatibility
+        bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 
 

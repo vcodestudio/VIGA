@@ -8,6 +8,23 @@ inspection, rendering, and camera manipulation.
 from typing import List
 
 
+def _get_render_setup_code() -> str:
+    """Generate common render setup code that reads engine from environment."""
+    return '''
+# Get render engine from environment
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {
+    'EEVEE': 'BLENDER_EEVEE',
+    'BLENDER_EEVEE': 'BLENDER_EEVEE', 
+    'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE',
+    'CYCLES': 'CYCLES',
+    'WORKBENCH': 'BLENDER_WORKBENCH',
+}
+render_engine = engine_map.get(render_engine, render_engine)
+bpy.context.scene.render.engine = render_engine
+'''
+
+
 def generate_scene_info_script(output_path: str) -> str:
     """Generate script to extract scene information with bounding boxes.
 
@@ -102,7 +119,7 @@ print("Scene info extracted successfully")
 def generate_render_script() -> str:
     """Generate script to render the current scene.
 
-    Renders the scene to RENDER_DIR/output.png using Cycles engine
+    Renders the scene to RENDER_DIR/output.png using the configured render engine
     at 512x512 resolution.
 
     Returns:
@@ -112,16 +129,27 @@ def generate_render_script() -> str:
 import os
 
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+
+# Map common names to Blender engine names
+engine_map = {
+    'EEVEE': 'BLENDER_EEVEE',
+    'BLENDER_EEVEE': 'BLENDER_EEVEE',
+    'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE',
+    'CYCLES': 'CYCLES',
+    'WORKBENCH': 'BLENDER_WORKBENCH',
+}
+render_engine = engine_map.get(render_engine, render_engine)
 
 # Basic render settings
-bpy.context.scene.render.engine = 'CYCLES'
+bpy.context.scene.render.engine = render_engine
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 
 # Single render
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 print("Render completed to", bpy.context.scene.render.filepath)
 '''
@@ -182,12 +210,14 @@ constraint.up_axis = 'UP_Y'
 
 # Render after focus
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
-bpy.context.scene.render.engine = 'CYCLES'
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+bpy.context.scene.render.engine = engine_map.get(render_engine, render_engine)
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 # update camera info
 camera_info = [{{
@@ -244,12 +274,14 @@ camera.rotation_euler = {rotation_euler}
 
 # Render after setting camera
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
-bpy.context.scene.render.engine = 'CYCLES'
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+bpy.context.scene.render.engine = engine_map.get(render_engine, render_engine)
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 camera_info = [{{
     "location": list(camera.location),
@@ -295,12 +327,14 @@ for obj in bpy.data.objects:
         
 # Render after visibility update
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
-bpy.context.scene.render.engine = 'CYCLES'
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+bpy.context.scene.render.engine = engine_map.get(render_engine, render_engine)
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 camera_info = [{{
     "location": list(bpy.context.scene.camera.location),
@@ -359,12 +393,14 @@ camera.matrix_world.translation = new_pos
 
 # Render after moving
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
-bpy.context.scene.render.engine = 'CYCLES'
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+bpy.context.scene.render.engine = engine_map.get(render_engine, render_engine)
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 camera_info = [{{
     "location": list(camera.location),
@@ -404,12 +440,14 @@ scene.frame_set(target_frame)
 
 # Render after frame change
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
-bpy.context.scene.render.engine = 'CYCLES'
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+bpy.context.scene.render.engine = engine_map.get(render_engine, render_engine)
 bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.resolution_x = 512
 bpy.context.scene.render.resolution_y = 512
 bpy.context.scene.render.filepath = os.path.join(render_dir, "output.png")
-bpy.ops.render.render(write_still=True)
+bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
 
 camera_info = [{{
     "location": list(bpy.context.scene.camera.location),
@@ -508,6 +546,10 @@ camera_infos = []
 
 # Set up viewpoints and render each
 render_dir = os.environ.get("RENDER_DIR", "/tmp")
+render_engine = os.environ.get("RENDER_ENGINE", "BLENDER_EEVEE").upper()
+engine_map = {{'EEVEE': 'BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT': 'BLENDER_EEVEE', 'CYCLES': 'CYCLES', 'WORKBENCH': 'BLENDER_WORKBENCH'}}
+render_engine = engine_map.get(render_engine, render_engine)
+
 for i, pos in enumerate(camera_positions):
     camera.location = pos
     camera.rotation_euler = (math.radians(60), 0, math.radians(45))
@@ -516,12 +558,12 @@ for i, pos in enumerate(camera_positions):
     direction = Vector((center_x, center_y, center_z)) - camera.location
     camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
     # Render per viewpoint
-    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.render.engine = render_engine
     bpy.context.scene.render.image_settings.file_format = 'PNG'
     bpy.context.scene.render.resolution_x = 512
     bpy.context.scene.render.resolution_y = 512
     bpy.context.scene.render.filepath = os.path.join(render_dir, str(i+1)+".png")
-    bpy.ops.render.render(write_still=True)
+    bpy.ops.render.render("EXEC_DEFAULT", write_still=True)
     
     camera_infos.append({{
         "location": list(camera.location),

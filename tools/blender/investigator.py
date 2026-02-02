@@ -146,7 +146,7 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
 
     Args:
         args: Configuration dictionary with 'output_dir', 'blender_file',
-            'blender_command', 'blender_script', and 'gpu_devices' keys.
+            'blender_command', 'blender_script', 'gpu_devices', and 'render_engine' keys.
 
     Returns:
         Dictionary with status and tool configurations on success.
@@ -160,7 +160,8 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
             str(args.get("blender_file")),
             str(args.get("blender_command")),
             blender_script,
-            str(args.get("gpu_devices"))
+            str(args.get("gpu_devices")),
+            str(args.get("render_engine") or "eevee")
         )
         return {
             "status": "success",

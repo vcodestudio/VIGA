@@ -103,7 +103,8 @@ class Executor:
         script_save: str,
         render_save: str,
         blender_save: Optional[str] = None,
-        gpu_devices: Optional[str] = None
+        gpu_devices: Optional[str] = None,
+        render_engine: Optional[str] = None
     ) -> None:
         """Initialize the Blender executor.
 
@@ -115,6 +116,7 @@ class Executor:
             render_save: Directory to save renders.
             blender_save: Optional path to save Blender state.
             gpu_devices: Optional GPU device IDs.
+            render_engine: Render engine to use (eevee, cycles, workbench). Default: eevee.
         """
         self.blender_command = blender_command
         self.blender_file = blender_file
@@ -123,6 +125,7 @@ class Executor:
         self.render_path = Path(render_save)
         self.blender_save = blender_save
         self.gpu_devices = gpu_devices
+        self.render_engine = render_engine or "eevee"
         self.count = 0
 
         self.script_path.mkdir(parents=True, exist_ok=True)
@@ -141,13 +144,15 @@ class Executor:
             Tuple of (success, image_paths, stdout, stderr).
         """
         cmd = [
-            self.blender_command,
-            "--background", self.blender_file,
-            "--python", self.blender_script,
-            "--", script_path, render_path
+            f'"{self.blender_command}"',
+            "--background",
+            "--factory-startup",  # Use factory settings to avoid addon conflicts
+            f'"{self.blender_file}"',
+            "--python", f'"{self.blender_script}"',
+            "--", f'"{script_path}"', f'"{render_path}"'
         ]
         if self.blender_save:
-            cmd.append(self.blender_save)
+            cmd.append(f'"{self.blender_save}"')
         cmd_str = " ".join(cmd)
         
         # Set environment variables to control GPU devices
@@ -159,10 +164,54 @@ class Executor:
         # Ban blender audio error
         env['AL_LIB_LOGLEVEL'] = '0'
         
+        # Set render engine
+        env['RENDER_ENGINE'] = self.render_engine.upper()
+        
+        # Additional environment variables for Blender 5 headless rendering
+        # Prevent OpenGL context issues on headless systems
+        import platform
+        if platform.system() != 'Windows':
+            # Linux/Unix systems - MESA is for Linux
+            env['LIBGL_ALWAYS_SOFTWARE'] = '0'  # Use hardware acceleration if available
+            env['MESA_GL_VERSION_OVERRIDE'] = '3.3'  # Ensure OpenGL version compatibility
+        # Windows uses DirectX/OpenGL drivers directly, no MESA needed
+        
         try:
-            proc = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True, env=env)
-            out = proc.stdout
-            err = proc.stderr
+            # Use Popen to avoid Windows subprocess hanging issue with capture_output
+            # Write stdout/stderr to temp files to avoid pipe deadlock
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='_stdout.txt', encoding='utf-8') as stdout_file, \
+                 tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='_stderr.txt', encoding='utf-8') as stderr_file:
+                stdout_path = stdout_file.name
+                stderr_path = stderr_file.name
+            
+            with open(stdout_path, 'w', encoding='utf-8') as stdout_f, \
+                 open(stderr_path, 'w', encoding='utf-8') as stderr_f:
+                # Close stdin to prevent interference with MCP stdio communication
+                proc = subprocess.Popen(cmd_str, shell=True, stdin=subprocess.DEVNULL, stdout=stdout_f, stderr=stderr_f, env=env)
+                try:
+                    proc.wait(timeout=600)  # 10 minute timeout
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    logging.error("Blender process timed out after 10 minutes")
+                    raise subprocess.CalledProcessError(-1, cmd_str, "Timeout", "Process killed after 10 minute timeout")
+            
+            with open(stdout_path, 'r', encoding='utf-8', errors='ignore') as f:
+                out = f.read()
+            with open(stderr_path, 'r', encoding='utf-8', errors='ignore') as f:
+                err = f.read()
+            
+            # Cleanup temp files
+            try:
+                os.unlink(stdout_path)
+                os.unlink(stderr_path)
+            except:
+                pass
+            
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd_str, out, err)
+            
             if os.path.isdir(render_path):
                 imgs = sorted([str(p) for p in Path(render_path).glob("*") if p.suffix in ['.png','.jpg']])
                 if len(imgs) > 0:
@@ -170,7 +219,7 @@ class Executor:
             return True, [], out, err
         except subprocess.CalledProcessError as e:
             logging.error(f"Blender failed: {e}")
-            return False, [], e.stdout, e.stderr
+            return False, [], e.stdout if hasattr(e, 'stdout') else '', e.stderr if hasattr(e, 'stderr') else ''
 
     def _encode_image(self, img_path: str) -> str:
         """Encode an image file to base64 string."""
@@ -180,9 +229,15 @@ class Executor:
         return base64.b64encode(buf.getvalue()).decode()
 
     def _parse_code(self, full_code: str) -> str:
-        """Strip markdown code fences from code if present."""
+        """Strip markdown code fences and non-printable characters from code."""
         if full_code.startswith("```python") and full_code.endswith("```"):
-            return full_code[len("```python"):-len("```")]
+            full_code = full_code[len("```python"):-len("```")]
+        
+        # Remove non-printable characters (except newline, tab, carriage return)
+        # Allow: \x09 (tab), \x0A (newline), \x0D (carriage return), \x20-\x7E (printable ASCII), \uAC00-\uD7A3 (Hangul)
+        import re
+        full_code = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\uAC00-\uD7A3]', '', full_code)
+        
         return full_code
 
     def _generate_scene_info_script(self) -> str:
@@ -267,7 +322,7 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
 
     Args:
         args: Dictionary containing configuration keys including blender_command,
-              blender_file, blender_script, output_dir, blender_save, gpu_devices.
+              blender_file, blender_script, output_dir, blender_save, gpu_devices, render_engine.
     """
     global _executor
     try:
@@ -278,8 +333,19 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
             script_save=args.get("output_dir") + "/scripts",
             render_save=args.get("output_dir") + "/renders",
             blender_save=args.get("blender_save"),
-            gpu_devices=args.get("gpu_devices")
+            gpu_devices=args.get("gpu_devices"),
+            render_engine=args.get("render_engine")
         )
+        
+        # For resume mode, detect existing script count and continue from there
+        scripts_dir = Path(args.get("output_dir")) / "scripts"
+        if scripts_dir.exists():
+            existing_scripts = list(scripts_dir.glob("*.py"))
+            if existing_scripts:
+                max_count = max(int(p.stem) for p in existing_scripts if p.stem.isdigit())
+                _executor.count = max_count
+                logging.info(f"Resuming from script count: {max_count}")
+        
         if 'blender' in args.get("mode"):
             tool_configs = [execute_and_evaluate_tool]
         else:
