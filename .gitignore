@@ -41,3 +41,11 @@ MODULARIZATION_PLAN.md
 
 # Unused assets
 docs/images/art.png
+
+# Test files
+gh.exe
+test_output/
+test_blender_render.py
+test_simple_blender.py
+test_blender5_headless.bat
+TEST_BLENDER5.md
