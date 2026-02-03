@@ -46,10 +46,20 @@ class GeneratorAgent:
         self.init_chat_args: Dict[str, Any] = {}
         if 'gpt' in self.config.get("model") and not self.config.get("no_tools"):
             self.init_chat_args['parallel_tool_calls'] = False
-        # Set minimal reasoning effort for Gemini models to improve speed
-        # Note: Reasoning cannot be completely disabled for Gemini 3 models
+        # Set reasoning effort for Gemini models (OpenAI compatibility mode)
+        # OpenAI compatibility uses reasoning_effort: "minimal", "low", "medium", "high", "none"
+        # - Gemini 3 Pro: low, high (medium not supported)
+        # - Gemini 3 Flash: minimal, low, medium, high
+        # - Gemini 2.5: minimal, low, medium, high, none (to disable)
         if 'gemini' in self.config.get("model").lower():
-            self.init_chat_args['reasoning_effort'] = "minimal"
+            reasoning_level = os.getenv("REASONING_LEVEL", "low").lower()
+            
+            # Validate reasoning level for Gemini 3 Pro (doesn't support medium)
+            if 'gemini-3' in self.config.get("model").lower() and 'flash' not in self.config.get("model").lower():
+                if reasoning_level == "medium":
+                    reasoning_level = "high"  # Fallback to high for Gemini 3 Pro
+            
+            self.init_chat_args['reasoning_effort'] = reasoning_level
 
         # Initialize tool client
         self.tool_client = ExternalToolClient(self.config.get("generator_tools"), self.config)

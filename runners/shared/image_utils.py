@@ -9,17 +9,43 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from utils.common import build_client
 
 
-def encode_image(image_path: str) -> str:
-    """Encode image to base64 string for OpenAI API.
+import io
+from PIL import Image
+
+def encode_image(image_path: str, compress: bool = True, quality: int = 95) -> str:
+    """Encode image to base64 string for OpenAI API with optional compression.
 
     Args:
         image_path: Path to the image file.
+        compress: Whether to compress the image to JPEG 95. Defaults to True.
+        quality: JPEG compression quality (1-100). Defaults to 95.
 
     Returns:
         Base64 encoded string.
     """
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+    if compress:
+        image = Image.open(image_path)
+        img_byte_array = io.BytesIO()
+        
+        # JPEG doesn't support transparency, convert to RGB
+        if image.mode in ['RGBA', 'LA', 'P']:
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            if image.mode == 'RGBA':
+                background = Image.new('RGB', image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1])
+                image = background
+            elif image.mode == 'LA':
+                image = image.convert('RGB')
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        image.save(img_byte_array, format='JPEG', quality=quality, optimize=True)
+        img_byte_array.seek(0)
+        return base64.b64encode(img_byte_array.read()).decode('utf-8')
+    else:
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
 
 
 def vlm_compare_images(image1_path: str, image2_path: str, target_path: str, model: str = "gpt-4o") -> int:

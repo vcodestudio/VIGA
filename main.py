@@ -13,8 +13,9 @@ from agents.generator import GeneratorAgent
 from agents.verifier import VerifierAgent
 
 # Configure logging
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -30,7 +31,7 @@ async def main() -> None:
         required=True,
         help="Choose mode: blendergym, autopresent, blenderstudio, static_scene, or dynamic_scene",
     )
-    parser.add_argument("--model", default="gpt-4o", help="OpenAI vision model")
+    parser.add_argument("--model", default="gemini-3-flash-preview", help="OpenAI vision model")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key")
     parser.add_argument("--api-base-url", default=os.getenv("OPENAI_BASE_URL"), help="OpenAI-compatible API base URL")
     parser.add_argument("--max-rounds", type=int, default=10, help="Max interaction rounds")
@@ -57,7 +58,8 @@ async def main() -> None:
     parser.add_argument("--blender-file", default=None, help="Blender template file")
     parser.add_argument("--blender-script", default="data/blendergym/pipeline_render_script.py", help="Blender execution script")
     parser.add_argument("--blender-save", default=None, help="Save blender file")
-    parser.add_argument("--render-engine", default="eevee", choices=["eevee", "cycles", "workbench"], help="Render engine (eevee, cycles, workbench). Default: eevee")
+    parser.add_argument("--render-engine", default="eevee", choices=["eevee", "cycles", "workbench", "solid"], help="Render engine (eevee, cycles, workbench, solid). Default: eevee")
+    parser.add_argument("--effect", default="none", choices=["none", "freestyle"], help="Render effect (none, freestyle). Default: none")
     parser.add_argument("--meshy_api_key", default=os.getenv("MESHY_API_KEY"), help="Meshy API key")
     parser.add_argument("--va_api_key", default=os.getenv("VA_API_KEY"), help="VA API key")
     parser.add_argument("--browser-command", default="google-chrome", help="Browser command for HTML screenshots")

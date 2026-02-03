@@ -40,6 +40,11 @@ def get_model_response(client: OpenAI, chat_args: Dict, num_candidates: int) -> 
     # repeat multiple time to avoid network errors
     # select the best candidate from the responses
     candidate_responses = []
+    
+    # Debug: Log chat_args (excluding messages content for brevity)
+    debug_args = {k: v for k, v in chat_args.items() if k != 'messages'}
+    logging.debug(f"API request args: {debug_args}")
+    
     for idx in range(num_candidates):
         max_retries = 1
         while max_retries > 0:
@@ -48,6 +53,7 @@ def get_model_response(client: OpenAI, chat_args: Dict, num_candidates: int) -> 
                 candidate_responses.append(response)
                 break
             except Exception as e:
+                logging.error(f"API request failed: {e}")
                 max_retries -= 1
                 time.sleep(10)
     if len(candidate_responses) == 0:
@@ -86,48 +92,72 @@ def get_meshy_info() -> Dict[str, str]:
     """Get Meshy API key and VA API key."""
     return {"meshy_api_key": MESHY_API_KEY, "va_api_key": VA_API_KEY}
 
-def get_image_base64(image_path: str) -> str:
-    """Return a full data URL for the image, preserving original jpg/png format."""
+def get_image_base64(image_path: str, compress: bool = True, quality: int = 90, max_size: int = 1280) -> str:
+    """Return a full data URL for the image, preserving original jpg/png format or compressing to JPEG.
+    
+    Args:
+        image_path: Path to the image file.
+        compress: Whether to compress the image to JPEG 90. Defaults to True.
+        quality: JPEG compression quality (1-100). Defaults to 90.
+        max_size: Maximum width/height for the image bounding box. Defaults to 1280.
+    """
     image = Image.open(image_path)
     img_byte_array = io.BytesIO()
     ext = os.path.splitext(image_path)[1].lower()
     
-    # Convert image to appropriate mode for saving
-    if ext in ['.jpg', '.jpeg']:
+    if compress:
         save_format = 'JPEG'
         mime_subtype = 'jpeg'
-        # JPEG doesn't support transparency, convert RGBA to RGB
+        
+        # Resize to fit within max_size x max_size bounding box while preserving aspect ratio
+        if image.width > max_size or image.height > max_size:
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+        # JPEG doesn't support transparency, convert to RGB
         if image.mode in ['RGBA', 'LA', 'P']:
-            # Convert P mode to RGB first, then handle RGBA
             if image.mode == 'P':
                 image = image.convert('RGBA')
-            # Convert RGBA to RGB with white background
             if image.mode == 'RGBA':
                 # Create a white background
                 background = Image.new('RGB', image.size, (255, 255, 255))
-                background.paste(image, mask=image.split()[-1])  # Use alpha channel as mask
+                background.paste(image, mask=image.split()[-1])
                 image = background
             elif image.mode == 'LA':
-                # Convert LA to RGB
                 image = image.convert('RGB')
-    elif ext == '.png':
-        save_format = 'PNG'
-        mime_subtype = 'png'
-        # PNG supports transparency, but convert P mode to RGBA
-        if image.mode == 'P':
-            image = image.convert('RGBA')
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        image.save(img_byte_array, format=save_format, quality=quality, optimize=True)
     else:
-        # Fallback: keep original format if recognizable, else default to PNG
-        save_format = image.format or 'PNG'
-        mime_subtype = save_format.lower() if save_format.lower() in ['jpeg', 'png'] else 'png'
-        # Handle P mode for fallback cases
-        if image.mode == 'P':
-            if save_format == 'JPEG':
-                image = image.convert('RGB')
-            else:
+        # Original logic: Convert image to appropriate mode for saving while preserving format
+        if ext in ['.jpg', '.jpeg']:
+            save_format = 'JPEG'
+            mime_subtype = 'jpeg'
+            if image.mode in ['RGBA', 'LA', 'P']:
+                if image.mode == 'P':
+                    image = image.convert('RGBA')
+                if image.mode == 'RGBA':
+                    background = Image.new('RGB', image.size, (255, 255, 255))
+                    background.paste(image, mask=image.split()[-1])
+                    image = background
+                elif image.mode == 'LA':
+                    image = image.convert('RGB')
+        elif ext == '.png':
+            save_format = 'PNG'
+            mime_subtype = 'png'
+            if image.mode == 'P':
                 image = image.convert('RGBA')
+        else:
+            save_format = image.format or 'PNG'
+            mime_subtype = save_format.lower() if save_format.lower() in ['jpeg', 'png'] else 'png'
+            if image.mode == 'P':
+                if save_format == 'JPEG':
+                    image = image.convert('RGB')
+                else:
+                    image = image.convert('RGBA')
+        
+        image.save(img_byte_array, format=save_format)
     
-    image.save(img_byte_array, format=save_format)
     img_byte_array.seek(0)
     base64enc_image = base64.b64encode(img_byte_array.read()).decode('utf-8')
     if base64enc_image.startswith("/9j/"):

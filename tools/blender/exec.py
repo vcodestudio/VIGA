@@ -126,6 +126,8 @@ class Executor:
         self.blender_save = blender_save
         self.gpu_devices = gpu_devices
         self.render_engine = render_engine or "eevee"
+        self.effect = os.environ.get('RENDER_EFFECT', 'none')
+        self.target_image_path = None  # Will be set via initialize()
         self.count = 0
 
         self.script_path.mkdir(parents=True, exist_ok=True)
@@ -143,13 +145,14 @@ class Executor:
         Returns:
             Tuple of (success, image_paths, stdout, stderr).
         """
+        render_path_abs = os.path.abspath(render_path) if render_path else ""
         cmd = [
             f'"{self.blender_command}"',
             "--background",
             "--factory-startup",  # Use factory settings to avoid addon conflicts
             f'"{self.blender_file}"',
             "--python", f'"{self.blender_script}"',
-            "--", f'"{script_path}"', f'"{render_path}"'
+            "--", f'"{script_path}"', f'"{render_path_abs}"'
         ]
         if self.blender_save:
             cmd.append(f'"{self.blender_save}"')
@@ -166,6 +169,18 @@ class Executor:
         
         # Set render engine
         env['RENDER_ENGINE'] = self.render_engine.upper()
+        
+        # Set render effect
+        if hasattr(self, 'effect'):
+            env['RENDER_EFFECT'] = self.effect.lower()
+        elif os.environ.get('RENDER_EFFECT'):
+            env['RENDER_EFFECT'] = os.environ.get('RENDER_EFFECT')
+        else:
+            env['RENDER_EFFECT'] = 'none'
+        
+        # Set target image path for aspect ratio matching
+        if hasattr(self, 'target_image_path') and self.target_image_path:
+            env['TARGET_IMAGE_PATH'] = self.target_image_path
         
         # Additional environment variables for Blender 5 headless rendering
         # Prevent OpenGL context issues on headless systems
@@ -336,6 +351,8 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
             gpu_devices=args.get("gpu_devices"),
             render_engine=args.get("render_engine")
         )
+        # Set target image path for aspect ratio matching
+        _executor.target_image_path = args.get("target_image_path")
         
         # For resume mode, detect existing script count and continue from there
         scripts_dir = Path(args.get("output_dir")) / "scripts"

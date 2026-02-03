@@ -1,0 +1,84 @@
+---
+description: VIGA 프로젝트 구조 및 실행 가이드
+alwaysApply: true
+---
+
+# VIGA 프로젝트 개요
+
+Vision-as-Inverse-Graphics Agent - 이미지를 분석하여 3D 씬을 프로그래밍 방식으로 재구성하는 코드 에이전트
+
+## 핵심 아키텍처
+
+**Dual-Agent 시스템**:
+- **Generator**: 코드를 작성하여 씬 생성/수정
+- **Verifier**: 렌더링 결과를 타겟과 비교하여 피드백 제공
+
+## 프로젝트 구조
+
+```
+VIGA/
+├── main.py              # 메인 진입점
+├── agents/              # Generator/Verifier 구현
+├── tools/               # MCP 툴 서버
+├── prompts/             # 모드별 시스템 프롬프트
+├── runners/             # 배치 실행 스크립트
+├── evaluators/          # 메트릭 계산
+├── data/                # 벤치마크 데이터셋
+├── utils/               # 공유 유틸리티
+└── output/              # 실행 결과물
+```
+
+## 환경 설정
+
+**필수 Conda 환경**:
+- `agent` (Python 3.10): 메인 에이전트 런타임
+- `blender` (Python 3.11): 3D 모드용
+
+**활성화**: `conda activate agent`
+
+## 주요 실행 명령어
+
+### Static Scene (3D 씬 생성)
+```bash
+conda activate agent
+python runners/static_scene.py --task <task_name> --max-rounds <N> --model <model>
+```
+
+### Dynamic Scene (애니메이션 씬)
+```bash
+python runners/dynamic_scene.py --task <task_name> --max-rounds <N>
+```
+
+### 주요 파라미터
+| 파라미터 | 설명 | 기본값 |
+|---------|------|--------|
+| `--task` | 태스크 이름 또는 "all" | all |
+| `--max-rounds` | 최대 반복 횟수 | 100 |
+| `--model` | VLM 모델 | gemini-2.5-flash |
+| `--memory-length` | 메모리 길이 | 12 |
+| `--resume` | 이전 실행 재개 경로 | None |
+
+## 출력 구조
+
+```
+output/<mode>/<timestamp>/<task>/
+├── renders/              # 렌더링 이미지 (1/, 2/, ...)
+├── codes/                # 생성된 코드
+├── generator_thoughts/   # Generator 추론 로그
+├── verifier_thoughts/    # Verifier 분석 로그
+└── blender_file.blend    # 최종 씬 파일
+```
+
+## 커스텀 데이터 추가
+
+`data/<mode>/<your-task>/` 디렉토리에:
+- `target.png`: 타겟 이미지
+- `description.txt`: (선택) 텍스트 설명
+- `assets/`: (선택) 에셋 디렉토리
+
+## 지원 모델
+
+- OpenAI: gpt-4o, gpt-4o-mini
+- Anthropic: claude-sonnet-4
+- Google: gemini-2.5-pro, gemini-2.5-flash
+- Qwen: qwen-vl-max

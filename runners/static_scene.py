@@ -13,6 +13,10 @@ from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import shutil
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.common import get_model_info, get_meshy_info
@@ -113,11 +117,11 @@ def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[
         Tuple of (task_name, success, error_message)
     """
     task_name = task_config["task_name"]
-    is_resume = hasattr(args, 'resume') and args.resume
+    is_resume = hasattr(args, 'resume_path') and args.resume_path
     
     if is_resume:
         # Resume mode: use the existing directory directly (no copying)
-        resume_dir = Path(args.resume)
+        resume_dir = Path(args.resume_path)
         task_config["output_dir"] = str(resume_dir)  # Use existing directory
         print(f"Resuming static scene task: {task_name} in {resume_dir}")
         
@@ -192,6 +196,7 @@ def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[
         "--prompt-setting", args.prompt_setting,
         "--init-setting", args.init_setting,
         "--render-engine", args.render_engine,
+        "--effect", args.effect,
     ]
     
     # Add resume flag or clear-memory flag
@@ -275,26 +280,30 @@ def main() -> None:
     time_str = time.strftime('%Y%m%d_%H%M%S')
     
     # Dataset parameters
-    parser.add_argument("--dataset-path", default="data/static_scene", help="Path to static scene dataset root directory")
-    parser.add_argument("--output-dir", default=f"output/static_scene/{time_str}", help="Output directory for results")
+    parser.add_argument("--dataset-path", default=os.getenv("DATASET_PATH", "data/static_scene"), help="Path to static scene dataset root directory")
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_ROOT", f"output/static_scene/{time_str}"), help="Output directory for results")
     
     # Task selection
-    parser.add_argument("--task", default="all", help="Specific task to run (default: all)")
+    parser.add_argument("--task", default=os.getenv("TASK", "all"), help="Specific task to run (default: all)")
     parser.add_argument("--test-id", help="Test ID for output directory naming")
     
     # Main.py parameters
-    parser.add_argument("--max-rounds", type=int, default=100, help="Maximum number of interaction rounds")
-    parser.add_argument("--model", default="gemini-3-flash-preview", help="OpenAI vision model to use")
-    parser.add_argument("--memory-length", type=int, default=12, help="Memory length")
+    parser.add_argument("--max-rounds", type=int, default=int(os.getenv("MAX_ROUNDS", "100")), help="Maximum number of interaction rounds")
+    parser.add_argument("--model", default=os.getenv("MODEL", "gemini-3-flash-preview"), help="OpenAI vision model to use")
+    parser.add_argument("--memory-length", type=int, default=int(os.getenv("MEMORY_LENGTH", "12")), help="Memory length")
     
     # Blender parameters
-    parser.add_argument("--blender-command", default=r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe", help="Blender command path")
+    parser.add_argument("--blender-command", default=os.getenv("BLENDER_COMMAND", "/Applications/Blender.app/Contents/MacOS/Blender"), help="Blender command path")
     parser.add_argument("--blender-file", default="data/static_scene/empty_scene.blend", help="Empty blender file for static scenes")
     parser.add_argument("--blender-script", default="data/static_scene/generator_script.py", help="Blender execution script")
     parser.add_argument("--blender-save", default=f"data/static_scene/empty_scene.blend", help="Save blender file")
     
     # Tool server scripts (comma-separated)
-    parser.add_argument("--generator-tools", default="tools/blender/exec.py,tools/generator_base.py,tools/initialize_plan.py", help="Comma-separated list of generator tool server scripts")
+    # Build default generator tools based on SAM3D setting
+    default_generator_tools = "tools/blender/exec.py,tools/generator_base.py,tools/initialize_plan.py"
+    if os.getenv("SAM3D", "false").lower() == "true":
+        default_generator_tools += ",tools/sam3d/init.py"
+    parser.add_argument("--generator-tools", default=default_generator_tools, help="Comma-separated list of generator tool server scripts")
     parser.add_argument("--verifier-tools", default="tools/blender/investigator.py,tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
     
     # Execution parameters
@@ -306,10 +315,34 @@ def main() -> None:
     parser.add_argument("--text-only", action="store_true", help="Only use text as reference")
     parser.add_argument("--init-setting", choices=["none", "minimal", "reasonable"], default="none", help="Setting for the static scene task")
     parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset"], default="none", help="Setting for the prompt")
-    parser.add_argument("--render-engine", default="eevee", choices=["eevee", "cycles", "workbench"], help="Render engine (eevee=fast, cycles=quality, workbench=fastest). Default: eevee")
-    parser.add_argument("--resume", help="Path to previous output directory to resume from (e.g., output/static_scene/20260202_134219/test)")
+    parser.add_argument("--render-engine", default=os.getenv("RENDER_ENGINE", "eevee"), choices=["eevee", "cycles", "workbench", "solid", "outline"], help="Render engine (eevee=fast, cycles=quality, workbench=fastest, solid=solid view). Default: eevee")
+    parser.add_argument("--effect", default=os.getenv("RENDER_EFFECT", "none"), choices=["none", "freestyle"], help="Render effect (none=default, freestyle=line art). Default: none")
+    parser.add_argument("--resume", default=os.getenv("RESUME", "false").lower() == "true", action="store_true", help="Enable resume mode")
+    resume_path_env = os.getenv("RESUME_PATH", None)
+    # Treat 'null', 'none', empty string as None
+    if resume_path_env and resume_path_env.lower() in ('null', 'none', ''):
+        resume_path_env = None
+    parser.add_argument("--resume-path", default=resume_path_env, help="Path to resume from. If not set with --resume, auto-detects latest run.")
     
     args = parser.parse_args()
+    
+    # Handle resume mode: auto-detect latest run if RESUME=true but RESUME_PATH is not set
+    if args.resume and not args.resume_path:
+        # Find the latest output directory for the current task
+        output_root = Path(args.output_dir)
+        if output_root.exists():
+            # Get all timestamp directories
+            timestamp_dirs = sorted([d for d in output_root.iterdir() if d.is_dir() and d.name[0].isdigit()], reverse=True)
+            for ts_dir in timestamp_dirs:
+                # Check if this directory has the task we're looking for
+                task_dir = ts_dir / args.task
+                if task_dir.exists() and (task_dir / "generator_memory.json").exists():
+                    args.resume_path = str(task_dir)
+                    print(f"Auto-detected latest run to resume: {args.resume_path}")
+                    break
+        if not args.resume_path:
+            print("Warning: RESUME=true but no previous run found. Starting fresh.")
+            args.resume = False
     
     # Load dataset
     print(f"Loading static scene dataset from: {args.dataset_path}")
@@ -324,9 +357,9 @@ def main() -> None:
         print(f"  - {task['task_name']}: {task['target_image_path']}")
     
     # For resume mode, use the parent directory of the resume path
-    if args.resume:
+    if args.resume_path:
         # Extract parent directory from resume path (e.g., output/static_scene/20260202_141422/test -> output/static_scene/20260202_141422)
-        args.output_dir = str(Path(args.resume).parent)
+        args.output_dir = str(Path(args.resume_path).parent)
         print(f"Resume mode: using existing output directory {args.output_dir}")
     else:
         # Create output directory only for new runs
