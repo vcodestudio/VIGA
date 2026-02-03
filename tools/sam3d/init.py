@@ -11,9 +11,11 @@ import shutil
 import subprocess
 import sys
 import traceback
+import base64
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import requests
 from mcp.server.fastmcp import FastMCP
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -38,6 +40,7 @@ _blender_file: Optional[str] = None
 _log_file: Optional[object] = None
 _sam_env_bin: Optional[str] = None
 _sam3d_env_bin: Optional[str] = None
+_api_url: Optional[str] = os.getenv("SAM3D_API_URL")
 
 # Safely get paths to avoid uncaught KeyError exceptions
 try:
@@ -58,6 +61,11 @@ def log(message: str) -> None:
             _log_file.flush()  # Flush immediately to ensure content is written
         except Exception:
             pass  # If log file write fails, don't affect the main process
+
+
+def get_image_base64(image_path: str) -> str:
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
 
 def get_conda_prefix_from_python_path(python_path: str) -> Optional[str]:
@@ -281,11 +289,58 @@ def reconstruct_full_scene() -> Dict[str, object]:
         2. Use SAM-3D to reconstruct each object
         3. Import all objects into Blender and save as .blend file
     """
-    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _sam3d_env_bin, _blender_file
+    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _sam3d_env_bin, _blender_file, _api_url
     
     if not _target_image or not _output_dir:
         return {"status": "error", "output": {"text": ["call initialize first"]}}
     
+    # --- Remote API Mode ---
+    if _api_url:
+        log(f"[SAM_INIT] Using remote API: {_api_url}")
+        try:
+            image_b64 = get_image_base64(_target_image)
+            response = requests.post(
+                f"{_api_url.rstrip('/')}/reconstruct",
+                json={"image": image_b64},
+                timeout=600
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            glb_files = data.get("glb_files", [])
+            object_transforms = data.get("transforms", [])
+            
+            if not glb_files:
+                return {"status": "error", "output": {"text": ["No objects reconstructed by remote API"]}}
+                
+            # Save received GLB files locally
+            glb_paths = []
+            for glb_file in glb_files:
+                name = glb_file["name"]
+                glb_data = base64.b64decode(glb_file["data"])
+                local_path = os.path.join(_output_dir, name)
+                with open(local_path, "wb") as f:
+                    f.write(glb_data)
+                glb_paths.append(local_path)
+                
+                # Update glb_path in transforms to local path
+                for transform in object_transforms:
+                    if os.path.basename(transform.get("glb_path", "")) == name:
+                        transform["glb_path"] = local_path
+            
+            # Save transforms.json for Blender import
+            transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
+            with open(transforms_json_path, 'w') as f:
+                json.dump(object_transforms, f, indent=2)
+                
+            # Proceed to Step 3: Blender Import
+            return _import_to_blender(object_transforms, transforms_json_path)
+            
+        except Exception as e:
+            log(f"[SAM_INIT] Remote API failed: {e}")
+            return {"status": "error", "output": {"text": [f"Remote API failed: {str(e)}"]}}
+
+    # --- Local Mode ---
     if _sam_env_bin is None:
         return {"status": "error", "output": {"text": ["SAM worker python path not configured"]}}
     
@@ -374,62 +429,11 @@ def reconstruct_full_scene() -> Dict[str, object]:
             return {"status": "error", "output": {"text": ["No objects were successfully reconstructed"]}}
 
         # Step 3: Import all GLBs into Blender and save as .blend file
-        log(f"[SAM_INIT] Step 3: Importing {len(glb_paths)} objects into Blender...")
-        # If blender_file was provided in initialize, write directly to that path
-        # Otherwise default to scene.blend in the output directory
-        blend_path = _blender_file or os.path.join(_output_dir, "scene.blend")
-
-        # Save position information to JSON file
         transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
         with open(transforms_json_path, 'w') as f:
             json.dump(object_transforms, f, indent=2)
-
-        # Build Blender command
-        blender_cmd = [
-            _blender_command,
-            "-b",  # Background mode
-            "-P",  # Run Python script
-            IMPORT_SCRIPT,
-            "--",
-            transforms_json_path,  # Pass position information JSON file path
-            blend_path,  # Output .blend file path
-        ]
-
-        blender_log_path = os.path.join(_output_dir, "blender_import.log")
-        log(f"[SAM_INIT] Blender import output will be saved to: {blender_log_path}")
-        # For Blender, use current environment's environment variables (Blender typically doesn't need CONDA_PREFIX)
-        env = os.environ.copy()
-        with open(blender_log_path, 'w') as log_file:
-            subprocess.run(
-                blender_cmd,
-                cwd=ROOT,
-                check=True,
-                text=True,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,  # Also redirect stderr to stdout
-                env=env,  # Pass environment variables
-            )
-
-        log(f"[SAM_INIT] Deleting .blend1 files in {os.path.dirname(_output_dir)}")
-        # Delete any extra .blend1 files that may have been created
-        for file in os.listdir(os.path.dirname(_output_dir)):
-            if file.endswith(".blend1"):
-                os.remove(os.path.join(os.path.dirname(_output_dir), file))
-        
-        return {
-            "status": "success",
-            "output": {
-                "text": [
-                    f"Successfully reconstructed {len(glb_paths)} objects, Blender scene saved to: {blend_path}",
-                ],
-                "data": {
-                    "blend_path": blend_path,
-                    "num_objects": len(glb_paths),
-                    "num_masks": len(masks),
-                    "glb_paths": glb_paths
-                }
-            }
-        }
+            
+        return _import_to_blender(object_transforms, transforms_json_path)
     
     except subprocess.CalledProcessError as e:
         # Try to read relevant log file contents
@@ -450,6 +454,63 @@ def reconstruct_full_scene() -> Dict[str, object]:
         log(f"[SAM_INIT] {error_msg}")
         log(f"[SAM_INIT] Traceback: {traceback.format_exc()}")
         return {"status": "error", "output": {"text": [error_msg]}}
+
+
+def _import_to_blender(object_transforms: List[Dict], transforms_json_path: str) -> Dict[str, object]:
+    """Internal helper to run Blender import script."""
+    global _output_dir, _blender_command, _blender_file
+    
+    log(f"[SAM_INIT] Step 3: Importing {len(object_transforms)} objects into Blender...")
+    # If blender_file was provided in initialize, write directly to that path
+    # Otherwise default to scene.blend in the output directory
+    blend_path = _blender_file or os.path.join(_output_dir, "scene.blend")
+
+    # Build Blender command
+    blender_cmd = [
+        _blender_command,
+        "-b",  # Background mode
+        "-P",  # Run Python script
+        IMPORT_SCRIPT,
+        "--",
+        transforms_json_path,  # Pass position information JSON file path
+        blend_path,  # Output .blend file path
+    ]
+
+    blender_log_path = os.path.join(_output_dir, "blender_import.log")
+    log(f"[SAM_INIT] Blender import output will be saved to: {blender_log_path}")
+    # For Blender, use current environment's environment variables (Blender typically doesn't need CONDA_PREFIX)
+    env = os.environ.copy()
+    try:
+        subprocess.run(
+            blender_cmd,
+            cwd=ROOT,
+            check=True,
+            text=True,
+            stdout=open(blender_log_path, 'w'),
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+        log(f"[SAM_INIT] Deleting .blend1 files in {os.path.dirname(_output_dir)}")
+        # Delete any extra .blend1 files that may have been created
+        for file in os.listdir(os.path.dirname(_output_dir)):
+            if file.endswith(".blend1"):
+                os.remove(os.path.join(os.path.dirname(_output_dir), file))
+        
+        return {
+            "status": "success",
+            "output": {
+                "text": [
+                    f"Successfully reconstructed {len(object_transforms)} objects, Blender scene saved to: {blend_path}",
+                ],
+                "data": {
+                    "blend_path": blend_path,
+                    "num_objects": len(object_transforms),
+                }
+            }
+        }
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "output": {"text": [f"Blender import failed: {str(e)}. Check {blender_log_path}"]}}
 
 
 def main() -> None:

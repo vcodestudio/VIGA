@@ -23,6 +23,7 @@ run.sh
 *.blend
 *.out
 *.bin
+.env
 
 utils/infinigen
 utils/sam3
