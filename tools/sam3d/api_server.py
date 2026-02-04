@@ -213,7 +213,7 @@ async def reconstruct_object(req: ReconstructObjectRequest):
         
         # Save mask
         mask_data = base64.b64decode(req.mask)
-        mask_arr = cv2.imdecode(np.frombuffer(mask_data, np.uint8), cv2.IMREAD_GRAYCASE)
+        mask_arr = cv2.imdecode(np.frombuffer(mask_data, np.uint8), cv2.IMREAD_GRAYSCALE)
         np.save(str(mask_path), mask_arr)
         
         sam3d_worker = os.path.join(ROOT, "tools", "sam3d", "sam3d_worker.py")
@@ -292,12 +292,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     local_ip = get_local_ip()
-    print(f"\n" + "="*50)
-    print(f"SAM3D API Server starting...")
-    print(f"Local IP: {local_ip}")
-    print(f"Endpoint: http://{local_ip}:{args.port}")
-    print("="*50 + "\n")
-
+    
     cf_process = None
     if args.cloudflare:
         cf_process = run_cloudflare_tunnel(args.port)
@@ -305,6 +300,14 @@ if __name__ == "__main__":
     try:
         import torch
         uvicorn.config.Config.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Print after imports so it appears in logs
+        logger.info("="*50)
+        logger.info("SAM3D API Server starting...")
+        logger.info(f"Local IP: {local_ip}")
+        logger.info(f"Endpoint: http://{local_ip}:{args.port}")
+        logger.info("="*50)
+        
         uvicorn.run(app, host=args.host, port=args.port)
     finally:
         if cf_process:

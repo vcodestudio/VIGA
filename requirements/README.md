@@ -31,6 +31,30 @@ pip install -r requirements/requirement_pptx.txt
 | `requirement_pptx.txt` | pptx | 3.10 | SlideBench |
 | `requirement_eval-blender.txt` | eval-blender | 3.11 | 3D evaluation |
 | `requirement_eval-pptx.txt` | eval-pptx | 3.10 | Slides evaluation |
+| `requirement_sam3d-objects.txt` | sam3d | 3.11 | SAM3D API (Static Scene 3D) |
+
+### SAM3D API (Windows)
+
+```powershell
+# 1. Init submodule (if not done)
+git submodule update --init utils/third_party/sam3d
+
+# 2. Create env and install (PowerShell)
+.\requirements\install_sam3d_win.ps1
+
+# 3. Activate and run API server
+conda activate sam3d
+python tools/sam3d/api_server.py --port 8000
+
+# 4. Test
+curl http://localhost:8000/health   # -> {"status":"ok","device":"cuda"}
+
+# 5. Download checkpoints (for /reconstruct; HuggingFace access may be required)
+pip install "huggingface-hub[cli]<1.0"
+python requirements/download_sam3d_checkpoints.py
+```
+
+Full inference (`/reconstruct`, `/segment`) is officially **Linux-only** (pytorch3d/gsplat). On Windows the API server runs and `/health` works; for full pipeline use WSL2 and `install_sam3d.sh`.
 
 ## External Dependencies
 
