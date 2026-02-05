@@ -18,6 +18,14 @@ from typing import Dict, List, Optional, Tuple
 from mcp.server.fastmcp import FastMCP
 from PIL import Image
 
+# Ensure repo root on path for utils
+import sys
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+from utils.common import save_target_render_comparison_jpg
+
 from script_generators import generate_scene_info_script
 
 # Tool configuration dictionaries for the Generator agent
@@ -294,6 +302,17 @@ class Executor:
         else:
             if self.blender_save:
                 shutil.copy(self.blender_save, render_file / "state.blend")
+            # Save target vs render comparison as Result.jpg in the same round dir
+            target_path = getattr(self, "target_image_path", None)
+            if target_path and os.path.exists(target_path) and imgs:
+                camera_png = Path(render_file) / "Camera.png"
+                render_path = str(camera_png) if camera_png.exists() else imgs[0]
+                try:
+                    save_target_render_comparison_jpg(
+                        target_path, render_path, str(Path(render_file) / "Result.jpg")
+                    )
+                except Exception as e:
+                    logging.warning("Failed to save Result.jpg comparison: %s", e)
             return {"status": "success", "output": {"image": imgs, "text": [f"Render from camera {x}" for x in range(len(imgs))], 'require_verifier': True}}
 
     def get_scene_info(self) -> Dict[str, object]:

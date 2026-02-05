@@ -314,7 +314,7 @@ def main() -> None:
     parser.add_argument("--explicit-comp", action="store_true", help="Enable explicit completion")
     parser.add_argument("--text-only", action="store_true", help="Only use text as reference")
     parser.add_argument("--init-setting", choices=["none", "minimal", "reasonable"], default="none", help="Setting for the static scene task")
-    parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset"], default="none", help="Setting for the prompt")
+    parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset", "sam3d"], default="none", help="Setting for the prompt (sam3d: use SAM3D pipeline when SAM3D=true)")
     parser.add_argument("--render-engine", default=os.getenv("RENDER_ENGINE", "eevee"), choices=["eevee", "cycles", "workbench", "solid", "outline"], help="Render engine (eevee=fast, cycles=quality, workbench=fastest, solid=solid view). Default: eevee")
     parser.add_argument("--effect", default=os.getenv("RENDER_EFFECT", "none"), choices=["none", "freestyle"], help="Render effect (none=default, freestyle=line art). Default: none")
     parser.add_argument("--resume", default=os.getenv("RESUME", "false").lower() == "true", action="store_true", help="Enable resume mode")
@@ -325,6 +325,11 @@ def main() -> None:
     parser.add_argument("--resume-path", default=resume_path_env, help="Path to resume from. If not set with --resume, auto-detects latest run.")
     
     args = parser.parse_args()
+
+    # When SAM3D=true, default to sam3d prompt so the model is instructed to use initialize + reconstruct_full_scene
+    if os.getenv("SAM3D", "false").lower() == "true" and args.prompt_setting == "none":
+        args.prompt_setting = "sam3d"
+        print("SAM3D=true: using prompt-setting=sam3d so the model uses the SAM3D pipeline (initialize → reconstruct_full_scene).")
     
     # Handle resume mode: auto-detect latest run if RESUME=true but RESUME_PATH is not set
     if args.resume and not args.resume_path:

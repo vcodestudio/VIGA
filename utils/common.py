@@ -169,6 +169,42 @@ def get_image_base64(image_path: str, compress: bool = True, quality: int = 90, 
     return f"data:image/{mime_subtype};base64,{base64enc_image}"
 
 
+def save_target_render_comparison_jpg(
+    target_path: str,
+    render_path: str,
+    output_path: str,
+    max_height: int = 512,
+    quality: int = 95,
+) -> None:
+    """Save a single JPG with target and render images side-by-side (same height, aspect ratio preserved).
+
+    Args:
+        target_path: Path to the target/reference image.
+        render_path: Path to the rendered image (e.g. Camera.png).
+        output_path: Path for the output JPG (e.g. renders/N/Result.jpg).
+        max_height: Height used for both images; width scales to preserve aspect ratio.
+        quality: JPEG quality (1-100). Default 95.
+    """
+    target = Image.open(target_path).convert("RGB")
+    render = Image.open(render_path).convert("RGB")
+
+    def resize_to_height(im: Image.Image, h: int) -> Image.Image:
+        w = max(1, round(im.width * h / im.height))
+        return im.resize((w, h), Image.Resampling.LANCZOS)
+
+    h = min(max_height, target.height, render.height)
+    target_r = resize_to_height(target, h)
+    render_r = resize_to_height(render, h)
+
+    total_w = target_r.width + render_r.width
+    out = Image.new("RGB", (total_w, h))
+    out.paste(target_r, (0, 0))
+    out.paste(render_r, (target_r.width, 0))
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    out.save(output_path, "JPEG", quality=quality, optimize=True)
+
+
 def save_thought_process(memory: List[Dict], thought_save: str, current_round: int = None) -> None:
     """Save the current thought process to file."""
     try:

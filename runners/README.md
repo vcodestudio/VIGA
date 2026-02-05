@@ -138,6 +138,24 @@ python runners/autopresent.py \
 | `--generator-tools` | Generator tools | tools/slides/exec.py,tools/generator_base.py |
 | `--verifier-tools` | Verifier tools | tools/verifier_base.py |
 
+## Rollback (Static Scene)
+
+Rollback a run to a given round N (keeps rounds 0..N-1; resume continues from round N):
+
+```bash
+python runners/rollback.py \
+    --output-dir output/static_scene/<timestamp>/<task> \
+    --to-round 10
+```
+
+Use `--dry-run` to only print what would be deleted/trimmed without modifying files.
+
+| Argument | Description |
+|----------|-------------|
+| `--output-dir` | Task output directory (e.g. output/static_scene/20260204_131221/test2) |
+| `--to-round` | Number of rounds to keep (keeps renders/1..N, scripts/1..N; deletes from N+1 onward) |
+| `--dry-run` | Only print planned changes, do not modify files |
+
 ## Main Entry Point
 
 For running individual tasks, use the main entry point:

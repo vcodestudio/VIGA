@@ -3,6 +3,7 @@
 Segment-only flow: SAM segments the image, cropped images are exported
 and optionally sent to ComfyUI API (no local 3D mesh/3DGS generation).
 """
+# pyright: reportMissingModuleSource=false, reportMissingImports=false
 
 import json
 import os
@@ -12,9 +13,20 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-import numpy as np
 import requests
 from mcp.server.fastmcp import FastMCP
+
+# numpy is only needed for local mode (not when using remote API)
+# Lazy import to avoid ModuleNotFoundError when running in remote API mode
+np = None
+
+def _ensure_numpy():
+    """Lazy load numpy only when needed (local mode)."""
+    global np
+    if np is None:
+        import numpy
+        np = numpy
+    return np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils._path import path_to_cmd
