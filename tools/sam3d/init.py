@@ -14,9 +14,20 @@ import traceback
 import base64
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import requests
 from mcp.server.fastmcp import FastMCP
+
+# numpy is only needed for local mode (not when using remote API)
+# Lazy import to avoid ModuleNotFoundError when running in remote API mode
+np = None
+
+def _ensure_numpy():
+    """Lazy load numpy only when needed (local mode)."""
+    global np
+    if np is None:
+        import numpy
+        np = numpy
+    return np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils._path import path_to_cmd
@@ -180,7 +191,7 @@ def process_single_object(
         mask_path = os.path.join(_output_dir, f"{object_name}.npy")
         if not os.path.exists(mask_path):
             # If file doesn't exist, save the mask (this shouldn't happen, but kept for robustness)
-            np.save(mask_path, mask)
+            _ensure_numpy().save(mask_path, mask)
         else:
             log(f"[SAM_INIT] Using existing mask file: {mask_path}")
 
@@ -371,7 +382,8 @@ def reconstruct_full_scene() -> Dict[str, object]:
             )
 
         # Step 2: Load masks and object name mapping
-        masks = np.load(all_masks_path, allow_pickle=True)
+        numpy = _ensure_numpy()
+        masks = numpy.load(all_masks_path, allow_pickle=True)
 
         # Handle case where masks might be an object array
         if masks.dtype == object:

@@ -17,7 +17,9 @@ prompts_dict = {
             'verifier_procedural': static_scene_verifier_system_procedural,
             'verifier_scene_graph': static_scene_verifier_system_scene_graph,
             'generator_get_asset': static_scene_generator_system_get_asset,
-            'verifier_get_asset': static_scene_verifier_system
+            'verifier_get_asset': static_scene_verifier_system,
+            'generator_sam3d': static_scene_generator_system_sam3d,
+            'verifier_sam3d': static_scene_verifier_system
         }
     },
     'dynamic_scene': {
