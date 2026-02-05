@@ -93,12 +93,14 @@ def transform_mesh_vertices(
 
 
 def main() -> None:
-    """Run SAM3D reconstruction on a masked image and export as GLB."""
+    """Run SAM3D reconstruction on a masked image and export as GLB and/or PLY.
+    PLY is the same mesh (vertex colors); export step only. Pipeline speed is unchanged."""
     p = argparse.ArgumentParser()
     p.add_argument("--image", required=True, help="Path to input image")
     p.add_argument("--mask", required=True, help="Path to mask npy file")
     p.add_argument("--config", required=True, help="Path to SAM3D config file")
     p.add_argument("--glb", required=True, help="Path for output GLB file")
+    p.add_argument("--ply", default=None, help="Optional: also export PLY to this path (same mesh, no extra cost)")
     p.add_argument("--info", required=False, help="Path to save JSON output (instead of stdout)")
     args = p.parse_args()
 
@@ -119,8 +121,15 @@ def main() -> None:
     vertices_transformed = transform_mesh_vertices(vertices, R, T, S)
     mesh.vertices = vertices_transformed.cpu().numpy().astype(np.float32)
 
-    os.makedirs(os.path.dirname(args.glb), exist_ok=True)
+    out_dir = os.path.dirname(args.glb)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     mesh.export(args.glb)
+    if args.ply:
+        ply_dir = os.path.dirname(args.ply)
+        if ply_dir:
+            os.makedirs(ply_dir, exist_ok=True)
+        mesh.export(args.ply)
 
     # Prepare output data
     translation_data = {

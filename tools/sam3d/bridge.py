@@ -1,8 +1,7 @@
-"""SAM Bridge MCP Server for 3D Asset Generation.
+"""SAM Bridge MCP Server.
 
-This server bridges SAM3 (Segment Anything Model 3) for image sam3d
-and SAM3D for 3D reconstruction, enabling extraction of objects from images
-and converting them into 3D GLB assets.
+Segment-only: SAM segments the image, cropped images are exported.
+No 3D mesh/3DGS generation (use tools/sam3d/init.py with COMFYUI_API_URL for that).
 """
 
 import json
@@ -16,7 +15,6 @@ from mcp.server.fastmcp import FastMCP
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils._path import path_to_cmd
 
-# Tool configurations for the agent
 tool_configs: List[Dict[str, object]] = [
     {
         "type": "function",
@@ -40,144 +38,148 @@ tool_configs: List[Dict[str, object]] = [
                         ),
                     },
                 },
-                "required": ["object_name"]
-            }
-        }
+                "required": ["object_name"],
+            },
+        },
     }
 ]
 
-ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SAM3_WORKER: str = os.path.join(os.path.dirname(__file__), "sam3_worker.py")
-SAM3D_WORKER: str = os.path.join(os.path.dirname(__file__), "sam3d_worker.py")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+SAM_WORKER = os.path.join(os.path.dirname(__file__), "sam_worker.py")
 
 mcp = FastMCP("sam-bridge")
 
-# Global state
 _target_image: Optional[str] = None
 _output_dir: Optional[str] = None
-_sam3_cfg: Optional[str] = None
-_blender_command: Optional[str] = None
-_sam3_env_bin: str = path_to_cmd["tools/sam3d/sam3_worker.py"]
-_sam3d_env_bin: str = path_to_cmd["tools/sam3d/sam3d_worker.py"]
+_sam_env_bin: Optional[str] = None
+
+try:
+    _sam_env_bin = path_to_cmd.get("tools/sam3d/sam_worker.py")
+except Exception:
+    pass
+
+
+def _crop_image_to_mask_bbox(image, mask, padding=20):
+    import numpy as np
+    if mask.ndim == 3:
+        mask = mask.squeeze()
+    rows, cols = np.where(mask > 0)
+    if rows.size == 0 or cols.size == 0:
+        raise ValueError("Mask has no foreground pixels")
+    rmin, rmax = int(rows.min()), int(rows.max()) + 1
+    cmin, cmax = int(cols.min()), int(cols.max()) + 1
+    h, w = image.shape[:2]
+    rmin = max(0, rmin - padding)
+    rmax = min(h, rmax + padding)
+    cmin = max(0, cmin - padding)
+    cmax = min(w, cmax + padding)
+    return image[rmin:rmax, cmin:cmax].copy()
+
+
+def _match_object_name(prompt: str, object_names: List[str]) -> Optional[str]:
+    prompt_lower = prompt.strip().lower().replace(" ", "_").replace("-", "_")
+    if not prompt_lower:
+        return object_names[0] if object_names else None
+    for name in object_names:
+        if name.lower() == prompt_lower:
+            return name
+    for name in object_names:
+        if prompt_lower in name.lower():
+            return name
+    for name in object_names:
+        if name.lower() in prompt_lower:
+            return name
+    if len(object_names) == 1:
+        return object_names[0]
+    return None
 
 
 @mcp.tool()
 def initialize(args: Dict[str, object]) -> Dict[str, object]:
-    """Initialize the SAM bridge with configuration.
-
-    Args:
-        args: Configuration dictionary with keys:
-            - target_image_path: Path to the target image for sam3d.
-            - output_dir: Base directory for output files.
-            - sam3d_config_path: Optional path to SAM3D config file.
-            - blender_command: Optional path to Blender executable.
-
-    Returns:
-        Dictionary with status and tool configurations.
-    """
-    global _target_image, _output_dir, _sam3_cfg, _blender_command
+    """Initialize the SAM bridge (target image and output dir)."""
+    global _target_image, _output_dir, _sam_env_bin
     _target_image = args["target_image_path"]
-    _output_dir = args.get("output_dir") + "/sam"
+    _output_dir = args.get("output_dir", "") + "/sam"
     os.makedirs(_output_dir, exist_ok=True)
-    _sam3_cfg = args.get("sam3d_config_path") or os.path.join(
-        ROOT, "utils", "third_party", "sam3d", "checkpoints", "hf", "pipeline.yaml"
-    )
-    _blender_command = args.get("blender_command") or "utils/third_party/infinigen/blender/blender"
+    _sam_env_bin = path_to_cmd.get("tools/sam3d/sam_worker.py")
     return {
         "status": "success",
-        "output": {"text": ["SAM bridge initialized successfully"], "tool_configs": tool_configs}
+        "output": {"text": ["SAM bridge initialized (segment + export only)"], "tool_configs": tool_configs},
     }
 
 
 @mcp.tool()
 def get_better_object(object_name: str) -> Dict[str, object]:
-    """Generate a 3D asset from an object in the target image.
-
-    Uses SAM3 to segment the object from the image, then SAM3D to
-    reconstruct it as a 3D GLB model.
-
-    Args:
-        object_name: Name of the object to extract (e.g., 'chair', 'table').
-
-    Returns:
-        Dictionary with status and either the GLB path or error message.
-    """
-    original_object_name = object_name
-    object_name = object_name.replace(' ', '_')
-    object_name = object_name.replace('-', '_')
+    """Segment image, crop the requested object, and save cropped image. No 3D generation."""
+    import numpy as np
+    import cv2
 
     if not _target_image or not _output_dir:
         return {"status": "error", "output": {"text": ["Call initialize first"]}}
 
-    mask_path = os.path.join(_output_dir, f"{object_name}_mask.npy")
-    glb_path = os.path.join(_output_dir, f"{object_name}.glb")
+    normalized_name = object_name.strip().replace(" ", "_").replace("-", "_")
+    all_masks_path = os.path.join(_output_dir, "all_masks.npy")
+    mapping_path = all_masks_path.replace(".npy", "_object_names.json")
 
     try:
-        # Step 1: Run SAM3 to generate sam3d mask
-        subprocess.run(
-            [
-                _sam3_env_bin,
-                SAM3_WORKER,
-                "--image",
-                _target_image,
-                "--object",
-                original_object_name,
-                "--out",
-                mask_path,
-            ],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+        if not os.path.exists(all_masks_path) or not os.path.exists(mapping_path):
+            subprocess.run(
+                [_sam_env_bin, SAM_WORKER, "--image", _target_image, "--out", all_masks_path],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
 
-        # Step 2: Run SAM3D to reconstruct 3D model from mask
-        r2 = subprocess.run(
-            [
-                _sam3d_env_bin,
-                SAM3D_WORKER,
-                "--image",
-                _target_image,
-                "--mask",
-                mask_path,
-                "--config",
-                _sam3_cfg,
-                "--glb",
-                glb_path,
-            ],
-            cwd=ROOT,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+        img = cv2.imread(_target_image)
+        if img is None:
+            return {"status": "error", "output": {"text": [f"Could not load image: {_target_image}"]}}
 
-        info = json.loads(r2.stdout.strip().splitlines()[-1])
-        info["glb_path"] = info.get("glb_path") or glb_path
+        masks = np.load(all_masks_path, allow_pickle=True)
+        if masks.dtype == object:
+            masks = [m for m in masks]
+        elif masks.ndim == 3:
+            masks = [masks[i] for i in range(masks.shape[0])]
+        else:
+            masks = [masks]
+
+        with open(mapping_path, "r") as f:
+            object_mapping = json.load(f).get("object_mapping", [])
+        while len(object_mapping) < len(masks):
+            object_mapping.append(f"object_{len(object_mapping)}")
+
+        chosen = _match_object_name(normalized_name, object_mapping)
+        if chosen is None:
+            return {
+                "status": "error",
+                "output": {"text": [f"No object matching '{object_name}'. Found: {object_mapping}"]},
+            }
+
+        idx = object_mapping.index(chosen)
+        mask = masks[idx]
+        if mask.ndim > 2:
+            mask = mask.squeeze()
+        if mask.dtype != np.uint8 or mask.max() <= 1:
+            mask = (mask > 0).astype(np.uint8) * 255
+
+        cropped = _crop_image_to_mask_bbox(img, mask, padding=20)
+        cropped_path = os.path.join(_output_dir, f"{normalized_name}_cropped.png")
+        cv2.imwrite(cropped_path, cropped)
+
         return {
             "status": "success",
-            "output": {
-                "text": [
-                    f"Successfully generated asset, downloaded to: {info['glb_path']}",
-                    f"Asset information: {json.dumps(info)}"
-                ]
-            }
+            "output": {"text": [f"Cropped image saved to: {cropped_path}"]},
         }
-    except subprocess.CalledProcessError:
-        return {
-            "status": "error",
-            "output": {"text": [f"Object {object_name} not found in the image."]}
-        }
+    except Exception as e:
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 
 def main() -> None:
-    """Run the MCP server or execute test mode."""
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        initialize(
-            {
-                "target_image_path": "data/static_scene/blackhouse25/target.jpeg",
-                "output_dir": os.path.join(ROOT, "output", "test", "sam3"),
-                "blender_command": "utils/third_party/infinigen/blender/blender",
-            }
-        )
+        initialize({
+            "target_image_path": "data/static_scene/blackhouse25/target.jpeg",
+            "output_dir": os.path.join(ROOT, "output", "test", "sam3"),
+        })
         print(get_better_object("house"))
     else:
         mcp.run()

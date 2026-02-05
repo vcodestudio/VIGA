@@ -1,8 +1,7 @@
 """SAM Scene Initialization MCP Server.
 
-This module provides an MCP server for scene reconstruction using SAM (Segment
-Anything Model) and SAM-3D. It detects objects in images, reconstructs them
-in 3D, and imports them into Blender scenes.
+Segment-only flow: SAM segments the image, cropped images are exported
+and optionally sent to ComfyUI API (no local 3D mesh/3DGS generation).
 """
 
 import json
@@ -10,9 +9,8 @@ import os
 import shutil
 import subprocess
 import sys
-import traceback
-import base64
-from typing import Dict, List, Optional, Tuple
+import time
+from typing import Dict, List, Optional
 
 import numpy as np
 import requests
@@ -21,135 +19,280 @@ from mcp.server.fastmcp import FastMCP
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils._path import path_to_cmd
 
-# Tool configurations for the agent (empty as tools are auto-discovered)
-tool_configs: List[Dict[str, object]] = []
+# Tool config for get_better_object (agent-facing)
+tool_configs: List[Dict[str, object]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_better_object",
+            "description": (
+                "Generate high-quality 3D assets, download them locally, and provide "
+                "their paths for later use. The textures, materials, and finishes of "
+                "these objects are already high-quality with fine-grained detail; "
+                "please do not repaint them. If you do, you will need to re-import "
+                "the object."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": (
+                            "The name of the object to download. For example, "
+                            "'chair', 'table', 'lamp', etc."
+                        ),
+                    },
+                },
+                "required": ["object_name"],
+            },
+        },
+    }
+]
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SAM_WORKER = os.path.join(os.path.dirname(__file__), "sam_worker.py")
-SAM3D_WORKER = os.path.join(os.path.dirname(__file__), "sam3d_worker.py")
-IMPORT_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "blender", "glb_import.py")
+WORKFLOW_PATH = os.path.join(os.path.dirname(__file__), "workflows", "comfy_workflow.json")
+LOAD_IMAGE_NODE_ID = "76"
 
 mcp = FastMCP("sam-init")
 
-# Global state variables
+# Global state (segment + export only; no 3D)
 _target_image: Optional[str] = None
-_output_dir: Optional[str] = None
-_sam3_cfg: Optional[str] = None
-_blender_command: Optional[str] = None
-_blender_file: Optional[str] = None
+_output_dir: Optional[str] = None  # sam_init: segment/crop outputs
+_assets_dir: Optional[str] = None  # assets: GLB save dir (same as Meshy)
 _log_file: Optional[object] = None
 _sam_env_bin: Optional[str] = None
-_sam3d_env_bin: Optional[str] = None
-_api_url: Optional[str] = os.getenv("SAM3D_API_URL")
+_comfyui_url: Optional[str] = os.getenv("COMFYUI_API_URL")
 
-# Safely get paths to avoid uncaught KeyError exceptions
 try:
     _sam_env_bin = path_to_cmd.get("tools/sam3d/sam_worker.py")
-    _sam3d_env_bin = path_to_cmd.get("tools/sam3d/sam3d_worker.py")
 except Exception as e:
     print(f"[SAM_INIT] Error initializing paths: {e}", file=sys.stderr)
 
 
 def log(message: str) -> None:
-    """Output to both stderr and log file."""
-    # Output to stderr (for real-time viewing)
     print(message, file=sys.stderr)
-    # Output to log file (for later viewing)
     if _log_file is not None:
         try:
             _log_file.write(message + "\n")
-            _log_file.flush()  # Flush immediately to ensure content is written
+            _log_file.flush()
         except Exception:
-            pass  # If log file write fails, don't affect the main process
-
-
-def get_image_base64(image_path: str) -> str:
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+            pass
 
 
 def get_conda_prefix_from_python_path(python_path: str) -> Optional[str]:
-    """Infer CONDA_PREFIX from Python executable path.
-
-    Example: /path/to/envs/env_name/bin/python -> /path/to/envs/env_name
-    """
     if not python_path:
         return None
-    
-    # Normalize path (handle both relative and absolute paths)
-    if os.path.isabs(python_path):
-        normalized_path = python_path
-    else:
-        normalized_path = os.path.abspath(python_path)
-
-    # Method 1: If path ends with /bin/python or /bin/python3, remove the last two directory levels
-    if normalized_path.endswith('/bin/python') or normalized_path.endswith('/bin/python3'):
-        conda_prefix = os.path.dirname(os.path.dirname(normalized_path))
-        return conda_prefix
-
-    # Method 2: If path contains /envs/, extract environment path
-    if '/envs/' in normalized_path:
-        parts = normalized_path.split('/envs/')
+    normalized_path = python_path.replace("\\", "/") if os.path.isabs(python_path) else os.path.abspath(python_path).replace("\\", "/")
+    if normalized_path.endswith("/bin/python") or normalized_path.endswith("/bin/python3"):
+        return os.path.dirname(os.path.dirname(normalized_path))
+    if "/envs/" in normalized_path:
+        parts = normalized_path.split("/envs/")
         if len(parts) == 2:
-            env_part = parts[1].split('/')[0]
-            conda_prefix = os.path.join(parts[0], 'envs', env_part)
-            return conda_prefix
-
-    # Method 3: If path contains /bin/python (for relative path cases)
-    if '/bin/python' in normalized_path:
-        idx = normalized_path.rfind('/bin/python')
-        conda_prefix = normalized_path[:idx]
-        return conda_prefix
-    
+            return os.path.join(parts[0], "envs", parts[1].split("/")[0])
+    if "/bin/python" in normalized_path:
+        idx = normalized_path.rfind("/bin/python")
+        return normalized_path[:idx]
     return None
 
 
 def prepare_env_with_conda_prefix(python_path: str) -> Dict[str, str]:
-    """Prepare environment variable dictionary with CONDA_PREFIX."""
     env = os.environ.copy()
-
-    # Always infer CONDA_PREFIX from Python path to ensure subprocess uses the correct environment
     conda_prefix = get_conda_prefix_from_python_path(python_path)
     if conda_prefix:
         env["CONDA_PREFIX"] = conda_prefix
-        log(f"[SAM_INIT] Set CONDA_PREFIX={conda_prefix} from Python path: {python_path}")
-    else:
-        # If unable to infer, but current environment has CONDA_PREFIX, keep it
-        if "CONDA_PREFIX" in env:
-            log(f"[SAM_INIT] Could not infer CONDA_PREFIX from {python_path}, keeping existing: {env['CONDA_PREFIX']}")
-        else:
-            log(f"[SAM_INIT] Warning: Could not infer CONDA_PREFIX from {python_path} and no existing CONDA_PREFIX")
-    
     return env
+
+
+def _crop_image_to_mask_bbox(image: np.ndarray, mask: np.ndarray, padding: int = 20) -> np.ndarray:
+    """Crop image to bounding box of mask (padding applied). Returns cropped image only."""
+    if mask.ndim == 3:
+        mask = mask.squeeze()
+    rows, cols = np.where(mask > 0)
+    if rows.size == 0 or cols.size == 0:
+        raise ValueError("Mask has no foreground pixels")
+    rmin, rmax = int(rows.min()), int(rows.max()) + 1
+    cmin, cmax = int(cols.min()), int(cols.max()) + 1
+    h, w = image.shape[:2]
+    rmin = max(0, rmin - padding)
+    rmax = min(h, rmax + padding)
+    cmin = max(0, cmin - padding)
+    cmax = min(w, cmax + padding)
+    return image[rmin:rmax, cmin:cmax].copy()
+
+
+def _match_object_name(prompt: str, object_names: List[str]) -> Optional[str]:
+    """Match user object_name to a segment name (object_1, object_2, or VLM name)."""
+    prompt_lower = prompt.strip().lower().replace(" ", "_").replace("-", "_")
+    if not prompt_lower:
+        return object_names[0] if object_names else None
+    for name in object_names:
+        if name.lower() == prompt_lower:
+            return name
+    for name in object_names:
+        if prompt_lower in name.lower():
+            return name
+    for name in object_names:
+        if name.lower() in prompt_lower:
+            return name
+    if len(object_names) == 1:
+        return object_names[0]
+    return None
+
+
+def _run_sam_segment() -> None:
+    """Run SAM worker to produce all_masks.npy and object mapping in _output_dir."""
+    all_masks_path = os.path.join(_output_dir, "all_masks.npy")
+    sam_log_path = os.path.join(_output_dir, "sam_worker.log")
+    env = prepare_env_with_conda_prefix(_sam_env_bin) if _sam_env_bin else os.environ.copy()
+    with open(sam_log_path, "w") as log_file:
+        subprocess.run(
+            [_sam_env_bin, SAM_WORKER, "--image", _target_image, "--out", all_masks_path],
+            cwd=ROOT,
+            check=True,
+            text=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+
+def _load_segment_results() -> tuple:
+    """Load or run SAM, return (image as numpy BGR, list of mask arrays, object_mapping)."""
+    all_masks_path = os.path.join(_output_dir, "all_masks.npy")
+    mapping_path = all_masks_path.replace(".npy", "_object_names.json")
+
+    if not os.path.exists(all_masks_path) or not os.path.exists(mapping_path):
+        _run_sam_segment()
+
+    import cv2
+    img = cv2.imread(_target_image)
+    if img is None:
+        raise FileNotFoundError(f"Could not load image: {_target_image}")
+
+    masks = np.load(all_masks_path, allow_pickle=True)
+    if masks.dtype == object:
+        masks = [m for m in masks]
+    elif masks.ndim == 3:
+        masks = [masks[i] for i in range(masks.shape[0])]
+    else:
+        masks = [masks]
+
+    with open(mapping_path, "r") as f:
+        object_mapping = json.load(f).get("object_mapping", [])
+    while len(object_mapping) < len(masks):
+        object_mapping.append(f"object_{len(object_mapping)}")
+
+    return img, masks, object_mapping
+
+
+def _comfyui_upload_image(cropped_path: str) -> str:
+    """Upload image to ComfyUI; return filename as used in workflow."""
+    url = f"{_comfyui_url.rstrip('/')}/upload/image"
+    with open(cropped_path, "rb") as f:
+        files = {"image": (os.path.basename(cropped_path), f, "image/png")}
+        r = requests.post(url, files=files, timeout=60)
+    r.raise_for_status()
+    out = r.json()
+    name = out.get("name") or out.get("filename") or os.path.basename(cropped_path)
+    return name
+
+
+def _comfyui_run_workflow(image_filename: str) -> Dict:
+    """Run ComfyUI workflow with LoadImage node 76 set to image_filename; return history result."""
+    with open(WORKFLOW_PATH, "r", encoding="utf-8") as f:
+        workflow = json.load(f)
+
+    # Set node 76 (LoadImage) input to uploaded image filename
+    if LOAD_IMAGE_NODE_ID not in workflow:
+        raise ValueError(f"Workflow missing LoadImage node {LOAD_IMAGE_NODE_ID}")
+    workflow[LOAD_IMAGE_NODE_ID]["inputs"] = workflow[LOAD_IMAGE_NODE_ID].get("inputs", {})
+    workflow[LOAD_IMAGE_NODE_ID]["inputs"]["image"] = image_filename
+
+    # ComfyUI prompt format: prompt is the graph
+    prompt_payload = {"prompt": workflow}
+    r = requests.post(f"{_comfyui_url.rstrip('/')}/prompt", json=prompt_payload, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    prompt_id = data.get("prompt_id")
+    if not prompt_id:
+        raise RuntimeError(f"ComfyUI did not return prompt_id: {data}")
+
+    # Poll history until finished
+    for _ in range(600):
+        r = requests.get(f"{_comfyui_url.rstrip('/')}/history/{prompt_id}", timeout=10)
+        r.raise_for_status()
+        hist = r.json()
+        if prompt_id in hist:
+            return hist[prompt_id]
+        time.sleep(1)
+    raise TimeoutError("ComfyUI workflow did not finish in time")
+
+
+def _comfyui_download_outputs(history: Dict, object_name: str) -> Optional[str]:
+    """From ComfyUI history, find output files (e.g. GLB) and save to _assets_dir (Meshy-compatible). Return local path."""
+    outputs = history.get("outputs", {})
+    saved_path = None
+    base = _comfyui_url.rstrip("/")
+    # Save GLB to assets dir (same as Meshy) so path is output_dir/assets/object_name.glb
+    save_dir = _assets_dir if _assets_dir else _output_dir
+
+    def try_download(item: str, subfolder: str = "", type_name: str = "output") -> Optional[str]:
+        try:
+            r = requests.get(base + "/view", params={"filename": item, "subfolder": subfolder, "type": type_name}, timeout=30)
+            r.raise_for_status()
+            ext = os.path.splitext(item)[1]
+            local = os.path.join(save_dir, f"{object_name}{ext}")
+            os.makedirs(save_dir, exist_ok=True)
+            with open(local, "wb") as f:
+                f.write(r.content)
+            return local
+        except Exception:
+            return None
+
+    for node_id, node_out in outputs.items():
+        if "gizmos" in node_out:
+            continue
+        for key, val in node_out.items():
+            if key == "images" and isinstance(val, list):
+                for entry in val:
+                    if isinstance(entry, dict):
+                        fn = entry.get("filename")
+                        if isinstance(fn, str) and (fn.endswith(".glb") or fn.endswith(".ply") or fn.endswith(".png")):
+                            path = try_download(fn, entry.get("subfolder", ""), entry.get("type", "output"))
+                            if path and (saved_path is None or path.endswith(".glb")):
+                                saved_path = path
+            elif isinstance(val, list) and val and isinstance(val[0], dict):
+                for entry in val:
+                    fn = entry.get("filename")
+                    if isinstance(fn, str) and (fn.endswith(".glb") or fn.endswith(".ply")):
+                        path = try_download(fn, entry.get("subfolder", ""), entry.get("type", "output"))
+                        if path:
+                            saved_path = path
+    return saved_path
 
 
 @mcp.tool()
 def initialize(args: Dict[str, object]) -> Dict[str, object]:
-    """Initialize SAM scene reconstruction with configuration."""
-    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _blender_file, _log_file
+    """Initialize SAM segment-only flow (target image and output dir)."""
+    global _target_image, _output_dir, _assets_dir, _log_file, _sam_env_bin
     try:
         _target_image = args["target_image_path"]
-        _output_dir = args.get("output_dir") + "/sam_init"
+        base_out = args.get("output_dir", "")
+        _output_dir = base_out + "/sam_init"
+        _assets_dir = base_out + "/assets"  # GLB save dir, same as Meshy
         if os.path.exists(_output_dir):
             shutil.rmtree(_output_dir)
         os.makedirs(_output_dir, exist_ok=True)
-        
-        # Initialize log file
-        log_path = os.path.join(_output_dir, "sam_init.log")
-        _log_file = open(log_path, 'w', encoding='utf-8')
-        log(f"[SAM_INIT] Initialized. Log file: {log_path}")
-        _sam3_cfg = args.get("sam3d_config_path") or os.path.join(
-            ROOT, "utils", "third_party", "sam3d", "checkpoints", "hf", "pipeline.yaml"
-        )
-        _blender_command = args.get("blender_command") or "utils/third_party/infinigen/blender/blender"
-        # Record the passed blender_file parameter for later writing directly to that path during reconstruction
-        _blender_file = args.get("blender_file")
+        os.makedirs(_assets_dir, exist_ok=True)
 
-        # Try to get the python path for sam_worker.py
-        # If not configured, use sam3d environment (assuming they might be in the same environment)
-        _sam_env_bin = path_to_cmd.get("tools/sam3d/sam_worker.py") or _sam3d_env_bin
-        
-        log("[SAM_INIT] sam init initialized")
+        log_path = os.path.join(_output_dir, "sam_init.log")
+        _log_file = open(log_path, "w", encoding="utf-8")
+        log(f"[SAM_INIT] Initialized. Log file: {log_path}")
+
+        _sam_env_bin = path_to_cmd.get("tools/sam3d/sam_worker.py")
+
+        log("[SAM_INIT] sam init initialized (segment + export only)")
         return {"status": "success", "output": {"text": ["sam init initialized"], "tool_configs": tool_configs}}
     except Exception as e:
         error_msg = f"Error in initialize: {str(e)}"
@@ -160,371 +303,71 @@ def initialize(args: Dict[str, object]) -> Dict[str, object]:
         return {"status": "error", "output": {"text": [error_msg]}}
 
 
-def process_single_object(
-    args_tuple: Tuple[int, object, str, str, str, str, str, str, str, str]
-) -> Tuple[bool, Optional[str], Optional[Dict[str, object]], Optional[str]]:
-    """Process 3D reconstruction task for a single object.
-
-    Args:
-        args_tuple: Tuple containing (idx, mask, object_name, target_image,
-                    output_dir, sam3_cfg, blender_command, sam3d_env_bin,
-                    ROOT, SAM3D_WORKER).
-
-    Returns:
-        Tuple of (success, glb_path, object_transform, error_msg).
-    """
-    idx, mask, object_name, _target_image, _output_dir, _sam3_cfg, _blender_command, _sam3d_env_bin, ROOT, SAM3D_WORKER = args_tuple
-    
-    try:
-        # Use mask file already saved by sam_worker.py (if exists), otherwise save a new one
-        mask_path = os.path.join(_output_dir, f"{object_name}.npy")
-        if not os.path.exists(mask_path):
-            # If file doesn't exist, save the mask (this shouldn't happen, but kept for robustness)
-            np.save(mask_path, mask)
-        else:
-            log(f"[SAM_INIT] Using existing mask file: {mask_path}")
-
-        # Reconstruct 3D using the same object name
-        glb_path = os.path.join(_output_dir, f"{object_name}.glb")
-        info_path = os.path.join(_output_dir, f"{object_name}.json")
-
-        # If file already exists (possibly generated in previous run), skip reconstruction
-        if os.path.exists(glb_path) and os.path.exists(info_path):
-            log(f"[SAM_INIT] GLB file already exists, skipping reconstruction: {glb_path}")
-            with open(info_path, 'r') as f:
-                info = json.load(f)
-            return (True, glb_path, info, None)
-
-        # Run SAM-3D reconstruction, using --info parameter to write JSON output to file instead of stdout
-        # Redirect subprocess output to log file to avoid polluting stdout
-        log_path = os.path.join(_output_dir, f"{object_name}_sam3d.log")
-        # Prepare environment variables, ensuring CONDA_PREFIX is included (inferred from Python path)
-        env = prepare_env_with_conda_prefix(_sam3d_env_bin)
-        with open(log_path, 'w') as log_file:
-            r = subprocess.run(
-                [
-                    _sam3d_env_bin,
-                    SAM3D_WORKER,
-                    "--image",
-                    _target_image,
-                    "--mask",
-                    mask_path,
-                    "--config",
-                    _sam3_cfg,
-                    "--glb",
-                    glb_path,
-                    "--info",
-                    info_path,  # Specify JSON output file path
-                ],
-                cwd=ROOT,
-                check=True,
-                text=True,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,  # Also redirect stderr to stdout
-                env=env,  # Pass environment variables
-            )
-
-        # Read JSON output from file instead of parsing from stdout (avoid stdout pollution)
-        if not os.path.exists(info_path):
-            error_msg = f"Object {idx} ({object_name}) reconstruction failed: info file not created"
-            log(f"[SAM_INIT] Warning: {error_msg}")
-            return (False, None, None, error_msg)
-        
-        try:
-            with open(info_path, 'r') as f:
-                info = json.load(f)
-        except json.JSONDecodeError as e:
-            error_msg = f"Object {idx} ({object_name}) failed to parse info file: {str(e)}"
-            log(f"[SAM_INIT] Warning: {error_msg}")
-            return (False, None, None, error_msg)
-        glb_path_value = info.get("glb_path")
-        if glb_path_value:
-            object_transform = {
-                "glb_path": glb_path_value,
-                "translation": info.get("translation"),
-                "rotation": info.get("rotation"),
-                "scale": info.get("scale"),
-            }
-            log(f"[SAM_INIT] Successfully reconstructed object {idx} ({object_name})")
-            return (True, glb_path_value, object_transform, None)
-        else:
-            error_msg = f"Object {idx} ({object_name}) reconstruction failed or no GLB generated"
-            log(f"[SAM_INIT] Warning: {error_msg}")
-            return (False, None, None, error_msg)
-            
-    except subprocess.CalledProcessError as e:
-        # Read log file content to get detailed error information
-        log_path = os.path.join(_output_dir, f"{object_name}_sam3d.log")
-        log_content = ""
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, 'r') as f:
-                    log_content = f.read()
-                    # Only take last 500 characters to avoid overly long logs
-                    if len(log_content) > 500:
-                        log_content = "..." + log_content[-500:]
-            except Exception:
-                pass
-        error_msg = f"Failed to reconstruct object {idx} ({object_name})"
-        if log_content:
-            error_msg += f". Log: {log_content}"
-        log(f"[SAM_INIT] Warning: {error_msg}. Full log: {log_path}")
-        return (False, None, None, error_msg)
-    except json.JSONDecodeError as e:
-        error_msg = f"Failed to parse output for object {idx} ({object_name}): {str(e)}"
-        log(f"[SAM_INIT] Warning: {error_msg}")
-        return (False, None, None, error_msg)
-    except Exception as e:
-        error_msg = f"Unexpected error processing object {idx} ({object_name}): {str(e)}"
-        log(f"[SAM_INIT] Error: {error_msg}")
-        return (False, None, None, error_msg)
-
-
 @mcp.tool()
-def reconstruct_full_scene() -> Dict[str, object]:
-    """Reconstruct complete 3D scene from input image.
+def get_better_object(object_name: str) -> Dict[str, object]:
+    """Segment image, crop the requested object, export image and optionally send to ComfyUI."""
+    global _target_image, _output_dir, _comfyui_url
 
-    Steps:
-        1. Use SAM to detect all objects
-        2. Use SAM-3D to reconstruct each object
-        3. Import all objects into Blender and save as .blend file
-    """
-    global _target_image, _output_dir, _sam3_cfg, _blender_command, _sam_env_bin, _sam3d_env_bin, _blender_file, _api_url
-    
     if not _target_image or not _output_dir:
-        return {"status": "error", "output": {"text": ["call initialize first"]}}
-    
-    # --- Remote API Mode ---
-    if _api_url:
-        log(f"[SAM_INIT] Using remote API: {_api_url}")
-        try:
-            image_b64 = get_image_base64(_target_image)
-            response = requests.post(
-                f"{_api_url.rstrip('/')}/reconstruct",
-                json={"image": image_b64},
-                timeout=600
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            glb_files = data.get("glb_files", [])
-            object_transforms = data.get("transforms", [])
-            
-            if not glb_files:
-                return {"status": "error", "output": {"text": ["No objects reconstructed by remote API"]}}
-                
-            # Save received GLB files locally
-            glb_paths = []
-            for glb_file in glb_files:
-                name = glb_file["name"]
-                glb_data = base64.b64decode(glb_file["data"])
-                local_path = os.path.join(_output_dir, name)
-                with open(local_path, "wb") as f:
-                    f.write(glb_data)
-                glb_paths.append(local_path)
-                
-                # Update glb_path in transforms to local path
-                for transform in object_transforms:
-                    if os.path.basename(transform.get("glb_path", "")) == name:
-                        transform["glb_path"] = local_path
-            
-            # Save transforms.json for Blender import
-            transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
-            with open(transforms_json_path, 'w') as f:
-                json.dump(object_transforms, f, indent=2)
-                
-            # Proceed to Step 3: Blender Import
-            return _import_to_blender(object_transforms, transforms_json_path)
-            
-        except Exception as e:
-            log(f"[SAM_INIT] Remote API failed: {e}")
-            return {"status": "error", "output": {"text": [f"Remote API failed: {str(e)}"]}}
+        return {"status": "error", "output": {"text": ["Call initialize first"]}}
 
-    # --- Local Mode ---
-    if _sam_env_bin is None:
-        return {"status": "error", "output": {"text": ["SAM worker python path not configured"]}}
-    
+    normalized_name = object_name.strip().replace(" ", "_").replace("-", "_")
+
     try:
-        # Step 1: Use SAM to get masks for all objects
-        all_masks_path = os.path.join(_output_dir, "all_masks.npy")
-        sam_log_path = os.path.join(_output_dir, "sam_worker.log")
-        log(f"[SAM_INIT] Step 1: Detecting all objects with SAM...")
-        log(f"[SAM_INIT] SAM worker output will be saved to: {sam_log_path}")
-        # Prepare environment variables, ensuring CONDA_PREFIX is included (inferred from Python path)
-        env = prepare_env_with_conda_prefix(_sam_env_bin)
-        with open(sam_log_path, 'w') as log_file:
-            subprocess.run(
-                [
-                    _sam_env_bin,
-                    SAM_WORKER,
-                    "--image",
-                    _target_image,
-                    "--out",
-                    all_masks_path,
-                ],
-                cwd=ROOT,
-                check=True,
-                text=True,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,  # Also redirect stderr to stdout
-                env=env,  # Pass environment variables
-            )
+        import cv2
+        img, masks, object_mapping = _load_segment_results()
+        chosen = _match_object_name(normalized_name, object_mapping)
+        if chosen is None:
+            return {
+                "status": "error",
+                "output": {"text": [f"No object matching '{object_name}'. Found: {object_mapping}"]},
+            }
 
-        # Step 2: Load masks and object name mapping
-        masks = np.load(all_masks_path, allow_pickle=True)
+        idx = object_mapping.index(chosen)
+        mask = masks[idx]
+        if mask.ndim > 2:
+            mask = mask.squeeze()
+        if mask.dtype != np.uint8 or mask.max() <= 1:
+            mask = (mask > 0).astype(np.uint8) * 255
 
-        # Handle case where masks might be an object array
-        if masks.dtype == object:
-            masks = [m for m in masks]
-        elif masks.ndim == 3:
-            # If it's a 3D array (N, H, W), convert to list
-            masks = [masks[i] for i in range(masks.shape[0])]
-        else:
-            # Single mask case
-            masks = [masks]
+        cropped = _crop_image_to_mask_bbox(img, mask, padding=20)
+        cropped_path = os.path.join(_output_dir, f"{normalized_name}_cropped.png")
+        cv2.imwrite(cropped_path, cropped)
+        log(f"[SAM_INIT] Cropped image saved: {cropped_path}")
 
-        # Load object name mapping information
-        object_names_json_path = all_masks_path.replace('.npy', '_object_names.json')
-        object_mapping = None
-        if os.path.exists(object_names_json_path):
-            with open(object_names_json_path, 'r') as f:
-                object_names_info = json.load(f)
-                object_mapping = object_names_info.get("object_mapping", [])
-                log(f"[SAM_INIT] Loaded object names mapping from: {object_names_json_path}")
-        else:
-            log(f"[SAM_INIT] Warning: Object names mapping file not found: {object_names_json_path}, using default names")
-
-        log(f"[SAM_INIT] Step 2: Reconstructing {len(masks)} objects with SAM-3D (parallel processing)...")
-
-        # Prepare parameter list
-        tasks = []
-        for idx, mask in enumerate(masks):
-            # Get object name (if available, otherwise use default name)
-            if object_mapping and idx < len(object_mapping):
-                object_name = object_mapping[idx]
-            else:
-                object_name = f"object_{idx}"
-            
-            tasks.append((
-                idx, mask, object_name, _target_image, _output_dir, _sam3_cfg,
-                _blender_command, _sam3d_env_bin, ROOT, SAM3D_WORKER
-            ))
-        
-        # Process all tasks serially
-        glb_paths = []
-        object_transforms = []  # Store position information for each object
-
-        # Process each task in order
-        for task in tasks:
-            idx = task[0]
-            try:
-                success, glb_path, object_transform, error_msg = process_single_object(task)
-                if success and glb_path and object_transform:
-                    glb_paths.append(glb_path)
-                    object_transforms.append(object_transform)
-            except Exception as e:
-                log(f"[SAM_INIT] Error processing object {idx}: {str(e)}")
-        
-        if len(glb_paths) == 0:
-            return {"status": "error", "output": {"text": ["No objects were successfully reconstructed"]}}
-
-        # Step 3: Import all GLBs into Blender and save as .blend file
-        transforms_json_path = os.path.join(_output_dir, "object_transforms.json")
-        with open(transforms_json_path, 'w') as f:
-            json.dump(object_transforms, f, indent=2)
-            
-        return _import_to_blender(object_transforms, transforms_json_path)
-    
-    except subprocess.CalledProcessError as e:
-        # Try to read relevant log file contents
-        error_msg = str(e)
-        log_files = []
-        if os.path.exists(os.path.join(_output_dir, "sam_worker.log")):
-            log_files.append("sam_worker.log")
-        if os.path.exists(os.path.join(_output_dir, "blender_import.log")):
-            log_files.append("blender_import.log")
-        
-        if log_files:
-            error_msg += f". Check log files: {', '.join(log_files)}"
-        
-        log(f"[SAM_INIT] Process failed: {error_msg}")
-        return {"status": "error", "output": {"text": [f"Process failed: {error_msg}"]}}
-    except Exception as e:
-        error_msg = f"Error: {str(e)}"
-        log(f"[SAM_INIT] {error_msg}")
-        log(f"[SAM_INIT] Traceback: {traceback.format_exc()}")
-        return {"status": "error", "output": {"text": [error_msg]}}
-
-
-def _import_to_blender(object_transforms: List[Dict], transforms_json_path: str) -> Dict[str, object]:
-    """Internal helper to run Blender import script."""
-    global _output_dir, _blender_command, _blender_file
-    
-    log(f"[SAM_INIT] Step 3: Importing {len(object_transforms)} objects into Blender...")
-    # If blender_file was provided in initialize, write directly to that path
-    # Otherwise default to scene.blend in the output directory
-    blend_path = _blender_file or os.path.join(_output_dir, "scene.blend")
-
-    # Build Blender command
-    blender_cmd = [
-        _blender_command,
-        "-b",  # Background mode
-        "-P",  # Run Python script
-        IMPORT_SCRIPT,
-        "--",
-        transforms_json_path,  # Pass position information JSON file path
-        blend_path,  # Output .blend file path
-    ]
-
-    blender_log_path = os.path.join(_output_dir, "blender_import.log")
-    log(f"[SAM_INIT] Blender import output will be saved to: {blender_log_path}")
-    # For Blender, use current environment's environment variables (Blender typically doesn't need CONDA_PREFIX)
-    env = os.environ.copy()
-    try:
-        subprocess.run(
-            blender_cmd,
-            cwd=ROOT,
-            check=True,
-            text=True,
-            stdout=open(blender_log_path, 'w'),
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-
-        log(f"[SAM_INIT] Deleting .blend1 files in {os.path.dirname(_output_dir)}")
-        # Delete any extra .blend1 files that may have been created
-        for file in os.listdir(os.path.dirname(_output_dir)):
-            if file.endswith(".blend1"):
-                os.remove(os.path.join(os.path.dirname(_output_dir), file))
-        
+        _comfyui_url = _comfyui_url or os.getenv("COMFYUI_API_URL")
+        if _comfyui_url:
+            filename = _comfyui_upload_image(cropped_path)
+            log(f"[SAM_INIT] Uploaded to ComfyUI as {filename}")
+            history = _comfyui_run_workflow(filename)
+            result_path = _comfyui_download_outputs(history, normalized_name)
+            if result_path:
+                # Same response format as Meshy for generator memory ("downloaded to: " + path)
+                return {
+                    "status": "success",
+                    "output": {"text": [f"Successfully generated static asset, downloaded to: {result_path}"]},
+                }
+            return {
+                "status": "success",
+                "output": {"text": [f"Cropped image sent to ComfyUI, saved to: {cropped_path}"]},
+            }
         return {
             "status": "success",
-            "output": {
-                "text": [
-                    f"Successfully reconstructed {len(object_transforms)} objects, Blender scene saved to: {blend_path}",
-                ],
-                "data": {
-                    "blend_path": blend_path,
-                    "num_objects": len(object_transforms),
-                }
-            }
+            "output": {"text": [f"Cropped image saved to: {cropped_path}"]},
         }
-    except subprocess.CalledProcessError as e:
-        return {"status": "error", "output": {"text": [f"Blender import failed: {str(e)}. Check {blender_log_path}"]}}
+    except Exception as e:
+        log(f"[SAM_INIT] get_better_object failed: {e}")
+        return {"status": "error", "output": {"text": [str(e)]}}
 
 
 def main() -> None:
-    """Run MCP server or execute test mode."""
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        task = sys.argv[2]
-        initialize(
-            {
-                "target_image_path": f"data/static_scene/{task}/target.png",
-                "output_dir": os.path.join(ROOT, "output", "test", task),
-                "blender_command": "utils/third_party/infinigen/blender/blender",
-            }
-        )
-        result = reconstruct_full_scene()
+        task = sys.argv[2] if len(sys.argv) > 2 else "test"
+        initialize({
+            "target_image_path": f"data/static_scene/{task}/target.png",
+            "output_dir": os.path.join(ROOT, "output", "test", task),
+        })
+        result = get_better_object("object_1")
         print(json.dumps(result, indent=2), file=sys.stderr)
     else:
         mcp.run()
