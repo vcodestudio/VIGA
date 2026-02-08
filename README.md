@@ -82,8 +82,8 @@ INFINIGEN_MINIMAL_INSTALL=True bash scripts/install/interactive_blender.sh # You
 conda create -n sam python=3.10 -y && conda activate sam
 pip install -r requirements/requirement_sam.txt
 
-conda create -n sam3d python=3.11 -y && conda activate sam3d
-./requirements/install_sam3d.sh
+conda create -n sam3d-objects python=3.11 -y && conda activate sam3d-objects
+pip install -r requirements/requirement_sam3d-objects.txt
 ```
 
 See [Requirements](requirements/README.md) for additional options.

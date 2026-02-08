@@ -4,6 +4,8 @@ This module provides an MCP server that manages Blender script execution,
 rendering, and scene manipulation. It supports tool calls from the Generator
 agent to execute code, get scene information, and undo operations.
 """
+import sys
+print("[BLENDER_EXEC] process started", flush=True, file=sys.stderr)
 
 import base64
 import io
@@ -19,12 +21,11 @@ from mcp.server.fastmcp import FastMCP
 from PIL import Image
 
 # Ensure repo root on path for utils
-import sys
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from utils.common import save_target_render_comparison_jpg
+# save_target_render_comparison_jpg: lazy import where used (avoids requiring openai at startup)
 
 from script_generators import generate_scene_info_script
 
@@ -308,6 +309,7 @@ class Executor:
                 camera_png = Path(render_file) / "Camera.png"
                 render_path = str(camera_png) if camera_png.exists() else imgs[0]
                 try:
+                    from utils.common import save_target_render_comparison_jpg
                     save_target_render_comparison_jpg(
                         target_path, render_path, str(Path(render_file) / "Result.jpg")
                     )
@@ -567,6 +569,7 @@ print("Scene ready: press Play to watch the ball roll down the slope.")"""
         
     else:
         # Run MCP service normally
+        print("[BLENDER_EXEC] entering mcp.run()...", flush=True, file=sys.stderr)
         mcp.run()
 
 if __name__ == "__main__":

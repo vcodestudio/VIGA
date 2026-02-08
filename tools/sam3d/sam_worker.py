@@ -4,17 +4,21 @@ This script uses Segment Anything Model (SAM) to automatically generate
 segmentation masks for all objects in an image, then uses a VLM to identify
 and name each object.
 """
+# First line: print immediately so user sees the process started (Python startup before this can take 30–60s on Windows)
+print("[SAM_WORKER] process started", flush=True)
 
+import sys
 import argparse
 import json
 import os
 import re
-import sys
 from typing import Any, Dict, List, Optional
 
+print("[SAM_WORKER] importing cv2, numpy, torch...", flush=True)
 import cv2
 import numpy as np
 import torch
+print("[SAM_WORKER] torch done", flush=True)
 from PIL import Image
 
 ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -22,8 +26,17 @@ sys.path.append(ROOT)
 sys.path.append(os.path.join(ROOT, "utils", "third_party", "sam"))
 sys.path.append(os.path.join(ROOT, "utils"))
 
+# Load .env so API keys (GEMINI_API_KEY etc.) are available
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(ROOT, ".env"))
+except ImportError:
+    pass
+
+print("[SAM_WORKER] importing segment_anything (may take 10–60s)...", flush=True)
 from common import build_client, get_image_base64
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+print("[SAM_WORKER] segment_anything loaded", flush=True)
 
 
 def panic_filtering_process(raw_masks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -45,12 +58,21 @@ def panic_filtering_process(raw_masks: List[Dict[str, Any]]) -> List[Dict[str, A
         Filtered list of mask dictionaries.
     """
     # Step 1: Pre-filtering
-    # Remove masks that are too small (e.g., text on boxes)
+    # Remove masks that are too small (e.g., text on boxes) or too large (walls/floors)
     min_area_threshold = 100
     candidates = []
+    if raw_masks:
+        total_pixels = raw_masks[0]['segmentation'].shape[0] * raw_masks[0]['segmentation'].shape[1]
+        max_area_ratio = 0.35  # Skip masks covering >35% of image (likely wall/floor/ceiling)
+    else:
+        total_pixels = 1
+        max_area_ratio = 1.0
     for m in raw_masks:
-        if m['area'] > min_area_threshold:
+        area_ratio = m['area'] / total_pixels
+        if m['area'] > min_area_threshold and area_ratio < max_area_ratio:
             candidates.append(m)
+        elif area_ratio >= max_area_ratio:
+            print(f"    [Filter] Skipped large mask: {area_ratio*100:.1f}% of image (likely background)")
 
     if len(candidates) == 0:
         return []
@@ -163,7 +185,7 @@ def sanitize_filename(name: str) -> str:
 def get_object_name_from_vlm(
     image_path: str,
     ori_img_path: str,
-    model: str = "gpt-4o",
+    model: str = "gemini-2.5-flash",
     existing_names: Optional[List[str]] = None
 ) -> str:
     """Use a VLM to identify the object in an image and return a unique name.
@@ -171,7 +193,7 @@ def get_object_name_from_vlm(
     Args:
         image_path: Path to the segmented object PNG image.
         ori_img_path: Path to the original full image for context.
-        model: VLM model name to use.
+        model: VLM model name to use (default: gemini-2.5-flash).
         existing_names: List of already-used names to avoid duplicates.
 
     Returns:
@@ -184,7 +206,7 @@ def get_object_name_from_vlm(
         # Encode images
         image_b64 = get_image_base64(image_path)
         ori_img_b64 = get_image_base64(ori_img_path)
-        # Initialize OpenAI client
+        # Initialize OpenAI-compatible client
         client = build_client(model)
 
         # Build prompt including existing names to avoid duplicates
@@ -212,17 +234,20 @@ def get_object_name_from_vlm(
                     {
                         "type": "text",
                         "text": (
-                            "Look at the first image showing a segmented object, and the second "
-                            "image showing the original image that contains this object. Identify "
-                            "what this object is and provide a concise, descriptive name for it "
-                            "(e.g., 'red_chair', 'wooden_table'). If the first image is not clear, "
-                            "check the second image to get the whole context.\n\n"
-                            "If you think the first image is not an object, but a background, "
-                            "please return 'background' as the object name.\n\n"
-                            "Use only lowercase letters, numbers, and underscores. The name should "
-                            "be a single word or short phrase (2-3 words max, use underscores to "
-                            f"separate words).{existing_names_str}\n\n"
-                            "Respond with ONLY the object name, nothing else."
+                            "You are classifying segmented regions from an interior/scene photo.\n\n"
+                            "The first image shows a segmented region (transparent background = not part of this segment). "
+                            "The second image shows the full original scene for context.\n\n"
+                            "RULES:\n"
+                            "- If this segment is a BACKGROUND element (wall, floor, ceiling, door frame, "
+                            "window frame, baseboard, molding, carpet/rug that covers the whole floor, "
+                            "large wall art that is part of decor, or any large architectural surface), "
+                            "return EXACTLY: background\n"
+                            "- If this segment is a distinct OBJECT (furniture, appliance, decoration item, "
+                            "plant, lamp, pillow, vase, picture frame, etc.), return a short descriptive name "
+                            "like 'red_chair', 'wooden_table', 'floor_lamp'.\n\n"
+                            "Use only lowercase letters, numbers, and underscores. "
+                            f"2-3 words max.{existing_names_str}\n\n"
+                            "Respond with ONLY the name, nothing else."
                         )
                     }
                 ]
@@ -259,32 +284,97 @@ def get_object_name_from_vlm(
         return f"{base_name}_{counter}"
 
 
-def main() -> None:
-    """Run the SAM worker to segment and identify objects in an image."""
-    p = argparse.ArgumentParser()
-    p.add_argument("--image", required=True, help="Path to input image")
-    p.add_argument("--out", required=True, help="Path for output npy file")
-    p.add_argument("--checkpoint", default=None, help="Path to SAM checkpoint")
-    p.add_argument("--vlm-model", default="gpt-4o", help="VLM model for object identification")
-    args = p.parse_args()
+def run_guided_mode(args, sam, image: np.ndarray) -> None:
+    """Guided mode: use Gemini-provided bboxes to segment specific objects with SamPredictor.
+    
+    Args:
+        args: Parsed CLI arguments (must have .objects_json, .out, .image).
+        sam: Loaded SAM model.
+        image: RGB numpy array (H, W, 3).
+    """
+    from segment_anything import SamPredictor
 
-    # Set default checkpoint path
-    if args.checkpoint is None:
-        args.checkpoint = os.path.join(ROOT, "utils", "third_party", "sam", "sam_vit_h_4b8939.pth")
+    with open(args.objects_json, "r") as f:
+        objects = json.load(f)
+    
+    if not objects:
+        print("[SAM_WORKER] No objects in objects_json, nothing to segment", flush=True)
+        return
 
-    # Load image
-    image = cv2.imread(args.image)
-    if image is None:
-        raise ValueError(f"Failed to load image: {args.image}")
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    print(f"[SAM_WORKER] Guided mode: {len(objects)} objects from Gemini", flush=True)
+    
+    # Set image once — embeddings are computed once and reused for all predictions
+    predictor = SamPredictor(sam)
+    predictor.set_image(image)
+    print("[SAM_WORKER] Image embeddings computed", flush=True)
 
-    # Initialize SAM model
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model_type = "vit_h"
+    output_dir = os.path.dirname(args.out)
+    os.makedirs(output_dir, exist_ok=True)
 
-    sam = sam_model_registry[model_type](checkpoint=args.checkpoint)
-    sam.to(device=device)
+    object_names: List[str] = []
+    mask_files: List[Dict[str, Any]] = []
 
+    for idx, obj in enumerate(objects):
+        name = obj["name"]
+        bbox = obj["bbox"]  # [x1, y1, x2, y2]
+        print(f"  [{idx+1}/{len(objects)}] {name} bbox={bbox}", flush=True)
+
+        box_np = np.array(bbox)
+        masks, scores, _ = predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            box=box_np,
+            multimask_output=True,
+        )
+        # Pick best mask (highest score)
+        best_idx = int(np.argmax(scores))
+        mask_bool = masks[best_idx]  # (H, W) bool
+        mask_uint8 = (mask_bool.astype(np.uint8)) * 255
+
+        # Ensure unique name
+        unique_name = name
+        counter = 1
+        while unique_name in object_names:
+            unique_name = f"{name}_{counter}"
+            counter += 1
+        object_names.append(unique_name)
+
+        # Save mask as PNG with transparency
+        mask_data_dict = {"segmentation": mask_bool, "area": int(mask_bool.sum())}
+        png_path = os.path.join(output_dir, f"{unique_name}.png")
+        save_mask_as_png(mask_data_dict, image, png_path)
+
+        # Save npy
+        npy_path = os.path.join(output_dir, f"{unique_name}.npy")
+        np.save(npy_path, mask_uint8)
+
+        mask_files.append({
+            "object_id": unique_name,
+            "png_path": png_path,
+            "npy_path": npy_path,
+            "mask_data": mask_uint8,
+        })
+        print(f"    -> {unique_name} (score={scores[best_idx]:.3f}, area={mask_bool.sum()})", flush=True)
+
+    # Save combined masks
+    if mask_files:
+        mask_arrays = np.stack([item["mask_data"] for item in mask_files], axis=0)
+        np.save(args.out, mask_arrays)
+        print(f"Saved combined masks: {args.out} shape={mask_arrays.shape}", flush=True)
+
+    # Save object names mapping
+    object_names_json_path = args.out.replace(".npy", "_object_names.json")
+    object_mapping = [os.path.splitext(os.path.basename(item["npy_path"]))[0] for item in mask_files]
+    with open(object_names_json_path, "w") as f:
+        json.dump({"object_names": object_names, "object_mapping": object_mapping}, f, indent=2)
+    print(f"Saved object names: {object_names_json_path}", flush=True)
+
+    print(f"\nGuided segmentation: {len(mask_files)} objects", flush=True)
+    print(f"Objects: {', '.join(object_names)}", flush=True)
+
+
+def run_auto_mode(args, sam, image: np.ndarray) -> None:
+    """Auto mode: original full-image segmentation with SamAutomaticMaskGenerator + VLM naming."""
     # Generate all masks
     mask_generator = SamAutomaticMaskGenerator(sam)
     raw_masks = mask_generator.generate(image)
@@ -306,12 +396,10 @@ def main() -> None:
 
     print(f"Processing {len(filtered_masks)} filtered masks...")
     for idx, mask_data in enumerate(filtered_masks):
-        # 1. Save PNG (temporary filename, will be renamed later)
         temp_png_path = os.path.join(output_dir, f"temp_mask_{idx}.png")
         ori_img_path = args.image
         save_mask_as_png(mask_data, image, temp_png_path)
 
-        # 2. Use VLM to identify object and get name
         print(f"  Identifying object {idx+1}/{len(filtered_masks)}...")
         object_name = get_object_name_from_vlm(
             temp_png_path, ori_img_path, model=args.vlm_model, existing_names=object_names
@@ -321,10 +409,8 @@ def main() -> None:
             continue
         object_names.append(object_name)
 
-        # 3. Rename PNG file to object_ID.png
         final_png_path = os.path.join(output_dir, f"{object_name}.png")
         if os.path.exists(final_png_path):
-            # Add numeric suffix if file exists
             counter = 1
             while os.path.exists(final_png_path):
                 final_png_path = os.path.join(output_dir, f"{object_name}_{counter}.png")
@@ -332,13 +418,10 @@ def main() -> None:
         os.rename(temp_png_path, final_png_path)
         print(f"    Identified as: {object_name}")
 
-        # 4. Save corresponding npy file as object_ID.npy
-        seg = mask_data['segmentation']  # Boolean array
-        mask_uint8 = (seg.astype(np.uint8)) * 255  # Convert to 0/255
-
+        seg = mask_data['segmentation']
+        mask_uint8 = (seg.astype(np.uint8)) * 255
         npy_path = os.path.join(output_dir, f"{object_name}.npy")
         if os.path.exists(npy_path):
-            # Add numeric suffix if file exists
             counter = 1
             while os.path.exists(npy_path):
                 npy_path = os.path.join(output_dir, f"{object_name}_{counter}.npy")
@@ -352,7 +435,6 @@ def main() -> None:
             "mask_data": mask_uint8
         })
 
-    # 5. Save combined masks array for backward compatibility
     if args.out:
         mask_arrays = [item["mask_data"] for item in mask_files]
         if mask_arrays:
@@ -360,20 +442,9 @@ def main() -> None:
             np.save(args.out, mask_arrays)
             print(f"Also saved combined masks to: {args.out}")
 
-        # Save object names mapping for sam_init.py
         object_names_json_path = args.out.replace('.npy', '_object_names.json')
-        # Extract final filename (without extension) from npy_path, may include conflict suffix
-        object_mapping = []
-        for item in mask_files:
-            npy_path = item["npy_path"]
-            npy_filename = os.path.basename(npy_path)
-            object_name_final = os.path.splitext(npy_filename)[0]
-            object_mapping.append(object_name_final)
-
-        object_names_info = {
-            "object_names": object_names,
-            "object_mapping": object_mapping
-        }
+        object_mapping = [os.path.splitext(os.path.basename(item["npy_path"]))[0] for item in mask_files]
+        object_names_info = {"object_names": object_names, "object_mapping": object_mapping}
         with open(object_names_json_path, 'w') as f:
             json.dump(object_names_info, f, indent=2)
         print(f"Also saved object names mapping to: {object_names_json_path}")
@@ -381,6 +452,53 @@ def main() -> None:
     print(f"\nGenerated {len(raw_masks)} raw masks, filtered to {len(filtered_masks)} masks")
     print(f"Identified objects: {', '.join(object_names)}")
     print(f"Saved {len(mask_files)} mask files to: {output_dir}")
+
+
+def main() -> None:
+    """Run the SAM worker to segment and identify objects in an image."""
+    p = argparse.ArgumentParser()
+    p.add_argument("--image", required=True, help="Path to input image")
+    p.add_argument("--out", required=True, help="Path for output npy file")
+    p.add_argument("--checkpoint", default=None, help="Path to SAM checkpoint")
+    p.add_argument("--mode", default="guided", choices=["auto", "guided"], help="auto=full segment+VLM, guided=Gemini bbox+SamPredictor")
+    p.add_argument("--objects-json", default=None, help="Path to JSON with objects+bboxes (required for guided mode)")
+    p.add_argument("--vlm-model", default=os.environ.get("MODEL", "gemini-2.5-flash"), help="VLM model for object identification (auto mode only)")
+    args = p.parse_args()
+
+    # Model: vit_b (fast, ~375MB) or vit_h (slower, better quality). Override with env SAM_MODEL=vit_h.
+    model_type = os.environ.get("SAM_MODEL", "vit_b").lower()
+    if model_type not in ("vit_b", "vit_l", "vit_h"):
+        model_type = "vit_b"
+    default_checkpoints = {
+        "vit_b": "sam_vit_b_01ec64.pth",
+        "vit_l": "sam_vit_l_0b3195.pth",
+        "vit_h": "sam_vit_h_4b8939.pth",
+    }
+    if args.checkpoint is None:
+        args.checkpoint = os.path.join(
+            ROOT, "utils", "third_party", "sam", default_checkpoints.get(model_type, "sam_vit_b_01ec64.pth")
+        )
+
+    print(f"[SAM_WORKER] Loading image: {args.image}", flush=True)
+    image = cv2.imread(args.image)
+    if image is None:
+        raise ValueError(f"Failed to load image: {args.image}")
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[SAM_WORKER] Loading SAM model ({model_type}) on {device}...", flush=True)
+    sam = sam_model_registry[model_type](checkpoint=args.checkpoint)
+    sam.to(device=device)
+
+    if args.mode == "guided":
+        if not args.objects_json or not os.path.isfile(args.objects_json):
+            print(f"[SAM_WORKER] ERROR: guided mode requires --objects-json (got: {args.objects_json})", flush=True)
+            print("[SAM_WORKER] Falling back to auto mode", flush=True)
+            run_auto_mode(args, sam, image)
+        else:
+            run_guided_mode(args, sam, image)
+    else:
+        run_auto_mode(args, sam, image)
 
 
 if __name__ == "__main__":

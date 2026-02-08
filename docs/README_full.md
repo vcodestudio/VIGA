@@ -78,7 +78,7 @@ pip install -r requirements/requirement_blender.txt
 conda create -n sam python=3.10 -y && conda activate sam
 pip install -r requirements/requirement_sam.txt
 
-conda create -n sam3d python=3.11 -y && conda activate sam3d
+conda create -n sam3d-objects python=3.11 -y && conda activate sam3d-objects
 pip install -r requirements/requirement_sam3d-objects.txt
 ```
 

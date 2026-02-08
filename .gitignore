@@ -16,20 +16,57 @@ web
 logs
 chroma
 TODO.md
-*.jpg
 *.pdf
 *.mp4
 run.sh
 *.blend
+*.blend1
 *.out
 *.bin
 .env
+
+# 이미지 파일
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.tif
+*.exr
+*.ico
+*.svg
+
+# 3D / 에셋 파일 (glb, gltf, ply, obj 등)
+*.glb
+*.gltf
+*.ply
+*.obj
+*.fbx
+*.stl
+*.dae
+*.3ds
 
 utils/infinigen
 utils/sam3
 utils/sam3d
 utils/sam
 utils/blender
+
+# SAM / SAM3D - third_party (models, checkpoints), outputs, debug
+utils/third_party/sam/
+utils/third_party/sam3/
+utils/third_party/sam3d/
+tools/sam3d/**/sam_init/
+tools/sam3d/debug_reconstruct_work/
+tools/sam3d/**/*.npy
+tools/sam3d/**/*.log
+tools/sam3d/**/all_masks*
+tools/sam3d/**/meshy.log
+# SAM checkpoint / model dirs (when present under tools)
+tools/sam3d/checkpoints/
+tools/sam3d/models/
 
 # Claude Code files
 CLAUDE.md
@@ -39,9 +76,6 @@ MODULARIZATION_PLAN.md
 
 # macOS
 .DS_Store
-
-# Unused assets
-docs/images/art.png
 
 # Test files
 gh.exe

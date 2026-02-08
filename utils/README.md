@@ -44,7 +44,7 @@ Located in `third_party/`:
 | `infinigen/` | Blender installation and procedural generation |
 | `sam/` | Segment Anything Model |
 | `sam3/` | SAM3 extension |
-| `sam3d/` | SAM3D reconstruction |
+| `sam3d/` | (optional) SAM3D submodule; not used when using ComfyUI for 3D |
 | `slides/` | Slides generation library |
 
 Initialize submodules:

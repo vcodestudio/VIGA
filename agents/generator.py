@@ -102,16 +102,6 @@ class GeneratorAgent:
         """
         print("\n=== Running generator agent ===\n")
 
-        # If init.py is in the tool servers, auto-call reconstruct_full_scene
-        # to initialize the 3D scene before the conversation begins.
-        try:
-            if any("init.py" in server for server in self.tool_client.tool_servers):
-                print("=== Auto-calling init.reconstruct_full_scene to initialize scene ===")
-                _ = await self.tool_client.call_tool("reconstruct_full_scene", {})
-                print("=== init.reconstruct_full_scene finished ===")
-        except Exception as e:
-            print(f"Warning: auto init reconstruct_full_scene failed: {e}")
-
         for i in range(self.config.get("max_rounds")):
             print(f"=== Round {i} ===\n")
             
@@ -184,6 +174,15 @@ class GeneratorAgent:
             print("Update and save memory...")
             self._update_memory({"assistant": message, "user": tool_response})
             self._save_memory()
+
+            # Mid-check: where to look at results for this round
+            out_dir = self.config.get("output_dir", "")
+            print(f"  [Round {i} done] tool={tool_name} | output_dir={out_dir}")
+            if out_dir and os.path.isdir(out_dir):
+                for label, sub in [("memory", "generator_memory.json"), ("tool_call", "_tool_call.json")]:
+                    path = os.path.join(out_dir, sub)
+                    if os.path.isfile(path):
+                        print(f"    -> {path}")
             
             if tool_name == "end":
                 break
@@ -253,8 +252,14 @@ class GeneratorAgent:
         if tool_call_name == "get_better_object":
             try:
                 object_name = json.loads(message['assistant'].tool_calls[0].function.arguments)['object_name']
-                object_path = message['user']['text'][0].split('downloaded to: ')[1]
-                self.memory[1]['content'].append({"type": "text", "text": f"Downloaded {object_name} to {object_path}"})
+                text_list = message['user'].get('text', [])
+                if text_list and 'downloaded to: ' in text_list[0]:
+                    object_path = text_list[0].split('downloaded to: ')[1]
+                    self.memory[1]['content'].append({"type": "text", "text": f"Downloaded {object_name} to {object_path}"})
+                else:
+                    # Object not found or pipeline error — log but don't crash
+                    raw_text = text_list[0] if text_list else "(empty response)"
+                    print(f"get_better_object for '{object_name}': {raw_text}")
             except Exception as e:
                 print(f"Error adding downloaded assets: {e}")
     

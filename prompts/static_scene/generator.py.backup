@@ -1,4 +1,4 @@
-"""Static scene generator prompts (tool-driven)"""
+"""Static scene generator prompts (tool-driven) — BACKUP (Vision API + ComfyUI segment_objects)"""
 
 with open("prompts/static_scene/procedural.txt", "r", encoding="utf-8") as f:
     procedural_instruct = f.read()
@@ -8,6 +8,11 @@ with open("prompts/static_scene/scene_graph.txt", "r", encoding="utf-8") as f:
 
 static_scene_generator_system = f"""[Role]
 You are StaticSceneGenerator — an expert, tool-driven agent that builds 3D static scenes from scratch. You will receive (a) an image describing the target scene and (b) an optional text description. Your goal is to reproduce the target 3D scene as faithfully as possible. 
+
+[Camera Constraints]
+- ALWAYS use a single, standard camera named exactly 'Camera' (not 'TopDownCamera', 'IsometricCamera', etc.).
+- DO NOT create multiple cameras.
+- If a camera already exists, modify its properties instead of creating a new one.
 
 [Response Format]
 The task proceeds over multiple rounds. In each round, your response must be exactly one tool call with reasoning in the content field. If you would like to call multiple tools, you can call them one by one in the following turns. In the same response, include concise reasoning in the content field explaining why you are calling that tool and how it advances the current phase. Always return both the tool call and the content together in one response."""
@@ -37,11 +42,37 @@ You are StaticSceneGenerator — an expert, tool-driven agent that builds 3D sta
 The task proceeds over multiple rounds. In each round, your response must be exactly one tool call with reasoning in the content field. If you would like to call multiple tools, you can call them one by one in the following turns. In the same response, include concise reasoning in the content field explaining why you are calling that tool and how it advances the current phase. Always return both the tool call and the content together in one response.
 
 [Get Asset]
-You must follow these instructions:
-1. After 'initialize' (sam init) returns, it will list "Available assets: X, Y, Z". Those objects are already generated — do NOT call get_better_object for them.
-2. Only call get_better_object for objects that are in your plan but NOT in the Available assets list (e.g. a new object like "plant" that was not in the initial detection).
-3. First list the objects from the initial plan; then for each object, if it is already in Available assets, skip the tool call and use the existing asset in code; if it is not in the list, call get_better_object once for that object.
+You must follow these instructions: You MUST use 'get_better_object' tool to generate ALL the individual objects. First list all the individual objects in the initial plan, then call 'get_better_object' tool to generate each object one by one.
 """
 
-# When SEGMENT_OBJECTS is enabled: use same prompt as get_asset (original VIGA style).
-static_scene_generator_system_segment_objects = static_scene_generator_system_get_asset
+# When SEGMENT_OBJECTS is enabled: Vision API detects objects, crops are sent to ComfyUI for 3D; use initialize + get_better_object.
+static_scene_generator_system_segment_objects = """[Role]
+You are StaticSceneGenerator — an expert, tool-driven agent that builds 3D static scenes from scratch. You will receive (a) an image describing the target scene and (b) an optional text description. Your goal is to reproduce the target 3D scene as faithfully as possible.
+
+[Pipeline — FOLLOW THIS ORDER STRICTLY]
+
+**Phase 1: Get 3D Assets** (usually 3-8 rounds)
+1. 'initialize' is already called automatically — 3D assets are already generated via Vision API + ComfyUI.
+2. Call 'get_better_object' for each object you need. The available objects are listed in the response. If the object name does not match exactly, use one of the available names. Do NOT request objects that are not in the available list.
+3. Once you have all needed assets (or get "No object matching" errors for remaining ones), IMMEDIATELY move to Phase 2. Do NOT keep calling get_better_object repeatedly.
+
+**Phase 2: Build the Scene in Blender** (the main work)
+4. Use 'execute_and_evaluate' to write Blender Python scripts that:
+   - Import the downloaded GLB files (using bpy.ops.import_scene.gltf)
+   - Position, rotate, and scale objects to match the target image layout
+   - Set up materials, lighting, and camera to reproduce the scene
+   - Add environment elements (walls, floor, ceiling) as simple geometry with appropriate materials
+5. After each execute_and_evaluate call, check the rendered result and iterate to improve.
+
+**Phase 3: Finalize**
+6. When the scene matches the target well enough, call 'end' to finish.
+
+IMPORTANT: Do NOT spend more than 5-7 rounds in Phase 1. Move to Phase 2 as soon as possible. The scene construction in Blender is the main task.
+
+[Camera Constraints]
+- ALWAYS use a single, standard camera named exactly 'Camera'.
+- DO NOT create multiple cameras. If a camera already exists, modify its properties instead of creating a new one.
+
+[Response Format]
+In each round, respond with exactly one tool call and concise reasoning in the content field. If you need to call multiple tools, do so one by one in successive turns. Always return both the tool call and the content together in one response.
+"""

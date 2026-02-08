@@ -44,6 +44,7 @@ netCDF4==1.7.3
 networkx==3.5
 numba==0.62.1
 numpy==1.26.4
+openai==2.7.1
 opencv-python==4.8.1.78
 OpenEXR==3.4.3
 packaging==25.0

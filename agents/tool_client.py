@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,11 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from utils._path import path_to_cmd
+
+logger = logging.getLogger(__name__)
+
+# Timeout for connecting to all MCP servers (seconds). Blender env can be slow; override with MCP_SERVER_CONNECT_TIMEOUT.
+SERVER_CONNECT_TIMEOUT = int(os.environ.get("MCP_SERVER_CONNECT_TIMEOUT", "300"))
 
 class ServerHandle:
     """Async wrapper for a single MCP server connection via stdio.
@@ -41,17 +47,33 @@ class ServerHandle:
         self._task = asyncio.create_task(self._runner())
         await self.ready.wait()
 
+    def _errlog_path(self) -> str:
+        """Stderr log path for this server (for debugging startup failures)."""
+        safe = self.path.replace("/", "_").replace("\\", "_").replace(".", "_")
+        d = os.path.join("output", "mcp_stderr")
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, f"{safe}.log")
+
     async def _runner(self) -> None:
         """Internal runner that maintains the server connection."""
+        cmd = path_to_cmd.get(self.path, "python")
+        logger.info("Starting MCP server: %s (command: %s)", self.path, cmd)
+        if not os.path.isfile(cmd) and not shutil.which(cmd):
+            logger.warning("Server command not found or not a file: %s — check utils/_path.py and conda env (e.g. blender)", cmd)
         self.stack = AsyncExitStack()
+        errlog_path = self._errlog_path()
+        errlog_file = open(errlog_path, "w", encoding="utf-8")
+        self.stack.push(lambda *args: errlog_file.close())
         async with self.stack:
             env = os.environ.copy()
-            params = StdioServerParameters(command=path_to_cmd[self.path], args=[self.path], env=env)
-            stdio, write = await self.stack.enter_async_context(stdio_client(params))
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            params = StdioServerParameters(command=cmd, args=[self.path], env=env)
+            stdio, write = await self.stack.enter_async_context(stdio_client(params, errlog=errlog_file))
             session = await self.stack.enter_async_context(ClientSession(stdio, write))
             await session.initialize()
             self.session = session
             self.ready.set()
+            logger.info("MCP server ready: %s", self.path)
             await self._stop.wait()
 
     async def stop(self) -> None:
@@ -127,17 +149,32 @@ class ExternalToolClient:
     async def connect_servers(self) -> None:
         """Connect to all configured MCP servers and discover their tools."""
         self.handles = {p: ServerHandle(p) for p in self.tool_servers}
-        await asyncio.gather(*(h.start() for h in self.handles.values()))
+        logger.info("Connecting to %d MCP server(s): %s", len(self.tool_servers), self.tool_servers)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(h.start() for h in self.handles.values())),
+                timeout=SERVER_CONNECT_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            not_ready = [p for p, h in self.handles.items() if not h.ready.is_set()]
+            errlog_hint = " See output/mcp_stderr/*.log for each server's stderr (e.g. tools_blender_exec_py.log)."
+            raise RuntimeError(
+                f"MCP server connection timed out after {SERVER_CONNECT_TIMEOUT}s. "
+                f"Server(s) not ready: {not_ready}. Check that the environment (e.g. conda) and dependencies for these servers are correct.{errlog_hint}"
+            ) from None
 
-        # Build tool -> server mapping
+        # Build tool -> server mapping and call initialize on each server
         for path, handle in self.handles.items():
+            logger.info("Listing tools for %s ...", path)
             tool_names = await handle.list_tools()
             for tool_name in tool_names:
                 self.tool_to_server[tool_name] = path
             print(f"MCP Server {path} connected. Tools: {tool_names}")
+            logger.info("Calling initialize for %s ...", path)
             tool_configs = await handle.call_tool("initialize", {"args": self.args})
             tool_configs = json.loads(tool_configs.content[0].text)
             self.tool_configs[path] = tool_configs['output']['tool_configs']
+            logger.info("Server %s initialized.", path)
 
     async def call_tool(
         self,

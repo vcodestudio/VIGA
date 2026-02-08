@@ -24,12 +24,11 @@ tools/
 │   ├── meshy.py            # get_better_assets via Meshy API
 │   └── meshy_api.py        # Meshy API client
 │
-└── sam3d/                  # SAM-based scene reconstruction
-    ├── init.py             # Scene initialization tools
-    ├── bridge.py           # SAM model bridge
+└── sam3d/                  # SAM segment + ComfyUI (get_better_object)
+    ├── init.py             # initialize, get_better_object
+    ├── bridge.py           # segment + crop + ComfyUI API
     ├── sam_worker.py       # SAM segmentation worker
-    ├── sam3_worker.py      # SAM3 worker
-    └── sam3d_worker.py     # SAM3D worker
+    └── sam3_worker.py      # SAM3 worker
 ```
 
 ## Tool Servers
@@ -43,7 +42,7 @@ tools/
 | `blender/investigator.py` | `set_camera`, `investigate`, `get_scene_info` | blender |
 | `slides/exec.py` | `execute_code` | pptx |
 | `assets/meshy.py` | `get_better_assets` | agent |
-| `sam3d/init.py` | `initialize_scene` | sam3d |
+| `sam3d/init.py` | `initialize`, `get_better_object` | sam3d-objects |
 
 ## Configuration
 
@@ -54,4 +53,4 @@ Tool-to-environment mapping is configured in [utils/path.py](../utils/path.py).
 - [blender/](blender/) - Blender Python execution and scene investigation
 - [slides/](slides/) - PowerPoint slide generation
 - [assets/](assets/) - 3D asset generation via Meshy API
-- [sam3d/](sam3d/) - SAM-based 3D scene reconstruction
+- [sam3d/](sam3d/) - SAM segment + ComfyUI (object 3D)

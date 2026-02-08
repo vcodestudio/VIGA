@@ -18,8 +18,8 @@ prompts_dict = {
             'verifier_scene_graph': static_scene_verifier_system_scene_graph,
             'generator_get_asset': static_scene_generator_system_get_asset,
             'verifier_get_asset': static_scene_verifier_system,
-            'generator_sam3d': static_scene_generator_system_sam3d,
-            'verifier_sam3d': static_scene_verifier_system
+            'generator_segment_objects': static_scene_generator_system_segment_objects,
+            'verifier_segment_objects': static_scene_verifier_system
         }
     },
     'dynamic_scene': {

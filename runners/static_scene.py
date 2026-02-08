@@ -105,6 +105,100 @@ def load_static_scene_dataset(base_path: str, task_name: str, setting: str, test
     return tasks
 
 
+def _rewind_to_round(resume_dir: Path, target_round: int) -> None:
+    """Rewind output directory to a specific round.
+
+    Deletes all renders, scripts, generator/verifier thoughts AFTER target_round.
+    Truncates generator_memory.json to only include up to target_round.
+
+    Args:
+        resume_dir: Path to the task output directory.
+        target_round: The round to resume from (data for this round is kept, everything after is deleted).
+    """
+    print(f"\n=== Rewinding to round {target_round} ===")
+
+    # 1. Delete renders/N for N > target_round
+    renders_dir = resume_dir / "renders"
+    if renders_dir.exists():
+        for subdir in renders_dir.iterdir():
+            if subdir.is_dir() and subdir.name.isdigit():
+                round_num = int(subdir.name)
+                if round_num > target_round:
+                    print(f"  Deleting renders/{subdir.name}/")
+                    shutil.rmtree(subdir, ignore_errors=True)
+
+    # 2. Delete scripts/N.py for N > target_round
+    scripts_dir = resume_dir / "scripts"
+    if scripts_dir.exists():
+        for f in scripts_dir.iterdir():
+            if f.is_file() and f.stem.isdigit():
+                round_num = int(f.stem)
+                if round_num > target_round:
+                    print(f"  Deleting scripts/{f.name}")
+                    f.unlink(missing_ok=True)
+
+    # 3. Delete generator_thoughts/N.* for N > target_round
+    for thoughts_dir_name in ["generator_thoughts", "verifier_thoughts"]:
+        thoughts_dir = resume_dir / thoughts_dir_name
+        if thoughts_dir.exists():
+            for f in thoughts_dir.iterdir():
+                if f.is_file() and f.stem.isdigit():
+                    round_num = int(f.stem)
+                    if round_num > target_round:
+                        print(f"  Deleting {thoughts_dir_name}/{f.name}")
+                        f.unlink(missing_ok=True)
+
+    # 4. Delete codes/N.* for N > target_round
+    codes_dir = resume_dir / "codes"
+    if codes_dir.exists():
+        for f in codes_dir.iterdir():
+            if f.is_file() and f.stem.isdigit():
+                round_num = int(f.stem)
+                if round_num > target_round:
+                    print(f"  Deleting codes/{f.name}")
+                    f.unlink(missing_ok=True)
+
+    # 5. Truncate generator_memory.json
+    #    Round counting: round 0 starts from the beginning.
+    #    Each round adds messages to the memory.
+    #    We count rounds by looking at verifier_result patterns and tool responses.
+    #    Strategy: count "user" messages that contain verifier results (render feedback)
+    #    as round boundaries. The initial user message (round 0) is the first one after system.
+    memory_path = resume_dir / "generator_memory.json"
+    if memory_path.exists():
+        with open(memory_path, "r", encoding="utf-8") as f:
+            memory = json.load(f)
+
+        # Count rounds by tracking assistant→tool pairs
+        # Round 0 = first assistant response, etc.
+        # Each round consists of: assistant message → tool response(s) → (optional verifier user msg)
+        # We identify round boundaries by counting sequences of (assistant, tool*) groups
+        round_count = -1  # Start at -1, first assistant increments to 0
+        keep_until_idx = len(memory)  # Default: keep all
+
+        i = 0
+        while i < len(memory):
+            msg = memory[i]
+            if msg.get("role") == "assistant" and i > 0:  # Skip system-level messages
+                round_count += 1
+                if round_count > target_round:
+                    # Found the first message of a round we want to delete
+                    keep_until_idx = i
+                    break
+            i += 1
+
+        if keep_until_idx < len(memory):
+            deleted_count = len(memory) - keep_until_idx
+            memory = memory[:keep_until_idx]
+            with open(memory_path, "w", encoding="utf-8") as f:
+                json.dump(memory, f, indent=4, ensure_ascii=False)
+            print(f"  Truncated generator_memory.json: kept {keep_until_idx} messages, deleted {deleted_count}")
+        else:
+            print(f"  generator_memory.json: target_round {target_round} >= total rounds ({round_count + 1}), no truncation needed")
+
+    print(f"=== Rewind to round {target_round} complete ===\n")
+
+
 def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[str, bool, Optional[str]]:
     """
     Run a single static scene task using main.py
@@ -118,12 +212,17 @@ def run_static_scene_task(task_config: Dict, args: argparse.Namespace) -> Tuple[
     """
     task_name = task_config["task_name"]
     is_resume = hasattr(args, 'resume_path') and args.resume_path
+    resume_round = getattr(args, 'resume_round', None)
     
     if is_resume:
         # Resume mode: use the existing directory directly (no copying)
         resume_dir = Path(args.resume_path)
         task_config["output_dir"] = str(resume_dir)  # Use existing directory
         print(f"Resuming static scene task: {task_name} in {resume_dir}")
+
+        # If resume_round is set, rewind to that round first
+        if resume_round is not None:
+            _rewind_to_round(resume_dir, resume_round)
         
         # Find the latest state.blend in renders folder to use as starting point
         renders_dir = resume_dir / "renders"
@@ -299,9 +398,9 @@ def main() -> None:
     parser.add_argument("--blender-save", default=f"data/static_scene/empty_scene.blend", help="Save blender file")
     
     # Tool server scripts (comma-separated)
-    # Build default generator tools based on SAM3D setting
+    # Build default generator tools based on segment-objects (SAM + ComfyUI) setting
     default_generator_tools = "tools/blender/exec.py,tools/generator_base.py,tools/initialize_plan.py"
-    if os.getenv("SAM3D", "false").lower() == "true":
+    if os.getenv("SEGMENT_OBJECTS", "false").lower() == "true":
         default_generator_tools += ",tools/sam3d/init.py"
     parser.add_argument("--generator-tools", default=default_generator_tools, help="Comma-separated list of generator tool server scripts")
     parser.add_argument("--verifier-tools", default="tools/blender/investigator.py,tools/verifier_base.py", help="Comma-separated list of verifier tool server scripts")
@@ -314,7 +413,7 @@ def main() -> None:
     parser.add_argument("--explicit-comp", action="store_true", help="Enable explicit completion")
     parser.add_argument("--text-only", action="store_true", help="Only use text as reference")
     parser.add_argument("--init-setting", choices=["none", "minimal", "reasonable"], default="none", help="Setting for the static scene task")
-    parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset", "sam3d"], default="none", help="Setting for the prompt (sam3d: use SAM3D pipeline when SAM3D=true)")
+    parser.add_argument("--prompt-setting", choices=["none", "procedural", "scene_graph", "get_asset", "segment_objects"], default="none", help="Setting for the prompt (segment_objects: SAM segment + ComfyUI when SEGMENT_OBJECTS=true)")
     parser.add_argument("--render-engine", default=os.getenv("RENDER_ENGINE", "eevee"), choices=["eevee", "cycles", "workbench", "solid", "outline"], help="Render engine (eevee=fast, cycles=quality, workbench=fastest, solid=solid view). Default: eevee")
     parser.add_argument("--effect", default=os.getenv("RENDER_EFFECT", "none"), choices=["none", "freestyle"], help="Render effect (none=default, freestyle=line art). Default: none")
     parser.add_argument("--resume", default=os.getenv("RESUME", "false").lower() == "true", action="store_true", help="Enable resume mode")
@@ -323,13 +422,18 @@ def main() -> None:
     if resume_path_env and resume_path_env.lower() in ('null', 'none', ''):
         resume_path_env = None
     parser.add_argument("--resume-path", default=resume_path_env, help="Path to resume from. If not set with --resume, auto-detects latest run.")
+    resume_round_env = os.getenv("RESUME_ROUND", None)
+    if resume_round_env and resume_round_env.lower() in ('null', 'none', ''):
+        resume_round_env = None
+    parser.add_argument("--resume-round", type=int, default=int(resume_round_env) if resume_round_env else None,
+                        help="Resume from specific round (delete rounds after this and restart from here)")
     
     args = parser.parse_args()
 
-    # When SAM3D=true, default to sam3d prompt so the model is instructed to use initialize + reconstruct_full_scene
-    if os.getenv("SAM3D", "false").lower() == "true" and args.prompt_setting == "none":
-        args.prompt_setting = "sam3d"
-        print("SAM3D=true: using prompt-setting=sam3d so the model uses the SAM3D pipeline (initialize → reconstruct_full_scene).")
+    # When SEGMENT_OBJECTS=true, default to segment_objects prompt (initialize + get_better_object via ComfyUI)
+    if os.getenv("SEGMENT_OBJECTS", "false").lower() == "true" and args.prompt_setting == "none":
+        args.prompt_setting = "segment_objects"
+        print("SEGMENT_OBJECTS=true: using prompt-setting=segment_objects (initialize → get_better_object via ComfyUI).")
     
     # Handle resume mode: auto-detect latest run if RESUME=true but RESUME_PATH is not set
     if args.resume and not args.resume_path:

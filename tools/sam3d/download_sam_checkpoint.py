@@ -1,17 +1,28 @@
-"""Download SAM ViT-H checkpoint to utils/third_party/sam/ (required for /segment, /reconstruct)."""
+"""Download SAM vit_b checkpoint to utils/third_party/sam/ (~375 MB).
+
+Usage (from repo root):
+  python tools/sam3d/download_sam_checkpoint.py
+"""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "utils" / "third_party" / "sam" / "sam_vit_h_4b8939.pth"
-URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
-EXPECTED_MB = 2400
+SAM_DIR = ROOT / "utils" / "third_party" / "sam"
+
+FILENAME = "sam_vit_b_01ec64.pth"
+URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+EXPECTED_MB = 375
+
 
 def main():
-    if OUT.exists() and OUT.stat().st_size > (EXPECTED_MB - 100) * 1024 * 1024:
-        print(f"Already exists: {OUT} ({OUT.stat().st_size // 1_000_000} MB)")
+    out = SAM_DIR / FILENAME
+    SAM_DIR.mkdir(parents=True, exist_ok=True)
+
+    if out.exists() and out.stat().st_size > (EXPECTED_MB - 50) * 1024 * 1024:
+        print(f"Already exists: {out} ({out.stat().st_size // 1_000_000} MB)")
         return
-    tmp = OUT.with_suffix(".pth.tmp")
-    print(f"Downloading to {tmp} (~{EXPECTED_MB} MB) ...")
+
+    tmp = out.with_suffix(".pth.tmp")
+    print(f"Downloading vit_b to {tmp} (~{EXPECTED_MB} MB) ...")
     try:
         import requests
         r = requests.get(URL, stream=True, timeout=30)
@@ -27,8 +38,8 @@ def main():
         if tmp.exists():
             tmp.unlink(missing_ok=True)
         raise
-    tmp.replace(OUT)
-    print(f"Done: {OUT} ({OUT.stat().st_size // 1_000_000} MB)")
+    tmp.replace(out)
+    print(f"Done: {out} ({out.stat().st_size // 1_000_000} MB)")
 
 
 if __name__ == "__main__":

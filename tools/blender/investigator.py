@@ -4,9 +4,10 @@ Provides tools for camera manipulation, scene inspection, and viewpoint
 management in Blender scenes. Used by the Verifier agent to analyze
 generated 3D content from multiple angles.
 """
+import sys
+print("[INVESTIGATOR] process started", flush=True, file=sys.stderr)
 
 import os
-import sys
 from typing import Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -356,6 +357,7 @@ def main() -> None:
         print("Running investigator tools test...")
         test_tools()
     else:
+        print("[INVESTIGATOR] entering mcp.run()...", flush=True, file=sys.stderr)
         mcp.run()
 
 

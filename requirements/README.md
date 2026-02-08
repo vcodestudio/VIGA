@@ -31,30 +31,25 @@ pip install -r requirements/requirement_pptx.txt
 | `requirement_pptx.txt` | pptx | 3.10 | SlideBench |
 | `requirement_eval-blender.txt` | eval-blender | 3.11 | 3D evaluation |
 | `requirement_eval-pptx.txt` | eval-pptx | 3.10 | Slides evaluation |
-| `requirement_sam3d-objects.txt` | sam3d | 3.11 | SAM3D API (Static Scene 3D) |
+| `requirement_sam3d-objects.txt` | sam3d-objects | 3.11 | Segment + ComfyUI (init, get_better_object) |
 
-### SAM3D API (Windows)
+### Segment + ComfyUI (SEGMENT_OBJECTS=true)
 
-```powershell
-# 1. Init submodule (if not done)
-git submodule update --init utils/third_party/sam3d
+SAM으로 타겟 이미지에서 객체를 세그먼트·크롭하고, 크롭 이미지를 ComfyUI API로 보내 3D를 생성합니다.
 
-# 2. Create env and install (PowerShell)
-.\requirements\install_sam3d_win.ps1
+```bash
+# 1. Create env
+conda create -n sam3d-objects python=3.11 -y
+conda activate sam3d-objects
+pip install -r requirements/requirement_sam3d-objects.txt
 
-# 3. Activate and run API server
-conda activate sam3d
-python tools/sam3d/api_server.py --port 8000
+# 2. SAM 체크포인트 (sam_worker용)
+# requirement_sam.txt 로 sam 환경 생성 후 tools/sam3d/download_sam_checkpoint.py 실행
 
-# 4. Test
-curl http://localhost:8000/health   # -> {"status":"ok","device":"cuda"}
-
-# 5. Download checkpoints (for /reconstruct; HuggingFace access may be required)
-pip install "huggingface-hub[cli]<1.0"
-python requirements/download_sam3d_checkpoints.py
+# 3. .env 에 ComfyUI URL 설정
+# SEGMENT_OBJECTS=true
+# COMFYUI_API_URL=http://localhost:8188
 ```
-
-Full inference (`/reconstruct`, `/segment`) is officially **Linux-only** (pytorch3d/gsplat). On Windows the API server runs and `/health` works; for full pipeline use WSL2 and `install_sam3d.sh`.
 
 ## External Dependencies
 
